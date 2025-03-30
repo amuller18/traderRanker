@@ -1,0 +1,51 @@
+import { fetchAllTradesFiltered } from "../actions/trader-actions"
+import { isUsingMockData } from "@/lib/trader-data"
+import type { TradeFilterOptions } from "@/lib/trader-data"
+import { ClientPage } from "./client-page"
+import { DataSourceStatus } from "@/app/components/data-source-status"
+
+export const dynamic = "force-dynamic"
+export const revalidate = 0 // Don't cache this page
+
+export default async function TradesPage() {
+  // Default filters - set very wide ranges to ensure all trades are shown initially
+  const defaultFilters: TradeFilterOptions = {
+    roiRange: [-10, 10],
+    marketCapRange: [0, 1000000000],
+    dateRange: [new Date(0), new Date()], // From beginning of time to now
+    searchTerm: "",
+    traderSearchTerm: "",
+    timeframe: "all",
+  }
+
+  let trades = []
+  let usingMockData = true
+
+  try {
+    // Check if we're using mock data
+    usingMockData = await isUsingMockData()
+
+    // Fetch trades with default filters
+    trades = await fetchAllTradesFiltered(defaultFilters)
+    console.log(`Loaded ${trades.length} trades for trades page (using ${usingMockData ? "mock" : "real"} data)`)
+  } catch (error) {
+    console.error("Error loading trades for trades page:", error)
+    // Continue with empty array, the client component will handle it
+  }
+
+  return (
+    <div className="container py-8">
+      <DataSourceStatus usingMockData={usingMockData} />
+
+      <div className="flex flex-col gap-2 mb-8">
+        <h1 className="text-3xl font-bold tracking-tight">All Trades</h1>
+        <p className="text-muted-foreground">
+          View and analyze all trading activity across all traders on the platform.
+        </p>
+      </div>
+
+      <ClientPage initialTrades={trades} defaultFilters={defaultFilters} />
+    </div>
+  )
+}
+

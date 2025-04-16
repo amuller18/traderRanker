@@ -17,23 +17,49 @@ import {
   MessageCircle,
   Users,
   ChevronLeft,
+  Search,
 } from "lucide-react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { format } from "date-fns"
+import { TokenSwap } from "@/app/components/token-swap"
 import { TransactionChart } from "@/app/components/transaction-chart"
 import { TokenAuthorityInfo } from "@/app/components/token-authority-info"
 import { HolderDistribution } from "@/app/components/holder-distribution"
 import { TradesTable } from "@/app/trades/components/trades-table"
 import { DataSourceStatus } from "@/app/components/data-source-status"
 import { Sidebar, SidebarContent, SidebarHeader, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
+import { Input } from "@/components/ui/input"
 import { SidebarContentAdjuster } from "./client-sidebar-adjuster"
-import { TokenSearchInline } from "../components/token-search-inline"
-import JupiterSwap from "@/app/components/jupiter-swap"
-import type { JSX } from "react"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0 // Don't cache this page
+
+// Add this component for the token search
+function TokenSearchBar() {
+  return (
+    <div className="relative w-full max-w-md mx-auto mb-6">
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input type="text" placeholder="Search for tokens..." className="pl-10 pr-4 py-2 w-full" />
+      </div>
+      <div className="absolute mt-1 w-full bg-background border rounded-md shadow-lg z-10 hidden">
+        <div className="p-2 hover:bg-muted cursor-pointer">
+          <div className="font-medium">FLAPPY</div>
+          <div className="text-xs text-muted-foreground">Flappy Token</div>
+        </div>
+        <div className="p-2 hover:bg-muted cursor-pointer">
+          <div className="font-medium">BONK</div>
+          <div className="text-xs text-muted-foreground">Bonk Token</div>
+        </div>
+        <div className="p-2 hover:bg-muted cursor-pointer">
+          <div className="font-medium">JUP</div>
+          <div className="text-xs text-muted-foreground">Jupiter Token</div>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 interface TokenDetailPageProps {
   params: {
@@ -43,11 +69,6 @@ interface TokenDetailPageProps {
 
 export default async function TokenDetailPage({ params }: TokenDetailPageProps) {
   const tokenAddress = decodeURIComponent(params.token)
-  // Ensure the token address is properly formatted
-  if (tokenAddress && !tokenAddress.startsWith("So1") && !tokenAddress.startsWith("EPj") && tokenAddress.length < 44) {
-    console.warn(`Token address may be in an unexpected format: ${tokenAddress}`)
-  }
-  console.log(`Token address for analysis: ${tokenAddress}`)
   let usingMockData = true
 
   try {
@@ -68,9 +89,6 @@ export default async function TokenDetailPage({ params }: TokenDetailPageProps) 
 
   // Get the first token info (main pair)
   const tokenInfo = tokenInfoArray[0]
-
-  // Log token info structure for debugging
-  console.log("Token Info Structure:", JSON.stringify(tokenInfo, null, 2))
 
   // Fetch token supply (optional)
   const tokenSupply = await getTokenSupply(tokenAddress)
@@ -125,141 +143,50 @@ export default async function TokenDetailPage({ params }: TokenDetailPageProps) 
     return format(new Date(timestamp), "MMM d, yyyy")
   }
 
-  // Get token description
-  const getTokenDescription = () => {
-    // Check different possible locations for the description
-    if (tokenInfo.baseToken?.description && typeof tokenInfo.baseToken.description === "string") {
-      return tokenInfo.baseToken.description
-    }
-
-    if (tokenInfo.info?.description && typeof tokenInfo.info.description === "string") {
-      return tokenInfo.info.description
-    }
-
-    // Check if description might be in a nested property
-    if (tokenInfo.baseToken?.info?.description && typeof tokenInfo.baseToken.info.description === "string") {
-      return tokenInfo.baseToken.info.description
-    }
-
-    // Check if description might be in metadata
-    if (tokenInfo.metadata?.description && typeof tokenInfo.metadata.description === "string") {
-      return tokenInfo.metadata.description
-    }
-
-    // Fallback to token name
-    if (tokenInfo.baseToken?.name) {
-      return `${tokenInfo.baseToken.name} is a token on the Solana blockchain.`
-    }
-
-    return "No description available for this token."
-  }
-
   // Extract social links
   const getSocialLinks = () => {
     const links = []
 
-    // Function to safely add a URL with protocol
-    const addUrlWithProtocol = (url: any, name: string, icon: JSX.Element) => {
-      if (!url) return
-
-      let formattedUrl = String(url)
-      if (!formattedUrl.startsWith("http://") && !formattedUrl.startsWith("https://")) {
-        formattedUrl = "https://" + formattedUrl
-      }
-
+    // Add website if available
+    if (tokenInfo.info?.websites && tokenInfo.info.websites.length > 0) {
       links.push({
-        name,
-        url: formattedUrl,
-        icon,
+        name: "Website",
+        url: tokenInfo.info.websites[0],
+        icon: <Globe className="h-4 w-4" />,
       })
     }
 
-    // Check multiple possible locations for website
-    const findWebsite = () => {
-      // Check in info.websites
-      if (tokenInfo.info?.websites && Array.isArray(tokenInfo.info.websites) && tokenInfo.info.websites.length > 0) {
-        return tokenInfo.info.websites[0]
-      }
+    // Check if socials exist and is an object
+    if (tokenInfo.info?.socials && tokenInfo.info.socials.length > 0) {
+      const socialData = tokenInfo.info.socials[0]
 
-      // Check in baseToken.info.websites
-      if (
-        tokenInfo.baseToken?.info?.websites &&
-        Array.isArray(tokenInfo.baseToken.info.websites) &&
-        tokenInfo.baseToken.info.websites.length > 0
-      ) {
-        return tokenInfo.baseToken.info.websites[0]
-      }
-
-      // Check in metadata
-      if (tokenInfo.metadata?.website) {
-        return tokenInfo.metadata.website
-      }
-
-      // Check in baseToken.metadata
-      if (tokenInfo.baseToken?.metadata?.website) {
-        return tokenInfo.baseToken.metadata.website
-      }
-
-      // Check if website might be directly in info
-      if (tokenInfo.info?.website) {
-        return tokenInfo.info.website
-      }
-
-      return null
-    }
-
-    const website = findWebsite()
-    if (website) {
-      addUrlWithProtocol(website, "Website", <Globe className="h-4 w-4" />)
-    }
-
-    // Check for socials in multiple locations
-    const checkSocials = () => {
-      // Check in info.socials
-      if (tokenInfo.info?.socials && Array.isArray(tokenInfo.info.socials) && tokenInfo.info.socials.length > 0) {
-        return tokenInfo.info.socials[0]
-      }
-
-      // Check in baseToken.info.socials
-      if (
-        tokenInfo.baseToken?.info?.socials &&
-        Array.isArray(tokenInfo.baseToken.info.socials) &&
-        tokenInfo.baseToken.info.socials.length > 0
-      ) {
-        return tokenInfo.baseToken.info.socials[0]
-      }
-
-      // Check if socials might be directly in info
-      if (tokenInfo.info?.twitter || tokenInfo.info?.telegram || tokenInfo.info?.discord) {
-        return tokenInfo.info
-      }
-
-      // Check if socials might be in metadata
-      if (tokenInfo.metadata?.twitter || tokenInfo.metadata?.telegram || tokenInfo.metadata?.discord) {
-        return tokenInfo.metadata
-      }
-
-      return null
-    }
-
-    const socialData = checkSocials()
-
-    if (socialData) {
       // Handle the case where socials might be an object with properties
       if (typeof socialData === "object" && socialData !== null) {
         // Check for Twitter
-        if (socialData.twitter) {
-          addUrlWithProtocol(socialData.twitter, "Twitter", <Twitter className="h-4 w-4" />)
+        if ("twitter" in socialData && typeof socialData.twitter === "string") {
+          links.push({
+            name: "Twitter",
+            url: socialData.twitter,
+            icon: <Twitter className="h-4 w-4" />,
+          })
         }
 
         // Check for Telegram
-        if (socialData.telegram) {
-          addUrlWithProtocol(socialData.telegram, "Telegram", <MessageCircle className="h-4 w-4" />)
+        if ("telegram" in socialData && typeof socialData.telegram === "string") {
+          links.push({
+            name: "Telegram",
+            url: socialData.telegram,
+            icon: <MessageCircle className="h-4 w-4" />,
+          })
         }
 
         // Check for Discord
-        if (socialData.discord) {
-          addUrlWithProtocol(socialData.discord, "Discord", <MessageCircle className="h-4 w-4" />)
+        if ("discord" in socialData && typeof socialData.discord === "string") {
+          links.push({
+            name: "Discord",
+            url: socialData.discord,
+            icon: <MessageCircle className="h-4 w-4" />,
+          })
         }
       }
       // Handle the case where socials might be a string
@@ -279,7 +206,7 @@ export default async function TokenDetailPage({ params }: TokenDetailPageProps) 
           icon = <MessageCircle className="h-4 w-4" />
         }
 
-        addUrlWithProtocol(url, name, icon)
+        links.push({ name, url, icon })
       }
     }
 
@@ -336,7 +263,6 @@ export default async function TokenDetailPage({ params }: TokenDetailPageProps) 
     return data
   }
 
-  const tokenDescription = getTokenDescription()
   const socialLinks = getSocialLinks()
   const transactionData = prepareTransactionData()
 
@@ -378,18 +304,14 @@ export default async function TokenDetailPage({ params }: TokenDetailPageProps) 
           {/* Main Content */}
           <div className="transition-all duration-300 ease-in-out">
             <div id="main-content" className="container py-8 transition-all duration-300 ease-in-out">
-              <div className="mb-8 flex flex-wrap justify-between items-center gap-4">
+              <div className="mb-8 flex justify-between items-center">
                 <Link href="/token-analysis">
                   <Button variant="ghost" className="gap-2 pl-0">
                     <ArrowLeft className="h-4 w-4" />
                     Back to Token Analysis
                   </Button>
                 </Link>
-
-                {/* Token Search Bar */}
-                <TokenSearchInline />
-
-                <div className="flex items-center">
+                <div className="flex items-center gap-2">
                   <a href={`https://solscan.io/token/${tokenAddress}`} target="_blank" rel="noopener noreferrer">
                     <Button variant="outline" size="sm" className="gap-2">
                       View on Solscan <ExternalLink className="h-4 w-4" />
@@ -399,6 +321,9 @@ export default async function TokenDetailPage({ params }: TokenDetailPageProps) 
               </div>
 
               <DataSourceStatus usingMockData={usingMockData} />
+
+              {/* Token Search Bar */}
+              <TokenSearchBar />
 
               <div className="flex flex-col gap-2 mb-8">
                 <div className="flex items-center justify-between">
@@ -536,19 +461,6 @@ export default async function TokenDetailPage({ params }: TokenDetailPageProps) 
                           </div>
                         </div>
                       )}
-                    </CardContent>
-                  </Card>
-
-                  {/* About Section */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>About {tokenInfo.baseToken.name || "Token"}</CardTitle>
-                      <CardDescription>Token description and information</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-4">
-                        <p className="text-sm text-muted-foreground">{tokenDescription}</p>
-                      </div>
                     </CardContent>
                   </Card>
 
@@ -752,7 +664,7 @@ export default async function TokenDetailPage({ params }: TokenDetailPageProps) 
                 <p className="text-sm text-muted-foreground">Trade {tokenInfo.baseToken.symbol} on Trader Ranker</p>
               </SidebarHeader>
               <SidebarContent className="p-4">
-                <JupiterSwap tokenAddress={tokenAddress} />
+                <TokenSwap tokenAddress={tokenAddress} tokenSymbol={tokenInfo.baseToken.symbol || "TOKEN"} />
               </SidebarContent>
             </div>
           </Sidebar>

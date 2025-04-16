@@ -4,7 +4,7 @@ import { useState } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import type { Trade } from "@/lib/trader-data"
-import { ArrowUpDown, ChevronDown, ChevronUp, ExternalLink } from "lucide-react"
+import { ArrowUpDown, ChevronDown, ChevronUp, ExternalLink, Loader2 } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -76,7 +76,7 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
     return (
       <div className="rounded-md border p-8 flex justify-center items-center">
         <div className="flex flex-col items-center gap-2">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           <p className="text-muted-foreground">Loading trades...</p>
         </div>
       </div>
@@ -174,17 +174,10 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
             </TableRow>
           ) : (
             sortedTrades.map((trade) => (
-              <TableRow
-                key={`${trade.caller}-${trade.ca}-${trade.date_called}`}
-                onClick={() => handleTokenClick(trade.ca)}
-              >
+              <TableRow key={`${trade.caller}-${trade.ca}-${trade.date_called}`}>
                 <TableCell>{formatDate(trade.date_called)}</TableCell>
                 <TableCell>
-                  <Link
-                    href={`/rankings/${encodeURIComponent(trade.caller)}`}
-                    className="hover:underline text-primary"
-                    onClick={(e) => e.stopPropagation()}
-                  >
+                  <Link href={`/rankings/${encodeURIComponent(trade.caller)}`} className="hover:underline text-primary">
                     {trade.caller}
                   </Link>
                 </TableCell>
@@ -192,10 +185,7 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
                   <div
                     className="hover:underline text-primary font-mono truncate max-w-[200px] cursor-pointer"
                     title={trade.ca}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleTokenClick(trade.ca)
-                    }}
+                    onClick={() => handleTokenClick(trade.ca)}
                   >
                     {trade.ca.substring(0, 6)}...{trade.ca.substring(trade.ca.length - 4)}
                   </div>
@@ -207,12 +197,7 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
                 </TableCell>
                 <TableCell>
                   <div className="flex gap-1">
-                    <a
-                      href={`https://solscan.io/token/${trade.ca}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                    >
+                    <a href={`https://solscan.io/token/${trade.ca}`} target="_blank" rel="noopener noreferrer">
                       <Button variant="ghost" size="icon" className="h-8 w-8">
                         <ExternalLink className="h-4 w-4" />
                       </Button>

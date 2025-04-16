@@ -6,20 +6,17 @@ import { Button } from "@/components/ui/button"
 import type { Trade } from "@/lib/mock-data-provider"
 import { ArrowUpDown, ChevronDown, ChevronUp, ExternalLink } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
-import { useRouter } from "next/navigation"
 
 interface TraderTradesProps {
   trades: Trade[]
-  loading?: boolean
 }
 
 type SortField = "date_called" | "roi" | "initial_mc"
 type SortDirection = "asc" | "desc"
 
-export function TraderTrades({ trades, loading = false }: TraderTradesProps) {
+export function TraderTrades({ trades }: TraderTradesProps) {
   const [sortField, setSortField] = useState<SortField>("date_called")
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc")
-  const router = useRouter()
 
   const handleSort = (field: SortField) => {
     if (field === sortField) {
@@ -63,21 +60,6 @@ export function TraderTrades({ trades, loading = false }: TraderTradesProps) {
     } catch (e) {
       return dateString
     }
-  }
-
-  const navigateToTokenAnalysis = (tokenAddress: string) => {
-    router.push(`/token-analysis/${tokenAddress}`)
-  }
-
-  if (loading) {
-    return (
-      <div className="rounded-md border p-8 flex justify-center items-center">
-        <div className="flex flex-col items-center gap-2">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-          <p className="text-muted-foreground">Loading trades...</p>
-        </div>
-      </div>
-    )
   }
 
   return (
@@ -153,20 +135,10 @@ export function TraderTrades({ trades, loading = false }: TraderTradesProps) {
             </TableRow>
           ) : (
             sortedTrades.map((trade) => (
-              <TableRow
-                key={`${trade.caller}-${trade.ca}-${trade.date_called}`}
-                onClick={() => navigateToTokenAnalysis(trade.ca)}
-              >
+              <TableRow key={`${trade.caller}-${trade.ca}-${trade.date_called}`}>
                 <TableCell>{formatDate(trade.date_called)}</TableCell>
                 <TableCell>
-                  <div
-                    className="font-medium truncate max-w-[200px]"
-                    title={trade.ca}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      navigateToTokenAnalysis(trade.ca)
-                    }}
-                  >
+                  <div className="font-medium truncate max-w-[200px]" title={trade.ca}>
                     {trade.ca.substring(0, 6)}...{trade.ca.substring(trade.ca.length - 4)}
                   </div>
                 </TableCell>
@@ -176,12 +148,7 @@ export function TraderTrades({ trades, loading = false }: TraderTradesProps) {
                   {(trade.roi_at_high * 100).toFixed(1)}%
                 </TableCell>
                 <TableCell>
-                  <a
-                    href={`https://solscan.io/token/${trade.ca}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                  >
+                  <a href={`https://solscan.io/token/${trade.ca}`} target="_blank" rel="noopener noreferrer">
                     <Button variant="ghost" size="icon">
                       <ExternalLink className="h-4 w-4" />
                     </Button>

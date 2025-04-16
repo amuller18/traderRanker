@@ -2,7 +2,6 @@
  * Token API service for fetching token information from external APIs
  * Based on the provided Python implementation
  */
-import { getPrimaryRpcEndpoint, logRpcEndpoint } from "@/lib/env"
 
 // Type definitions for token data
 export interface TokenInfo {
@@ -127,8 +126,7 @@ export async function getTokenInfo(contractAddress: string): Promise<TokenInfo[]
  */
 export async function getTokenSupply(contractAddress: string): Promise<number> {
   try {
-    const url = getPrimaryRpcEndpoint()
-    logRpcEndpoint(url)
+    const url = "https://api.mainnet-beta.solana.com"
 
     const payload = {
       jsonrpc: "2.0",

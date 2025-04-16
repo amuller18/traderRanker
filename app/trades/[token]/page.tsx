@@ -157,12 +157,12 @@ export default async function TokenDetailPage({ params }: TokenDetailPageProps) 
             <CardDescription>Token price movement since first call</CardDescription>
           </CardHeader>
           <CardContent className="h-[300px] flex items-center justify-center">
-            <iframe
-              width="100%"
-              height="600"
-              src="https://birdeye.so/tv-widget/CniPCE4b3s8gSUPhUiyMjXnytrEqUrMfSsnbBjLCpump?chain=solana&viewMode=pair&chartInterval=15&chartType=Candle&chartTimezone=America%2FDenver&chartLeftToolbar=show&theme=dark"
-              frameBorder="0"
-            ></iframe>
+            <iframe 
+              width="100%" 
+              height="600" 
+              src="https://birdeye.so/tv-widget/CniPCE4b3s8gSUPhUiyMjXnytrEqUrMfSsnbBjLCpump?chain=solana&viewMode=pair&chartInterval=15&chartType=Candle&chartTimezone=America%2FDenver&chartLeftToolbar=show&theme=dark" 
+              frameBorder="0">
+            </iframe>
           </CardContent>
         </Card>
 

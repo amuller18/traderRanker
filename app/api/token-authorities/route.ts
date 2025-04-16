@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server"
-import { SOLANA_RPC_ENDPOINTS, logRpcEndpoint } from "@/lib/env"
 
-// Get the primary RPC endpoint
-const RPC_URL = SOLANA_RPC_ENDPOINTS[0]
+// RPC endpoint
+const RPC_URL = "https://api.mainnet-beta.solana.com"
 
 export async function GET(request: Request) {
   try {
@@ -13,9 +12,6 @@ export async function GET(request: Request) {
     if (!address) {
       return NextResponse.json({ error: "Token address is required" }, { status: 400 })
     }
-
-    // Log which RPC endpoint we're using (without revealing the full URL)
-    logRpcEndpoint(RPC_URL)
 
     // Create the JSON-RPC payload
     const payload = {

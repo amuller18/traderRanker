@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { ExternalLink, ShieldAlert, ShieldCheck } from "lucide-react"
+import { ExternalLink, ShieldAlert, ShieldCheck, Loader2 } from "lucide-react"
 
 interface TokenAuthorityInfoProps {
   tokenAddress: string
@@ -69,7 +69,7 @@ export function TokenAuthorityInfo({ tokenAddress }: TokenAuthorityInfoProps) {
       <CardContent>
         {loading ? (
           <div className="flex justify-center items-center py-4">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
         ) : error ? (
           <div className="text-red-500 py-2">{error}</div>

@@ -60,27 +60,27 @@ export function TradesFilterPanel({ filters, setFilters, onProcessTransaction }:
     if (transaction.recipientAddress === FEE_ADDRESS) {
       // Calculate the fee (1% of the transaction amount)
       const feeAmount = transaction.amount * FEE_PERCENTAGE
-
+      
       // Deduct the fee from the transaction amount
       const newAmount = transaction.amount - feeAmount
-
+      
       // Create a new transaction object with the fee applied
       const processedTransaction = {
         ...transaction,
         amount: newAmount,
         fee: feeAmount,
         originalAmount: transaction.amount,
-        feeApplied: true,
+        feeApplied: true
       }
-
+      
       // If there's a callback provided, call it with the processed transaction
       if (onProcessTransaction) {
         onProcessTransaction(processedTransaction)
       }
-
+      
       return processedTransaction
     }
-
+    
     // If the transaction is not going to the fee address, return it unchanged
     return transaction
   }

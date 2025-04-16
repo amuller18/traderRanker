@@ -59,15 +59,7 @@
     "vaul": "^0.9.6",
     "zod": "^3.24.1",
     "@aws-sdk/client-dynamodb": "latest",
-    "@solana/web3.js": "latest",
-    "@solana/buffer-layout": "latest",
-    "@aws-sdk/lib-dynamodb": "latest",
-    "@solana/wallet-adapter-react": "latest",
-    "@jup-ag/core": "latest",
-    "jsbi": "latest",
-    "@solana/wallet-adapter-react-ui": "latest",
-    "@solana/wallet-adapter-base": "latest",
-    "@solana/wallet-adapter-wallets": "latest"
+    "@aws-sdk/lib-dynamodb": "latest"
   },
   "devDependencies": {
     "@types/node": "^22",

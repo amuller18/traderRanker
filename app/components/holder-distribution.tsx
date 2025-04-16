@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts"
-import { AlertTriangle, Users, RefreshCw } from "lucide-react"
+import { Loader2, Users, AlertTriangle, RefreshCw } from "lucide-react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -213,7 +213,7 @@ export function HolderDistribution({ tokenAddress }: HolderDistributionProps) {
       <CardContent>
         {loading ? (
           <div className="flex flex-col justify-center items-center py-8 gap-2">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             <p className="text-muted-foreground">Fetching holder data from Solana blockchain...</p>
           </div>
         ) : error ? (

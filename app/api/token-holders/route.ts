@@ -1,5 +1,12 @@
 import { NextResponse } from "next/server"
-import { SOLANA_RPC_ENDPOINTS, logRpcEndpoint } from "@/lib/env"
+
+// Update the RPC_ENDPOINTS array to use reliable public endpoints
+const RPC_ENDPOINTS = [
+  "https://api.mainnet-beta.solana.com",
+  "https://solana-api.projectserum.com",
+  "https://rpc.ankr.com/solana",
+  "https://solana-mainnet.g.alchemy.com/v2/demo",
+]
 
 // Retry configuration
 const MAX_RETRIES = 3
@@ -11,11 +18,8 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 // Function to make RPC request with retry logic
 async function makeRpcRequest(method: string, params: any[], retries = MAX_RETRIES, backoff = INITIAL_BACKOFF_MS) {
   // Try each endpoint in sequence
-  for (const endpoint of SOLANA_RPC_ENDPOINTS) {
+  for (const endpoint of RPC_ENDPOINTS) {
     try {
-      // Log which RPC endpoint we're using (without revealing the full URL)
-      logRpcEndpoint(endpoint)
-
       const payload = {
         jsonrpc: "2.0",
         id: 1,
@@ -33,9 +37,7 @@ async function makeRpcRequest(method: string, params: any[], retries = MAX_RETRI
 
       // If rate limited, try next endpoint or retry
       if (response.status === 429) {
-        console.warn(
-          `Rate limited by ${endpoint.includes("quiknode") ? "QuickNode" : endpoint}, trying next endpoint or retrying...`,
-        )
+        console.warn(`Rate limited by ${endpoint}, trying next endpoint or retrying...`)
         continue
       }
 
@@ -51,7 +53,7 @@ async function makeRpcRequest(method: string, params: any[], retries = MAX_RETRI
 
       return data.result
     } catch (error) {
-      console.error(`Error with endpoint ${endpoint.includes("quiknode") ? "QuickNode" : endpoint}:`, error)
+      console.error(`Error with endpoint ${endpoint}:`, error)
       // Continue to next endpoint
     }
   }

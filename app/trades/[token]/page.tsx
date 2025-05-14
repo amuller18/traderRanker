@@ -48,7 +48,7 @@ export default async function TokenDetailPage({ params }: TokenDetailPageProps) 
   // Calculate some stats
   const highestRoi = Math.max(...trades.map((t) => t.roi_at_high))
   const lowestRoi = Math.min(...trades.map((t) => t.roi_at_low))
-  const averageRoi = trades.reduce((sum, t) => sum + t.roi, 0) / trades.length
+  const averageRoi = trades.reduce((sum, t) => sum + t.roi_at_high, 0) / trades.length
   const totalTraders = new Set(trades.map((t) => t.caller)).size
   const firstTradeDate = new Date(Math.min(...trades.map((t) => new Date(t.date_called).getTime())))
   const lastTradeDate = new Date(Math.max(...trades.map((t) => new Date(t.date_called).getTime())))
@@ -175,7 +175,7 @@ export default async function TokenDetailPage({ params }: TokenDetailPageProps) 
             <div className="space-y-4">
               {Array.from(new Set(trades.map((t) => t.caller))).map((trader) => {
                 const traderTrades = trades.filter((t) => t.caller === trader)
-                const avgRoi = traderTrades.reduce((sum, t) => sum + t.roi, 0) / traderTrades.length
+                const avgRoi = traderTrades.reduce((sum, t) => sum + t.roi_at_high, 0) / traderTrades.length
 
                 return (
                   <div key={trader} className="flex items-center justify-between">
@@ -210,8 +210,12 @@ export default async function TokenDetailPage({ params }: TokenDetailPageProps) 
                   <th className="p-3 text-left font-medium">Date</th>
                   <th className="p-3 text-left font-medium">Trader</th>
                   <th className="p-3 text-left font-medium">Initial MC</th>
+                  <th className="p-3 text-left font-medium">Current MC</th>
                   <th className="p-3 text-left font-medium">ROI</th>
                   <th className="p-3 text-left font-medium">High ROI</th>
+                  <th className="p-3 text-left font-medium">Low ROI</th>
+                  <th className="p-3 text-left font-medium">Profit at High</th>
+                  <th className="p-3 text-left font-medium">Profit at Low</th>
                 </tr>
               </thead>
               <tbody>
@@ -227,9 +231,19 @@ export default async function TokenDetailPage({ params }: TokenDetailPageProps) 
                       </Link>
                     </td>
                     <td className="p-3">{formatMarketCap(trade.initial_mc)}</td>
+                    <td className="p-3">{formatMarketCap(trade.current_mc)}</td>
                     <td className={`p-3 ${getPerformanceClass(trade.roi)}`}>{(trade.roi * 100).toFixed(1)}%</td>
                     <td className={`p-3 ${getPerformanceClass(trade.roi_at_high)}`}>
                       {(trade.roi_at_high * 100).toFixed(1)}%
+                    </td>
+                    <td className={`p-3 ${getPerformanceClass(trade.roi_at_low)}`}>
+                      {(trade.roi_at_low * 100).toFixed(1)}%
+                    </td>
+                    <td className={`p-3 ${getPerformanceClass(trade.profit_at_high)}`}>
+                      {formatMarketCap(trade.profit_at_high)}
+                    </td>
+                    <td className={`p-3 ${getPerformanceClass(trade.profit_at_low)}`}>
+                      {formatMarketCap(trade.profit_at_low)}
                     </td>
                   </tr>
                 ))}

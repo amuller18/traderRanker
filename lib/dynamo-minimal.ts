@@ -140,9 +140,7 @@ class AwsSignatureV4 {
     }
 
     // Add session token if available
-    if (this.sessionToken) {
-      allHeaders["x-amz-security-token"] = this.sessionToken
-    }
+    
 
     const canonicalRequest = await this.createCanonicalRequest(method, url, allHeaders, payload)
 

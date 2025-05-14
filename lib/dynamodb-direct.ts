@@ -11,7 +11,7 @@ export async function getTraderStats(): Promise<TraderStats[]> {
     console.log("Getting trader statistics directly from DynamoDB")
 
     // Get the table name from environment variable or use default
-    const tableName = process.env.DYNAMODB_TRADERS_TABLE || "CallerStatistics"
+    const tableName = process.env.DYNAMODB_TRADER_STATISTICS || "stats"
 
     // Check if we have the required environment variables
     if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY || !process.env.AWS_REGION) {

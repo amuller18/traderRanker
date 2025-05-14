@@ -1,81 +1,168 @@
 import { NextResponse } from "next/server"
 
-// Update the RPC_ENDPOINTS array to use reliable public endpoints
-const RPC_ENDPOINTS = [
-  "https://api.mainnet-beta.solana.com",
-  "https://solana-api.projectserum.com",
-  "https://rpc.ankr.com/solana",
-  "https://solana-mainnet.g.alchemy.com/v2/demo",
-]
+// RPC endpoints
+const MAINNET_RPC = "https://api.mainnet-beta.solana.com"
+const QUICKNODE_RPC = process.env.QUICKNODE_RPC || "https://api.mainnet-beta.solana.com"
 
-// Retry configuration
-const MAX_RETRIES = 3
-const INITIAL_BACKOFF_MS = 1000
+// Cache configuration
+const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+const cache = new Map<string, { data: any; timestamp: number }>()
 
-// Helper function to sleep
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+// Rate limit configuration
+const RATE_LIMIT_DELAY = 1000 // 1 second delay between requests
+let lastRequestTime = 0
 
-// Function to make RPC request with retry logic
-async function makeRpcRequest(method: string, params: any[], retries = MAX_RETRIES, backoff = INITIAL_BACKOFF_MS) {
-  // Try each endpoint in sequence
-  for (const endpoint of RPC_ENDPOINTS) {
-    try {
-      const payload = {
-        jsonrpc: "2.0",
-        id: 1,
-        method,
-        params,
-      }
+// Helper function to enforce rate limiting
+async function enforceRateLimit() {
+  const now = Date.now()
+  const timeSinceLastRequest = now - lastRequestTime
+  if (timeSinceLastRequest < RATE_LIMIT_DELAY) {
+    await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_DELAY - timeSinceLastRequest))
+  }
+  lastRequestTime = Date.now()
+}
 
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      })
-
-      // If rate limited, try next endpoint or retry
-      if (response.status === 429) {
-        console.warn(`Rate limited by ${endpoint}, trying next endpoint or retrying...`)
-        continue
-      }
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch data: ${response.status}`)
-      }
-
-      const data = await response.json()
-
-      if (data.error) {
-        throw new Error(`RPC error: ${data.error.message || JSON.stringify(data.error)}`)
-      }
-
-      return data.result
-    } catch (error) {
-      console.error(`Error with endpoint ${endpoint}:`, error)
-      // Continue to next endpoint
+// Function to make RPC request
+async function makeRpcRequest(method: string, params: any[], useMainnet = true) {
+  try {
+    // Check cache first
+    const cacheKey = `${method}-${JSON.stringify(params)}-${useMainnet}`
+    const cachedData = cache.get(cacheKey)
+    if (cachedData && Date.now() - cachedData.timestamp < CACHE_TTL) {
+      console.log('Using cached data for:', method)
+      return cachedData.data
     }
-  }
 
-  // If we've tried all endpoints and still failed, retry with backoff
-  if (retries > 0) {
-    console.log(`All endpoints failed, retrying in ${backoff}ms... (${retries} retries left)`)
-    await sleep(backoff)
-    return makeRpcRequest(method, params, retries - 1, backoff * 2)
-  }
+    // Enforce rate limiting
+    await enforceRateLimit()
 
-  // If all retries failed, throw error
-  throw new Error(`Failed to fetch data after ${MAX_RETRIES} retries with all endpoints`)
+    const payload = {
+      jsonrpc: "2.0",
+      id: 1,
+      method,
+      params,
+    }
+
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 15000) // 15 second timeout
+
+    // Try mainnet first, fallback to QuickNode if it fails
+    const endpoint = useMainnet ? MAINNET_RPC : QUICKNODE_RPC
+    
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    })
+
+    clearTimeout(timeoutId)
+
+    if (!response.ok) {
+      // If mainnet fails, try QuickNode as fallback
+      if (useMainnet) {
+        console.log("Mainnet request failed, falling back to QuickNode...")
+        return makeRpcRequest(method, params, false)
+      }
+      throw new Error(`Failed to fetch data: ${response.status}`)
+    }
+
+    const data = await response.json()
+    if (data.error) {
+      // If mainnet returns error, try QuickNode as fallback
+      if (useMainnet) {
+        console.log("Mainnet returned error, falling back to QuickNode...")
+        return makeRpcRequest(method, params, false)
+      }
+      throw new Error(data.error.message || 'RPC error')
+    }
+
+    // Cache successful response
+    cache.set(cacheKey, {
+      data: data.result,
+      timestamp: Date.now()
+    })
+
+    return data.result
+  } catch (error) {
+    // If mainnet request fails, try QuickNode as fallback
+    if (useMainnet) {
+      console.log("Mainnet request failed, falling back to QuickNode...")
+      return makeRpcRequest(method, params, false)
+    }
+    console.error("RPC request failed:", error)
+    throw error
+  }
 }
 
 // Function to fetch token supply
 async function fetchTokenSupply(tokenAddress: string) {
   try {
+    // Check cache first
+    const cacheKey = `supply-${tokenAddress}`
+    const cachedData = cache.get(cacheKey)
+    if (cachedData && Date.now() - cachedData.timestamp < CACHE_TTL) {
+      console.log('Using cached supply data')
+      return cachedData.data
+    }
+
+    console.log('=== TOKEN SUPPLY DEBUG ===')
+    console.log(`Token Address: ${tokenAddress}`)
+    
+    // First try DexScreener
+    console.log('\n1. Trying DexScreener...')
+    const dexScreenerResponse = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`)
+    const dexData = await dexScreenerResponse.json()
+    
+    if (dexData.pairs && dexData.pairs.length > 0) {
+      const pair = dexData.pairs[0]
+      const supply = pair.marketInfo?.supply || pair.liquidity?.usd || pair.priceUsd
+      if (supply) {
+        console.log('\nFound supply from DexScreener:', supply)
+        const result = { finalSupply: Number(supply) }
+        cache.set(cacheKey, {
+          data: result,
+          timestamp: Date.now()
+        })
+        return result
+      }
+    }
+
+    // Fallback to Solana RPC
+    console.log('\n2. Trying Solana RPC...')
     const result = await makeRpcRequest("getTokenSupply", [tokenAddress])
-    return result.value
+    const supply = result.value
+
+    if (!supply) {
+      throw new Error('Could not determine token supply')
+    }
+
+    let finalSupply = 0
+    if (supply.uiAmount !== undefined && supply.uiAmount !== null) {
+      finalSupply = supply.uiAmount
+    } else if (supply.uiAmountString) {
+      finalSupply = parseFloat(supply.uiAmountString)
+    } else if (supply.amount && supply.decimals !== undefined) {
+      const rawAmount = BigInt(supply.amount)
+      const decimals = supply.decimals
+      finalSupply = Number(rawAmount) / Math.pow(10, decimals)
+    }
+
+    if (finalSupply <= 0) {
+      throw new Error('Invalid token supply')
+    }
+
+    console.log('\nReturning supply:', finalSupply)
+    const response = { finalSupply }
+    cache.set(cacheKey, {
+      data: response,
+      timestamp: Date.now()
+    })
+    return response
   } catch (error) {
-    console.error("Error fetching token supply:", error)
+    console.error("\nError in fetchTokenSupply:", error)
     throw error
   }
 }
@@ -83,8 +170,37 @@ async function fetchTokenSupply(tokenAddress: string) {
 // Function to fetch largest token accounts
 async function fetchLargestAccounts(tokenAddress: string) {
   try {
+    // Check cache first
+    const cacheKey = `accounts-${tokenAddress}`
+    const cachedData = cache.get(cacheKey)
+    if (cachedData && Date.now() - cachedData.timestamp < CACHE_TTL) {
+      console.log('Using cached accounts data')
+      return cachedData.data
+    }
+
+    // Use getTokenLargestAccounts method with the token address
     const result = await makeRpcRequest("getTokenLargestAccounts", [tokenAddress])
-    return result.value
+    
+    if (!result || !result.value) {
+      throw new Error('Invalid response from getTokenLargestAccounts')
+    }
+
+    // Filter and map the results to match our expected format
+    const accounts = result.value.map((account: any) => ({
+      address: account.address,
+      uiAmount: account.uiAmount || 0,
+      owner: account.address,
+      owner_supply: account.uiAmount || 0,
+      owner_supply_percentage: 0 // Will be calculated later
+    }))
+
+    // Cache the results
+    cache.set(cacheKey, {
+      data: accounts,
+      timestamp: Date.now()
+    })
+
+    return accounts
   } catch (error) {
     console.error("Error fetching largest accounts:", error)
     throw error
@@ -140,13 +256,8 @@ function calculateHolderStats(holders: any[], totalSupply: number) {
   }
 }
 
-// Simple in-memory cache with expiration
-const cache = new Map<string, { data: any; timestamp: number }>()
-const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
-
 export async function GET(request: Request) {
   try {
-    // Get token address from query parameter
     const { searchParams } = new URL(request.url)
     const address = searchParams.get("address")
 
@@ -154,64 +265,70 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Token address is required" }, { status: 400 })
     }
 
+    console.log(`Processing request for token address: ${address}`)
+
     // Check cache first
     const cacheKey = `token-holders-${address}`
     const cachedData = cache.get(cacheKey)
 
-    if (cachedData && Date.now() - cachedData.timestamp < CACHE_TTL_MS) {
+    if (cachedData && Date.now() - cachedData.timestamp < CACHE_TTL) {
       console.log(`Using cached data for ${address}`)
       return NextResponse.json(cachedData.data)
     }
 
-    // Fetch token supply and largest accounts in parallel
-    const [supplyData, largestAccounts] = await Promise.all([fetchTokenSupply(address), fetchLargestAccounts(address)])
+    try {
+      // Fetch token supply and largest accounts in parallel
+      const [supplyData, largestAccounts] = await Promise.all([
+        fetchTokenSupply(address),
+        fetchLargestAccounts(address)
+      ])
 
-    // Extract total supply
-    const totalSupply = supplyData.uiAmount || 0
+      // Use the final calculated supply
+      const totalSupply = supplyData.finalSupply
+      console.log('Total supply used for calculations:', totalSupply)
 
-    // Calculate statistics
-    const stats = calculateHolderStats(largestAccounts, totalSupply)
+      if (!totalSupply || totalSupply <= 0) {
+        throw new Error('Invalid token supply')
+      }
 
-    // Prepare response data
-    const responseData = {
-      topHolders: stats.holders || [],
-      stats: {
+      // Calculate statistics
+      const stats = calculateHolderStats(largestAccounts, totalSupply)
+      console.log('Calculated holder stats:', {
         totalHolders: stats.totalHolders,
         topHolderPercentage: stats.topHolderPercentage,
-        top10HolderPercentage: stats.top10HolderPercentage,
-        distributionData: stats.distributionData,
-      },
-      totalHolders: stats.totalHolders,
-    }
+        top10HolderPercentage: stats.top10HolderPercentage
+      })
 
-    // Update cache
-    cache.set(cacheKey, {
-      data: responseData,
-      timestamp: Date.now(),
-    })
-
-    // Return the top holders and statistics
-    return NextResponse.json(responseData)
-  } catch (error) {
-    console.error("Error in token holders API:", error)
-
-    // Provide a more user-friendly error message
-    let errorMessage = "Failed to fetch token holder data"
-    if (error instanceof Error) {
-      if (error.message.includes("429") || error.message.includes("rate limit")) {
-        errorMessage = "Rate limit exceeded. Please try again later."
-      } else {
-        errorMessage = error.message
+      // Prepare response data
+      const responseData = {
+        topHolders: stats.holders || [],
+        stats: {
+          totalHolders: stats.totalHolders,
+          topHolderPercentage: stats.topHolderPercentage,
+          top10HolderPercentage: stats.top10HolderPercentage,
+          distributionData: stats.distributionData,
+        },
+        totalHolders: stats.totalHolders,
       }
-    }
 
-    return NextResponse.json(
-      {
-        error: errorMessage,
-        details: error instanceof Error ? error.stack : String(error),
-      },
-      { status: 500 },
-    )
+      // Update cache
+      cache.set(cacheKey, {
+        data: responseData,
+        timestamp: Date.now(),
+      })
+
+      return NextResponse.json(responseData)
+    } catch (error) {
+      console.error('Error processing token holders:', error)
+      return NextResponse.json({ 
+        error: error instanceof Error ? error.message : 'Failed to fetch token holders data'
+      }, { status: 500 })
+    }
+  } catch (error) {
+    console.error('Error in token holders API:', error)
+    return NextResponse.json({ 
+      error: error instanceof Error ? error.message : 'Internal server error'
+    }, { status: 500 })
   }
 }
 

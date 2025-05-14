@@ -20,21 +20,24 @@ export interface TraderStats {
 }
 
 export interface Trade {
-  caller: string
+  partition_key: string
   ca: string
+  caller: string
+  date_called: string
+  high_time: string
+  low_time: string
   initial_mc: number
   current_mc: number
-  date_called: string
-  low_price: number
-  low_time: string
-  roi_at_low: number
   high_price: number
-  high_time: string
-  roi_at_high: number
-  multiples_hit: string
-  profit_at_low: number
-  profit_at_high: number
+  low_price: number
   roi: number
+  roi_at_high: number
+  roi_at_low: number
+  profit_at_high: number
+  profit_at_low: number
+  profit: number
+  is_winner: boolean
+  multiples_hit: number[]
 }
 
 export interface FilterOptions {
@@ -102,123 +105,194 @@ function convertToTraderStats(item: DynamoDBItem): TraderStats {
   }
 }
 
+function calculateROI(initialMc: number, currentMc: number): number {
+  if (initialMc === 0) return 0
+  return ((currentMc - initialMc) / initialMc) * 100
+}
+
+function calculateROIAtHigh(initialMc: number, highMc: number): number {
+  if (initialMc === 0) return 0
+  return ((highMc - initialMc) / initialMc) * 100
+}
+
+function calculateROIAtLow(initialMc: number, lowMc: number): number {
+  if (initialMc === 0) return 0
+  return ((lowMc - initialMc) / initialMc) * 100
+}
+
 // Function to convert DynamoDB item to Trade
-function convertToTrade(item: DynamoDBItem): Trade {
+export function convertToTrade(item: DynamoDBItem): Trade {
+  const initialMc = safeParseFloat(item.initial_mc)
+  const currentMc = safeParseFloat(item.current_mc)
+  const highMc = safeParseFloat(item.high_mc)
+  const lowMc = safeParseFloat(item.low_mc)
+
+  // Calculate ROIs using the provided values
+  const roi = calculateROI(initialMc, currentMc)
+  const roiAtHigh = calculateROIAtHigh(initialMc, highMc)
+  const roiAtLow = calculateROIAtLow(initialMc, lowMc)
+
+  // Calculate profits
+  const profitAtHigh = highMc - initialMc
+  const profitAtLow = lowMc - initialMc
+  const profit = currentMc - initialMc
+
+  // Determine if winner based on high ROI
+  const isWinner = roiAtHigh > 0
+
   return {
-    caller: String(item.caller || ""),
-    ca: String(item.ca || ""),
-    initial_mc: safeParseFloat(item.initial_mc || 0),
-    current_mc: safeParseFloat(item.current_mc || 0),
-    date_called: String(item.date_called || ""),
-    low_price: safeParseFloat(item.low_price || 0),
-    low_time: String(item.low_time || ""),
-    roi_at_low: safeParseFloat(item.roi_at_low || 0),
-    high_price: safeParseFloat(item.high_price || 0),
-    high_time: String(item.high_time || ""),
-    roi_at_high: safeParseFloat(item.roi_at_high || 0),
-    multiples_hit: String(item.multiples_hit || "[]"),
-    profit_at_low: safeParseFloat(item.profit_at_low || 0),
-    profit_at_high: safeParseFloat(item.profit_at_high || 0),
-    roi: safeParseFloat(item.roi || 0),
+    partition_key: item.partition_key,
+    ca: item.ca,
+    caller: item.caller,
+    date_called: item.date_called,
+    high_time: item.high_time,
+    low_time: item.low_time,
+    initial_mc: initialMc,
+    current_mc: currentMc,
+    high_price: item.high_price,
+    low_price: item.low_price,
+    roi,
+    roi_at_high: roiAtHigh,
+    roi_at_low: roiAtLow,
+    profit_at_high: profitAtHigh,
+    profit_at_low: profitAtLow,
+    profit,
+    is_winner: isWinner,
+    multiples_hit: Array.isArray(item.multiples_hit) 
+      ? item.multiples_hit.map(Number)
+      : typeof item.multiples_hit === 'string'
+        ? JSON.parse(item.multiples_hit).map(Number)
+        : []
   }
 }
 
-// Function to get trader statistics with filtering
-export async function getTraderStats(filters?: FilterOptions): Promise<TraderStats[]> {
-  try {
-    console.log("TRADER-DATA - Getting trader statistics with filters:", filters)
-
-    // Get the table name from environment variable or use default
-    const tableName = process.env.DYNAMODB_TRADERS_TABLE || "CallerStatistics"
-
-    // Scan the table
-    const items = await scanTable(tableName, {
-      limit: 100,
-      consistentRead: true,
-    })
-
-    // If no items found, return mock data
-    if (items.length === 0) {
-      console.log("TRADER-DATA - No items found in DynamoDB, using mock data")
-      const filteredMockData = filterTraderStats(mockTraderStats, filters)
-      console.log(`TRADER-DATA - Returning ${filteredMockData.length} filtered mock traders`)
-      return filteredMockData
+// Function to calculate trader statistics from trades
+function calculateTraderStats(trades: Trade[]): TraderStats {
+  if (trades.length === 0) {
+    return {
+      caller: "",
+      win_rate: 0,
+      total_calls: 0,
+      winning_calls: 0,
+      average_roi: 0,
+      micro_cap_roi: 0,
+      micro_cap_winrate: 0,
+      small_cap_roi: 0,
+      small_cap_winrate: 0,
+      mid_cap_roi: 0,
+      mid_cap_winrate: 0,
+      large_cap_roi: 0,
+      large_cap_winrate: 0,
+      mega_cap_roi: 0,
+      mega_cap_winrate: 0,
     }
+  }
 
-    // Convert items to TraderStats
-    const traders = items.map(convertToTraderStats)
-    console.log(`TRADER-DATA - Retrieved ${traders.length} traders from DynamoDB`)
+  const caller = trades[0].caller
+  const total_calls = trades.length
+  const winning_calls = trades.filter(trade => trade.is_winner).length
+  const win_rate = total_calls > 0 ? winning_calls / total_calls : 0
+  const average_roi = trades.reduce((sum, trade) => sum + trade.roi_at_high, 0) / total_calls
 
-    // Apply filters if provided
-    const filteredTraders = filterTraderStats(traders, filters)
-    console.log(`TRADER-DATA - After filtering, returning ${filteredTraders.length} traders`)
-    return filteredTraders
-  } catch (error) {
-    console.error("Error fetching trader statistics from DynamoDB:", error)
-    console.log("TRADER-DATA - Falling back to mock data due to error")
-    const filteredMockData = filterTraderStats(mockTraderStats, filters)
-    console.log(`TRADER-DATA - Returning ${filteredMockData.length} filtered mock traders`)
-    return filteredMockData
+  // Calculate market cap performance
+  const microCapTrades = trades.filter(trade => trade.initial_mc < 1_000_000)
+  const smallCapTrades = trades.filter(trade => trade.initial_mc >= 1_000_000 && trade.initial_mc < 10_000_000)
+  const midCapTrades = trades.filter(trade => trade.initial_mc >= 10_000_000 && trade.initial_mc < 100_000_000)
+  const largeCapTrades = trades.filter(trade => trade.initial_mc >= 100_000_000 && trade.initial_mc < 1_000_000_000)
+  const megaCapTrades = trades.filter(trade => trade.initial_mc >= 1_000_000_000)
+
+  const calculateCapStats = (capTrades: Trade[]) => {
+    if (capTrades.length === 0) return { roi: 0, winrate: 0 }
+    const roi = capTrades.reduce((sum, trade) => sum + trade.roi_at_high, 0) / capTrades.length
+    const winrate = capTrades.filter(trade => trade.is_winner).length / capTrades.length
+    return { roi, winrate }
+  }
+
+  const microCapStats = calculateCapStats(microCapTrades)
+  const smallCapStats = calculateCapStats(smallCapTrades)
+  const midCapStats = calculateCapStats(midCapTrades)
+  const largeCapStats = calculateCapStats(largeCapTrades)
+  const megaCapStats = calculateCapStats(megaCapTrades)
+
+  return {
+    caller,
+    win_rate,
+    total_calls,
+    winning_calls,
+    average_roi,
+    micro_cap_roi: microCapStats.roi,
+    micro_cap_winrate: microCapStats.winrate,
+    small_cap_roi: smallCapStats.roi,
+    small_cap_winrate: smallCapStats.winrate,
+    mid_cap_roi: midCapStats.roi,
+    mid_cap_winrate: midCapStats.winrate,
+    large_cap_roi: largeCapStats.roi,
+    large_cap_winrate: largeCapStats.winrate,
+    mega_cap_roi: megaCapStats.roi,
+    mega_cap_winrate: megaCapStats.winrate,
   }
 }
 
-// Function to get trades for a specific trader
-export async function getTraderTrades(caller: string): Promise<Trade[]> {
-  try {
-    console.log(`Getting trades for trader: ${caller}`)
+// Cache for trades data
+let tradesCache: {
+  data: Trade[] | null;
+  timestamp: number;
+} = {
+  data: null,
+  timestamp: 0
+};
 
-    // Get the table name from environment variable or use default
-    const tableName = process.env.DYNAMODB_TRADES_TABLE || "Trades"
+// Cache expiration time (5 minutes)
+const CACHE_EXPIRATION = 5 * 60 * 1000;
 
-    // Query the table
-    const items = await queryTable(tableName, {
-      keyConditionExpression: "caller = :caller",
-      expressionAttributeValues: {
-        ":caller": caller,
-      },
-      consistentRead: true,
-    })
-
-    // If no items found, return mock data
-    if (items.length === 0) {
-      console.log(`No trades found for ${caller} in DynamoDB, using mock data`)
-      return mockTrades.filter((trade) => trade.caller === caller)
-    }
-
-    // Convert items to Trades
-    return items.map(convertToTrade)
-  } catch (error) {
-    console.error(`Error fetching trades for ${caller} from DynamoDB:`, error)
-    console.log(`Falling back to mock data for ${caller} due to error`)
-    return mockTrades.filter((trade) => trade.caller === caller)
-  }
+// Function to check if cache is valid
+function isCacheValid(): boolean {
+  return tradesCache.data !== null && (Date.now() - tradesCache.timestamp) < CACHE_EXPIRATION;
 }
 
-// Function to get all trades
+// Function to get all trades with caching
 export async function getAllTrades(): Promise<Trade[]> {
   try {
     console.log("Getting all trades")
 
-    // Get the table name from environment variable or use default
-    const tableName = process.env.DYNAMODB_TRADES_TABLE || "Trades"
+    // Check cache first
+    if (isCacheValid()) {
+      console.log("Using cached trades data")
+      return tradesCache.data!;
+    }
 
-    // Scan the table
+    // Get the table name from environment variable or use default
+    const tableName = process.env.DYNAMODB_TRADERS_TABLE || "Trades"
+
+    // Scan the table without limit
     const items = await scanTable(tableName, {
-      limit: 100,
       consistentRead: true,
     })
 
     // If no items found, return mock data
     if (items.length === 0) {
       console.log("No trades found in DynamoDB, using mock data")
+      tradesCache = {
+        data: mockTrades,
+        timestamp: Date.now()
+      };
       return mockTrades
     }
 
-    // Convert items to Trades
-    return items.map(convertToTrade)
+    // Convert items to Trades and update cache
+    const trades = items.map(convertToTrade);
+    tradesCache = {
+      data: trades,
+      timestamp: Date.now()
+    };
+    return trades;
   } catch (error) {
     console.error("Error fetching all trades from DynamoDB:", error)
     console.log("Falling back to mock data due to error")
+    tradesCache = {
+      data: mockTrades,
+      timestamp: Date.now()
+    };
     return mockTrades
   }
 }
@@ -228,8 +302,8 @@ export async function getAllTradesFiltered(filters?: TradeFilterOptions): Promis
   try {
     console.log("Getting all trades with filters:", filters)
 
-    // Get all trades first
-    const allTrades = await getAllTrades()
+    // Get trades from cache or fetch if needed
+    const allTrades = await getAllTrades();
 
     // If no filters, return all trades
     if (!filters) return allTrades
@@ -237,7 +311,7 @@ export async function getAllTradesFiltered(filters?: TradeFilterOptions): Promis
     // Apply filters
     return allTrades.filter((trade) => {
       // ROI filter
-      const roiMatch = trade.roi >= filters.roiRange[0] && trade.roi <= filters.roiRange[1]
+      const roiMatch = trade.roi_at_high >= filters.roiRange[0] && trade.roi_at_high <= filters.roiRange[1]
 
       // Market cap filter
       const marketCapMatch =
@@ -265,50 +339,114 @@ export async function getAllTradesFiltered(filters?: TradeFilterOptions): Promis
   }
 }
 
-// Helper function to filter trader stats
-function filterTraderStats(traders: TraderStats[], filters?: FilterOptions): TraderStats[] {
-  if (!filters) {
-    console.log("TRADER-DATA - No filters provided, returning all traders")
-    return traders
+// Function to get trades for a specific trader
+export async function getTraderTrades(caller: string): Promise<Trade[]> {
+  try {
+    console.log(`Getting trades for trader: ${caller}`)
+
+    // Get trades from cache or fetch if needed
+    const allTrades = await getAllTrades();
+
+    // Filter trades for the specific trader
+    return allTrades.filter((trade) => trade.caller === caller);
+  } catch (error) {
+    console.error(`Error fetching trades for ${caller}:`, error)
+    console.log(`Falling back to mock data for ${caller} due to error`)
+    return mockTrades.filter((trade) => trade.caller === caller)
   }
+}
 
-  console.log("TRADER-DATA - Filtering traders with filters:", filters)
-  console.log("TRADER-DATA - Before filtering, trader count:", traders.length)
+// Function to get trader stats with caching
+export async function getTraderStats(filters?: FilterOptions): Promise<TraderStats[]> {
+  try {
+    console.log("Getting trader stats with filters:", filters)
 
-  const filteredTraders = traders.filter((trader) => {
-    const winRateMatch = trader.win_rate >= filters.winRateRange[0] && trader.win_rate <= filters.winRateRange[1]
-    const totalCallsMatch =
-      trader.total_calls >= filters.totalCallsRange[0] && trader.total_calls <= filters.totalCallsRange[1]
-    const roiMatch = trader.average_roi >= filters.roiRange[0] && trader.average_roi <= filters.roiRange[1]
-    const searchMatch = !filters.searchTerm || trader.caller.toLowerCase().includes(filters.searchTerm.toLowerCase())
+    // If no filters, use direct DynamoDB query
+    if (!filters) {
+      const tableName = process.env.DYNAMODB_TRADER_STATISTICS || "CallerStatistics"
+      const items = await scanTable(tableName, {
+        consistentRead: true,
+      })
+      
+      if (items.length === 0) {
+        console.log("No trader stats found in DynamoDB, using mock data")
+        return mockTraderStats
+      }
 
-    // Log detailed filter matching for debugging
-    if (!winRateMatch) {
-      console.log(
-        `TRADER-DATA - Trader ${trader.caller} failed win rate filter: ${trader.win_rate} not in range [${filters.winRateRange[0]}, ${filters.winRateRange[1]}]`,
-      )
-    }
-    if (!totalCallsMatch) {
-      console.log(
-        `TRADER-DATA - Trader ${trader.caller} failed total calls filter: ${trader.total_calls} not in range [${filters.totalCallsRange[0]}, ${filters.totalCallsRange[1]}]`,
-      )
-    }
-    if (!roiMatch) {
-      console.log(
-        `TRADER-DATA - Trader ${trader.caller} failed ROI filter: ${trader.average_roi} not in range [${filters.roiRange[0]}, ${filters.roiRange[1]}]`,
-      )
-    }
-    if (!searchMatch && filters.searchTerm) {
-      console.log(
-        `TRADER-DATA - Trader ${trader.caller} failed search filter: "${trader.caller}" does not include "${filters.searchTerm}"`,
-      )
+      return items.map(convertToTraderStats)
     }
 
-    return winRateMatch && totalCallsMatch && roiMatch && searchMatch
-  })
+    // If filters are provided, calculate stats from trades
+    const allTrades = await getAllTrades();
 
-  console.log("TRADER-DATA - After filtering, trader count:", filteredTraders.length)
-  return filteredTraders
+    // Group trades by trader
+    const tradesByTrader = allTrades.reduce((acc, trade) => {
+      if (!acc[trade.caller]) {
+        acc[trade.caller] = []
+      }
+      acc[trade.caller].push(trade)
+      return acc
+    }, {} as Record<string, Trade[]>)
+
+    // Calculate stats for each trader
+    const stats = Object.entries(tradesByTrader).map(([caller, trades]) => {
+      const total_calls = trades.length
+      const winning_calls = trades.filter((trade) => trade.roi_at_high > 0).length
+      const win_rate = total_calls > 0 ? winning_calls / total_calls : 0
+      const average_roi = total_calls > 0 ? trades.reduce((sum, trade) => sum + trade.roi_at_high, 0) / total_calls : 0
+
+      // Calculate market cap performance
+      const microCapTrades = trades.filter(trade => trade.initial_mc < 1_000_000)
+      const smallCapTrades = trades.filter(trade => trade.initial_mc >= 1_000_000 && trade.initial_mc < 10_000_000)
+      const midCapTrades = trades.filter(trade => trade.initial_mc >= 10_000_000 && trade.initial_mc < 100_000_000)
+      const largeCapTrades = trades.filter(trade => trade.initial_mc >= 100_000_000 && trade.initial_mc < 1_000_000_000)
+      const megaCapTrades = trades.filter(trade => trade.initial_mc >= 1_000_000_000)
+
+      const calculateCapStats = (capTrades: Trade[]) => {
+        if (capTrades.length === 0) return { roi: 0, winrate: 0 }
+        const roi = capTrades.reduce((sum, trade) => sum + trade.roi_at_high, 0) / capTrades.length
+        const winrate = capTrades.filter(trade => trade.roi_at_high > 0).length / capTrades.length
+        return { roi, winrate }
+      }
+
+      const microCapStats = calculateCapStats(microCapTrades)
+      const smallCapStats = calculateCapStats(smallCapTrades)
+      const midCapStats = calculateCapStats(midCapTrades)
+      const largeCapStats = calculateCapStats(largeCapTrades)
+      const megaCapStats = calculateCapStats(megaCapTrades)
+
+      return {
+        caller,
+        total_calls,
+        winning_calls,
+        win_rate,
+        average_roi,
+        micro_cap_roi: microCapStats.roi,
+        micro_cap_winrate: microCapStats.winrate,
+        small_cap_roi: smallCapStats.roi,
+        small_cap_winrate: smallCapStats.winrate,
+        mid_cap_roi: midCapStats.roi,
+        mid_cap_winrate: midCapStats.winrate,
+        large_cap_roi: largeCapStats.roi,
+        large_cap_winrate: largeCapStats.winrate,
+        mega_cap_roi: megaCapStats.roi,
+        mega_cap_winrate: megaCapStats.winrate,
+      }
+    })
+
+    // Apply filters
+    return stats.filter((stat) => {
+      const winRateMatch = stat.win_rate >= filters.winRateRange[0] && stat.win_rate <= filters.winRateRange[1]
+      const totalCallsMatch = stat.total_calls >= filters.totalCallsRange[0] && stat.total_calls <= filters.totalCallsRange[1]
+      const roiMatch = stat.average_roi >= filters.roiRange[0] && stat.average_roi <= filters.roiRange[1]
+      const searchMatch = !filters.searchTerm || stat.caller.toLowerCase().includes(filters.searchTerm.toLowerCase())
+
+      return winRateMatch && totalCallsMatch && roiMatch && searchMatch
+    })
+  } catch (error) {
+    console.error("Error getting trader stats:", error)
+    return []
+  }
 }
 
 // Function to create or update a trader
@@ -317,7 +455,7 @@ export async function saveTrader(trader: TraderStats): Promise<void> {
     console.log(`Saving trader: ${trader.caller}`)
 
     // Get the table name from environment variable or use default
-    const tableName = process.env.DYNAMODB_TRADERS_TABLE || "CallerStatistics"
+    const tableName = process.env.DYNAMODB_TRADER_STATISTICS || "CallerStatistics"
 
     // Put the item
     await putItem(tableName, trader)
@@ -335,7 +473,7 @@ export async function saveTrade(trade: Trade): Promise<void> {
     console.log(`Saving trade for ${trade.caller}`)
 
     // Get the table name from environment variable or use default
-    const tableName = process.env.DYNAMODB_TRADES_TABLE || "Trades"
+    const tableName = process.env.DYNAMODB_TRADERS_TABLE || "Trades"
 
     // Put the item
     await putItem(tableName, trade)
@@ -353,7 +491,7 @@ export async function deleteTrader(caller: string): Promise<void> {
     console.log(`Deleting trader: ${caller}`)
 
     // Get the table name from environment variable or use default
-    const tableName = process.env.DYNAMODB_TRADERS_TABLE || "CallerStatistics"
+    const tableName = process.env.DYNAMODB_TRADER_STATISTICS || "CallerStatistics"
 
     // Delete the item
     await deleteItem(tableName, { caller })
@@ -371,7 +509,7 @@ export async function deleteTrade(caller: string, ca: string, date_called: strin
     console.log(`Deleting trade for ${caller}`)
 
     // Get the table name from environment variable or use default
-    const tableName = process.env.DYNAMODB_TRADES_TABLE || "Trades"
+    const tableName = process.env.DYNAMODB_TRADERS_TABLE || "Trades"
 
     // Delete the item
     await deleteItem(tableName, { caller, ca, date_called })
@@ -387,7 +525,7 @@ export async function deleteTrade(caller: string, ca: string, date_called: strin
 export async function isUsingMockData(): Promise<boolean> {
   try {
     // Get the table name from environment variable or use default
-    const tableName = process.env.DYNAMODB_TRADERS_TABLE || "CallerStatistics"
+    const tableName = process.env.DYNAMODB_TRADER_STATISTICS || "CallerStatistics"
 
     // Try to scan the table with a small limit
     const items = await scanTable(tableName, {

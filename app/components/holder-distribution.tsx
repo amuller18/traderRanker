@@ -43,38 +43,111 @@ export function HolderDistribution({ tokenAddress }: HolderDistributionProps) {
   const [retryCount, setRetryCount] = useState(0)
   const [chartView, setChartView] = useState<"grouped" | "individual">("grouped")
 
-  const fetchHolderData = async () => {
-    setLoading(true)
-    setError(null)
-
-    try {
-      const response = await fetch(`/api/token-holders?address=${encodeURIComponent(tokenAddress)}&t=${Date.now()}`)
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.error || `Failed to fetch holder data: ${response.status}`)
-      }
-
-      const data = await response.json()
-
-      // Check if we have an error in the response
-      if (data.error) {
-        throw new Error(data.error)
-      }
-
-      setTopHolders(data.topHolders || [])
-      setStats(data.stats || null)
-      setTotalHolders(data.totalHolders || 0)
-    } catch (err) {
-      console.error("Error fetching holder data:", err)
-      setError(err instanceof Error ? err.message : "Failed to fetch holder data")
-    } finally {
-      setLoading(false)
-    }
-  }
-
   useEffect(() => {
-    fetchHolderData()
+    let isMounted = true
+    let abortController: AbortController | null = null
+
+    const fetchData = async () => {
+      // Cancel any existing request
+      if (abortController) {
+        abortController.abort()
+      }
+
+      // Create new AbortController for this request
+      abortController = new AbortController()
+      const signal = abortController.signal
+
+      if (!isMounted) return
+
+      try {
+        setLoading(true)
+        setError(null)
+
+        // Add timeout to the fetch request
+        const timeoutId = setTimeout(() => {
+          if (abortController) {
+            abortController.abort()
+          }
+        }, 30000) // 30 second timeout
+
+        const response = await fetch(
+          `/api/token-holders?address=${encodeURIComponent(tokenAddress)}&t=${Date.now()}`,
+          { 
+            signal,
+            headers: {
+              'Cache-Control': 'no-cache',
+              'Pragma': 'no-cache'
+            }
+          }
+        )
+
+        clearTimeout(timeoutId)
+
+        if (!isMounted) return
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}))
+          let errorMessage = errorData.error || `Failed to fetch holder data: ${response.status}`
+          
+          // Handle specific error cases
+          if (response.status === 429) {
+            errorMessage = "Rate limit exceeded. Please try again in a few moments."
+          } else if (response.status === 503) {
+            errorMessage = "Service temporarily unavailable. Please try again later."
+          }
+          
+          console.error("API Error:", errorMessage)
+          throw new Error(errorMessage)
+        }
+
+        const data = await response.json()
+
+        if (!isMounted) return
+
+        if (data.error) {
+          console.error("Data Error:", data.error)
+          throw new Error(data.error)
+        }
+
+        if (!isMounted) return
+
+        if (!data.topHolders || !data.stats) {
+          console.error("Invalid data format:", data)
+          throw new Error("Invalid data format received from server")
+        }
+
+        setTopHolders(data.topHolders)
+        setStats(data.stats)
+        setTotalHolders(data.totalHolders || 0)
+      } catch (err) {
+        if (!isMounted) return
+
+        if (err instanceof Error) {
+          if (err.name === 'AbortError') {
+            console.log('Request was aborted')
+            return
+          }
+          console.error("Error fetching holder data:", err)
+          setError(err.message)
+        } else {
+          console.error("Unknown error:", err)
+          setError("Failed to fetch holder data")
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false)
+        }
+      }
+    }
+
+    fetchData()
+
+    return () => {
+      isMounted = false
+      if (abortController) {
+        abortController.abort()
+      }
+    }
   }, [tokenAddress, retryCount])
 
   // Format percentage for display
@@ -227,7 +300,17 @@ export function HolderDistribution({ tokenAddress }: HolderDistributionProps) {
               Retry
             </Button>
           </div>
-        ) : stats && topHolders.length > 0 ? (
+        ) : !stats || topHolders.length === 0 ? (
+          <div className="flex items-center justify-center py-8 text-muted-foreground">
+            <div className="flex flex-col items-center gap-2">
+              <AlertTriangle className="h-8 w-8" />
+              <p>No holder data available</p>
+              <Button onClick={handleRetry} variant="outline" size="sm" className="mt-2">
+                Retry
+              </Button>
+            </div>
+          </div>
+        ) : (
           <div className="grid md:grid-cols-2 gap-6">
             {/* Pie Chart */}
             <div className="h-[350px] flex flex-col justify-center">
@@ -330,16 +413,6 @@ export function HolderDistribution({ tokenAddress }: HolderDistributionProps) {
                   </TableBody>
                 </Table>
               </div>
-            </div>
-          </div>
-        ) : (
-          <div className="flex items-center justify-center py-8 text-muted-foreground">
-            <div className="flex flex-col items-center gap-2">
-              <AlertTriangle className="h-8 w-8" />
-              <p>No holder data available</p>
-              <Button onClick={handleRetry} variant="outline" size="sm" className="mt-2">
-                Retry
-              </Button>
             </div>
           </div>
         )}

@@ -11,21 +11,27 @@ interface PerformanceMetricsProps {
 export function PerformanceMetrics({ trader }: PerformanceMetricsProps) {
   // Calculate risk score (simple algorithm based on win rate and ROI)
   const calculateRiskScore = (winRate: number, roi: number) => {
-    const winRateScore = winRate * 5 // 0-5 points
-    const roiScore = Math.min(Math.max(roi, -1), 5) // -1 to 5 points
+    // Win rate contributes 60% to the score
+    const winRateScore = winRate * 6 // 0-6 points
+    
+    // ROI contributes 40% to the score
+    // Cap ROI at 200% to prevent extreme values from skewing the score
+    const cappedRoi = Math.min(Math.max(roi, -1), 2)
+    const roiScore = (cappedRoi + 1) * 2 // -1 to 2 ROI becomes 0 to 6 points
+    
     const totalScore = winRateScore + roiScore
 
-    if (totalScore >= 8) return { grade: "A+", color: "text-green-500" }
-    if (totalScore >= 7) return { grade: "A", color: "text-green-500" }
-    if (totalScore >= 6) return { grade: "A-", color: "text-green-400" }
-    if (totalScore >= 5) return { grade: "B+", color: "text-green-400" }
-    if (totalScore >= 4) return { grade: "B", color: "text-yellow-500" }
-    if (totalScore >= 3) return { grade: "B-", color: "text-yellow-500" }
-    if (totalScore >= 2) return { grade: "C+", color: "text-yellow-400" }
-    if (totalScore >= 1) return { grade: "C", color: "text-orange-400" }
-    if (totalScore >= 0) return { grade: "C-", color: "text-orange-500" }
-    if (totalScore >= -1) return { grade: "D+", color: "text-red-400" }
-    if (totalScore >= -2) return { grade: "D", color: "text-red-500" }
+    if (totalScore >= 10) return { grade: "A+", color: "text-green-500" }
+    if (totalScore >= 9) return { grade: "A", color: "text-green-500" }
+    if (totalScore >= 8) return { grade: "A-", color: "text-green-400" }
+    if (totalScore >= 7) return { grade: "B+", color: "text-green-400" }
+    if (totalScore >= 6) return { grade: "B", color: "text-yellow-500" }
+    if (totalScore >= 5) return { grade: "B-", color: "text-yellow-500" }
+    if (totalScore >= 4) return { grade: "C+", color: "text-yellow-400" }
+    if (totalScore >= 3) return { grade: "C", color: "text-orange-400" }
+    if (totalScore >= 2) return { grade: "C-", color: "text-orange-500" }
+    if (totalScore >= 1) return { grade: "D+", color: "text-red-400" }
+    if (totalScore >= 0) return { grade: "D", color: "text-red-500" }
     return { grade: "F", color: "text-red-600" }
   }
 

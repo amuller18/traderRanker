@@ -1,9 +1,11 @@
 import { getTokenInfo, getTokenSupply } from "@/lib/token-api"
-import { fetchAllTradesFiltered } from "@/app/actions/trader-actions"
+import { fetchAllTrades } from "@/app/actions/trader-actions"
 import { isUsingMockData } from "@/lib/trader-data"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import type { TokenInfo } from "@/lib/token-data"
+import type { JSX } from "react"
 import {
   ArrowLeft,
   ExternalLink,
@@ -18,11 +20,11 @@ import {
   Users,
   ChevronLeft,
   Search,
+  ArrowUpRight,
 } from "lucide-react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { format } from "date-fns"
-import { TokenSwap } from "@/app/components/token-swap"
 import { TransactionChart } from "@/app/components/transaction-chart"
 import { TokenAuthorityInfo } from "@/app/components/token-authority-info"
 import { HolderDistribution } from "@/app/components/holder-distribution"
@@ -31,9 +33,17 @@ import { DataSourceStatus } from "@/app/components/data-source-status"
 import { Sidebar, SidebarContent, SidebarHeader, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { Input } from "@/components/ui/input"
 import { SidebarContentAdjuster } from "./client-sidebar-adjuster"
+import { JupiterSwap } from "@/app/components/jupiter-swap"
+import Big from 'big.js'
+import { formatPrice, formatNumber, formatPercentage, formatDate } from "./utils/formatting"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0 // Don't cache this page
+
+const getPriceChangeClass = (change: number | undefined): string => {
+  if (!change) return 'text-muted-foreground';
+  return change >= 0 ? 'text-green-500' : 'text-red-500';
+};
 
 // Add this component for the token search
 function TokenSearchBar() {
@@ -61,240 +71,195 @@ function TokenSearchBar() {
   )
 }
 
-interface TokenDetailPageProps {
-  params: {
-    token: string
-  }
-}
-
-export default async function TokenDetailPage({ params }: TokenDetailPageProps) {
-  const tokenAddress = decodeURIComponent(params.token)
+export default async function TokenDetailPage({
+  params,
+}: {
+  params: { token: string }
+}) {
+  const { token } = await Promise.resolve(params)
+  const tokenAddress = token
   let usingMockData = true
 
   try {
-    // Check if we're using mock data
     usingMockData = await isUsingMockData()
   } catch (error) {
     console.error("Error checking if using mock data:", error)
-    // Continue with assumption of mock data
   }
 
-  // Fetch token info from API
-  const tokenInfoArray = await getTokenInfo(tokenAddress)
+  // Fetch token data
+  const response = await fetch(
+    `https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`,
+    { next: { revalidate: 0 } }
+  )
 
-  // If no token info found, show not found page
-  if (!tokenInfoArray || tokenInfoArray.length === 0) {
-    notFound()
+  if (!response.ok) {
+    throw new Error(`Failed to fetch token data: ${response.statusText}`)
   }
 
-  // Get the first token info (main pair)
-  const tokenInfo = tokenInfoArray[0]
+  const data = await response.json()
+  const tokenInfoArray = data.pairs || []
+  const tokenInfo = tokenInfoArray[0] || null
 
-  // Fetch token supply (optional)
+  if (!tokenInfo) {
+    return (
+      <div className="container mx-auto p-4">
+        <h1 className="text-2xl font-bold mb-4">Token Not Found</h1>
+        <p>The requested token could not be found.</p>
+      </div>
+    )
+  }
+
+  // Calculate total liquidity across all pairs
+  const totalLiquidity = tokenInfoArray.reduce((sum: number, pair: any) => {
+    return sum + (Number(pair.liquidity?.usd) || 0)
+  }, 0)
+
+  // Fetch token supply
   const tokenSupply = await getTokenSupply(tokenAddress)
 
   // Fetch all trades for this token
-  const trades = await fetchAllTradesFiltered({
-    roiRange: [-10, 10],
-    marketCapRange: [0, 1000000000],
-    dateRange: [new Date(0), new Date()],
-    searchTerm: tokenAddress,
+  const trades = await fetchAllTrades()
+  const filteredTrades = trades.filter(trade => trade.ca.toLowerCase() === tokenAddress.toLowerCase())
+
+  // Calculate ROI stats using the market cap from tokenInfo
+  const currentMc = Number(tokenInfo.marketCap) || 0
+  const calculateRoi = (initialMc: number) => {
+    if (!initialMc || !currentMc) return 0
+    if (currentMc < 10000) {
+      const rawRoi = ((currentMc - initialMc) / initialMc) * 100
+      return Math.min(rawRoi, 1000)
+    }
+    return ((currentMc - initialMc) / initialMc) * 100
+  }
+
+  const highestRoi = filteredTrades.length > 0 
+    ? Math.max(...filteredTrades.map(t => calculateRoi(Number(t.initial_mc)))) 
+    : 0
+  const lowestRoi = filteredTrades.length > 0 
+    ? Math.min(...filteredTrades.map(t => calculateRoi(Number(t.initial_mc)))) 
+    : 0
+  const averageRoi = filteredTrades.length > 0 
+    ? filteredTrades.reduce((sum, t) => sum + calculateRoi(Number(t.initial_mc)), 0) / filteredTrades.length 
+    : 0
+  const totalTraders = filteredTrades.length > 0 ? new Set(filteredTrades.map((t) => t.caller)).size : 0
+  const firstTradeDate = filteredTrades.length > 0 ? new Date(Math.min(...filteredTrades.map((t) => new Date(t.date_called).getTime()))) : new Date()
+  const lastTradeDate = filteredTrades.length > 0 ? new Date(Math.max(...filteredTrades.map((t) => new Date(t.date_called).getTime()))) : new Date()
+  const firstTrader = filteredTrades.length > 0 ? filteredTrades.find(t => new Date(t.date_called).getTime() === Math.min(...filteredTrades.map(t => new Date(t.date_called).getTime())))?.caller : ""
+
+  // Process token data
+  const currentPrice = formatPrice(tokenInfo.priceUsd?.toString())
+  const priceChange24h = formatPercentage(tokenInfo.priceChange?.h24?.toString())
+  const marketCap = formatNumber(tokenInfo.marketCap?.toString() || "0")
+  const fdv = formatNumber(tokenInfo.fdv?.toString() || "0")
+  const volume24h = formatNumber(tokenInfo.volume?.h24?.toString())
+  const liquidity = formatNumber(tokenInfo.liquidity?.usd?.toString())
+  const pairCreatedAt = formatDate(tokenInfo.pairCreatedAt)
+
+  // Debug log to check market cap values
+  console.log('Market Cap Data:', {
+    raw: tokenInfo.marketCap,
+    formatted: marketCap,
+    currentMc: currentMc
   })
 
-  // Format price with appropriate decimal places
-  const formatPrice = (price: string) => {
-    const numPrice = Number.parseFloat(price)
-    if (numPrice === 0) return "$0.00"
-    if (numPrice < 0.000001) return `$${numPrice.toExponential(2)}`
-    if (numPrice < 0.01) return `$${numPrice.toFixed(6)}`
-    if (numPrice < 1) return `$${numPrice.toFixed(4)}`
-    if (numPrice < 1000) return `$${numPrice.toFixed(2)}`
-    if (numPrice < 1000000) return `$${(numPrice / 1000).toFixed(2)}K`
-    return `$${(numPrice / 1000000).toFixed(2)}M`
-  }
-
-  // Format large numbers
-  const formatNumber = (num: number | undefined) => {
-    if (num === undefined) return "N/A"
-    if (num === 0) return "0"
-    if (num < 1000) return num.toString()
-    if (num < 1000000) return `${(num / 1000).toFixed(1)}K`
-    if (num < 1000000000) return `${(num / 1000000).toFixed(1)}M`
-    return `${(num / 1000000000).toFixed(1)}B`
-  }
-
-  // Format percentage
-  const formatPercentage = (percent: number | undefined) => {
-    if (percent === undefined) return "N/A"
-    return `${percent > 0 ? "+" : ""}${percent.toFixed(2)}%`
-  }
-
-  // Get CSS class for price change
-  const getPriceChangeClass = (change: number | undefined) => {
-    if (change === undefined) return ""
-    if (change > 0) return "text-green-500"
-    if (change < 0) return "text-red-500"
-    return ""
-  }
-
-  // Format date from timestamp
-  const formatDate = (timestamp: number | undefined) => {
-    if (!timestamp) return "Unknown"
-    return format(new Date(timestamp), "MMM d, yyyy")
-  }
-
   // Extract social links
-  const getSocialLinks = () => {
-    const links = []
+  interface SocialLink {
+    name: string
+    url: string
+    icon: JSX.Element
+  }
 
-    // Add website if available
+  const getSocialLinks = (): SocialLink[] => {
+    const links: SocialLink[] = []
+
+    if (!tokenInfo) return links
+
     if (tokenInfo.info?.websites && tokenInfo.info.websites.length > 0) {
-      links.push({
-        name: "Website",
-        url: tokenInfo.info.websites[0],
-        icon: <Globe className="h-4 w-4" />,
-      })
+      const website = tokenInfo.info.websites[0]
+      if (typeof website === 'object' && website.url) {
+        links.push({
+          name: website.label || "Website",
+          url: website.url,
+          icon: <Globe className="h-4 w-4" />,
+        })
+      }
     }
 
-    // Check if socials exist and is an object
     if (tokenInfo.info?.socials && tokenInfo.info.socials.length > 0) {
-      const socialData = tokenInfo.info.socials[0]
-
-      // Handle the case where socials might be an object with properties
-      if (typeof socialData === "object" && socialData !== null) {
-        // Check for Twitter
-        if ("twitter" in socialData && typeof socialData.twitter === "string") {
-          links.push({
-            name: "Twitter",
-            url: socialData.twitter,
-            icon: <Twitter className="h-4 w-4" />,
-          })
+      tokenInfo.info.socials.forEach((social: any) => {
+        if (typeof social === "object" && social !== null) {
+          if (social.type === "twitter" && social.url) {
+            links.push({
+              name: "Twitter",
+              url: social.url,
+              icon: <Twitter className="h-4 w-4" />,
+            })
+          } else if (social.type === "telegram" && social.url) {
+            links.push({
+              name: "Telegram",
+              url: social.url,
+              icon: <MessageCircle className="h-4 w-4" />,
+            })
+          } else if (social.type === "discord" && social.url) {
+            links.push({
+              name: "Discord",
+              url: social.url,
+              icon: <MessageCircle className="h-4 w-4" />,
+            })
+          }
         }
-
-        // Check for Telegram
-        if ("telegram" in socialData && typeof socialData.telegram === "string") {
-          links.push({
-            name: "Telegram",
-            url: socialData.telegram,
-            icon: <MessageCircle className="h-4 w-4" />,
-          })
-        }
-
-        // Check for Discord
-        if ("discord" in socialData && typeof socialData.discord === "string") {
-          links.push({
-            name: "Discord",
-            url: socialData.discord,
-            icon: <MessageCircle className="h-4 w-4" />,
-          })
-        }
-      }
-      // Handle the case where socials might be a string
-      else if (typeof socialData === "string") {
-        const url = socialData
-        let name = "Social"
-        let icon = <Globe className="h-4 w-4" />
-
-        if (url.includes("twitter")) {
-          name = "Twitter"
-          icon = <Twitter className="h-4 w-4" />
-        } else if (url.includes("telegram")) {
-          name = "Telegram"
-          icon = <MessageCircle className="h-4 w-4" />
-        } else if (url.includes("discord")) {
-          name = "Discord"
-          icon = <MessageCircle className="h-4 w-4" />
-        }
-
-        links.push({ name, url, icon })
-      }
+      })
     }
 
     return links
   }
 
+  const socialLinks = getSocialLinks()
+
   // Prepare transaction data for the chart
   const prepareTransactionData = () => {
     const data: any = {}
 
-    // Process transactions data for different timeframes
-    if (tokenInfo.transactions) {
-      // Add all available timeframes
-      if (tokenInfo.transactions.m5) {
+    if (!tokenInfo) return data
+
+    if (tokenInfo.txns) {
+      if (tokenInfo.txns.m5) {
         data.m5 = {
-          buys: tokenInfo.transactions.m5.buys || 0,
-          sells: tokenInfo.transactions.m5.sells || 0,
+          buys: tokenInfo.txns.m5.buys || 0,
+          sells: tokenInfo.txns.m5.sells || 0,
           volume: tokenInfo.volume?.m5 || 0,
         }
       }
 
-      if (tokenInfo.transactions.h1) {
+      if (tokenInfo.txns.h1) {
         data.h1 = {
-          buys: tokenInfo.transactions.h1.buys || 0,
-          sells: tokenInfo.transactions.h1.sells || 0,
+          buys: tokenInfo.txns.h1.buys || 0,
+          sells: tokenInfo.txns.h1.sells || 0,
           volume: tokenInfo.volume?.h1 || 0,
         }
       }
 
-      if (tokenInfo.transactions.h6) {
+      if (tokenInfo.txns.h6) {
         data.h6 = {
-          buys: tokenInfo.transactions.h6.buys || 0,
-          sells: tokenInfo.transactions.h6.sells || 0,
+          buys: tokenInfo.txns.h6.buys || 0,
+          sells: tokenInfo.txns.h6.sells || 0,
           volume: tokenInfo.volume?.h6 || 0,
         }
       }
 
-      if (tokenInfo.transactions.h12) {
-        data.h12 = {
-          buys: tokenInfo.transactions.h12.buys || 0,
-          sells: tokenInfo.transactions.h12.sells || 0,
-          volume: tokenInfo.volume?.h12 || 0,
+      if (tokenInfo.txns.h24) {
+        data.h24 = {
+          buys: tokenInfo.txns.h24.buys || 0,
+          sells: tokenInfo.txns.h24.sells || 0,
+          volume: tokenInfo.volume?.h24 || 0,
         }
-      }
-
-      // Always include h24 data
-      data.h24 = {
-        buys: tokenInfo.transactions.buys || 0,
-        sells: tokenInfo.transactions.sells || 0,
-        volume: tokenInfo.volume?.h24 || 0,
       }
     }
 
     return data
   }
 
-  const socialLinks = getSocialLinks()
   const transactionData = prepareTransactionData()
-
-  // Calculate some stats for the trading history tab
-  const highestRoi = trades.length > 0 ? Math.max(...trades.map((t) => t.roi_at_high)) : 0
-  const lowestRoi = trades.length > 0 ? Math.min(...trades.map((t) => t.roi_at_low)) : 0
-  const averageRoi = trades.length > 0 ? trades.reduce((sum, t) => sum + t.roi, 0) / trades.length : 0
-  const totalTraders = trades.length > 0 ? new Set(trades.map((t) => t.caller)).size : 0
-  const firstTradeDate =
-    trades.length > 0 ? new Date(Math.min(...trades.map((t) => new Date(t.date_called).getTime()))) : new Date()
-  const lastTradeDate =
-    trades.length > 0 ? new Date(Math.max(...trades.map((t) => new Date(t.date_called).getTime()))) : new Date()
-
-  // Get DEX information
-  const getDexInfo = () => {
-    // Extract DEX name from the pair data if available
-    let dexName = "Jupiter"
-    if (tokenInfo.mintAddress && tokenInfo.mintAddress.includes("raydium")) {
-      dexName = "Raydium"
-    } else if (tokenInfo.mintAddress && tokenInfo.mintAddress.includes("orca")) {
-      dexName = "Orca"
-    }
-
-    return {
-      name: dexName,
-      liquidity: formatNumber(tokenInfo.liquidity?.usd) || "Unknown",
-      volume24h: formatNumber(tokenInfo.volume?.h24) || "Unknown",
-      pairs: tokenInfoArray.length,
-    }
-  }
-
-  const dexInfo = getDexInfo()
 
   return (
     <div className="min-h-screen">
@@ -328,7 +293,7 @@ export default async function TokenDetailPage({ params }: TokenDetailPageProps) 
               <div className="flex flex-col gap-2 mb-8">
                 <div className="flex items-center justify-between">
                   <h1 className="text-3xl font-bold tracking-tight">
-                    {tokenInfo.baseToken.name || "Unknown Token"} ({tokenInfo.baseToken.symbol || "???"})
+                    {tokenInfo.baseToken?.name || "Unknown Token"} ({tokenInfo.baseToken?.symbol || "???"})
                   </h1>
                 </div>
                 <p className="text-muted-foreground break-all">{tokenAddress}</p>
@@ -341,9 +306,9 @@ export default async function TokenDetailPage({ params }: TokenDetailPageProps) 
                     <DollarSign className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">{formatPrice(tokenInfo.priceUsd)}</div>
+                    <div className="text-2xl font-bold">${currentPrice}</div>
                     <p className={`text-xs ${getPriceChangeClass(tokenInfo.priceChange?.h24)}`}>
-                      {formatPercentage(tokenInfo.priceChange?.h24)} (24h)
+                      {priceChange24h} (24h)
                     </p>
                   </CardContent>
                 </Card>
@@ -358,8 +323,8 @@ export default async function TokenDetailPage({ params }: TokenDetailPageProps) 
                     )}
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">${formatNumber(tokenInfo.marketInfo.marketCap)}</div>
-                    <p className="text-xs text-muted-foreground">FDV: ${formatNumber(tokenInfo.marketInfo.fdv)}</p>
+                    <div className="text-2xl font-bold">${marketCap}</div>
+                    <p className="text-xs text-muted-foreground">FDV: ${fdv}</p>
                   </CardContent>
                 </Card>
 
@@ -369,9 +334,9 @@ export default async function TokenDetailPage({ params }: TokenDetailPageProps) 
                     <TrendingUp className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">${formatNumber(tokenInfo.volume?.h24)}</div>
+                    <div className="text-2xl font-bold">${volume24h}</div>
                     <p className="text-xs text-muted-foreground">
-                      Liquidity: ${formatNumber(tokenInfo.liquidity?.usd)}
+                      Total Liquidity: ${formatNumber(totalLiquidity.toString())}
                     </p>
                   </CardContent>
                 </Card>
@@ -382,39 +347,13 @@ export default async function TokenDetailPage({ params }: TokenDetailPageProps) 
                     <Clock className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">{formatDate(tokenInfo.marketInfo.pairCreatedAt)}</div>
-                    <p className="text-xs text-muted-foreground">Supply: {formatNumber(tokenSupply)}</p>
+                    <div className="text-2xl font-bold">{pairCreatedAt}</div>
+                    <p className="text-xs text-muted-foreground">
+                      Supply: {formatNumber(tokenSupply.toString())}
+                    </p>
                   </CardContent>
                 </Card>
               </div>
-
-              {/* DEX Information Card */}
-              <Card className="mb-8">
-                <CardHeader>
-                  <CardTitle>DEX Information</CardTitle>
-                  <CardDescription>Trading information from decentralized exchanges</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid md:grid-cols-4 gap-6">
-                    <div className="space-y-1">
-                      <p className="text-sm text-muted-foreground">Primary DEX</p>
-                      <p className="text-lg font-medium">{dexInfo.name}</p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-sm text-muted-foreground">Liquidity</p>
-                      <p className="text-lg font-medium">${dexInfo.liquidity}</p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-sm text-muted-foreground">24h Volume</p>
-                      <p className="text-lg font-medium">${dexInfo.volume24h}</p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-sm text-muted-foreground">Trading Pairs</p>
-                      <p className="text-lg font-medium">{dexInfo.pairs}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
 
               <Tabs defaultValue="overview" className="mb-8">
                 <TabsList className="grid grid-cols-3 mb-8">
@@ -452,7 +391,7 @@ export default async function TokenDetailPage({ params }: TokenDetailPageProps) 
                     </CardHeader>
                     <CardContent>
                       {Object.keys(transactionData).length > 0 ? (
-                        <TransactionChart data={transactionData} tokenSymbol={tokenInfo.baseToken.symbol || "TOKEN"} />
+                        <TransactionChart data={transactionData} tokenSymbol={tokenInfo.baseToken?.symbol || "TOKEN"} />
                       ) : (
                         <div className="flex items-center justify-center h-[200px] text-muted-foreground">
                           <div className="flex flex-col items-center gap-2">
@@ -510,22 +449,20 @@ export default async function TokenDetailPage({ params }: TokenDetailPageProps) 
                               </tr>
                             </thead>
                             <tbody>
-                              {tokenInfoArray.map((pair, index) => (
+                              {tokenInfoArray.map((pair: TokenInfo, index: number) => (
                                 <tr key={index} className="border-b">
                                   <td className="py-2 px-4">{pair.baseToken.symbol}/USD</td>
                                   <td className="py-2 px-4">
-                                    {pair.mintAddress?.includes("raydium")
-                                      ? "Raydium"
-                                      : pair.mintAddress?.includes("orca")
-                                        ? "Orca"
-                                        : "Jupiter"}
+                                    {pair.dexId === "raydium" ? "Raydium" :
+                                     pair.dexId === "orca" ? "Orca" :
+                                     pair.dexId === "meteora" ? "Meteora" : "Jupiter"}
                                   </td>
-                                  <td className="py-2 px-4">{formatPrice(pair.priceUsd)}</td>
+                                  <td className="py-2 px-4">{formatPrice(pair.priceUsd?.toString())}</td>
                                   <td className={`py-2 px-4 ${getPriceChangeClass(pair.priceChange?.h24)}`}>
-                                    {formatPercentage(pair.priceChange?.h24)}
+                                    {formatPercentage(pair.priceChange?.h24?.toString())}
                                   </td>
-                                  <td className="py-2 px-4">${formatNumber(pair.volume?.h24)}</td>
-                                  <td className="py-2 px-4">${formatNumber(pair.liquidity?.usd)}</td>
+                                  <td className="py-2 px-4">${formatNumber(pair.volume?.h24?.toString())}</td>
+                                  <td className="py-2 px-4">${formatNumber(pair.liquidity?.usd?.toString())}</td>
                                 </tr>
                               ))}
                             </tbody>
@@ -549,10 +486,10 @@ export default async function TokenDetailPage({ params }: TokenDetailPageProps) 
                       </CardHeader>
                       <CardContent>
                         <div className={`text-2xl font-bold ${averageRoi >= 0 ? "text-green-500" : "text-red-500"}`}>
-                          {(averageRoi * 100).toFixed(1)}%
+                          {formatPercentage(averageRoi.toString())}
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          Across {trades.length} trades by {totalTraders} traders
+                          Across {filteredTrades.length} trades by {totalTraders} traders
                         </p>
                       </CardContent>
                     </Card>
@@ -563,83 +500,85 @@ export default async function TokenDetailPage({ params }: TokenDetailPageProps) 
                         <TrendingUp className="h-4 w-4 text-green-500" />
                       </CardHeader>
                       <CardContent>
-                        <div className={`text-2xl font-bold text-green-500`}>{(highestRoi * 100).toFixed(1)}%</div>
-                        <p className="text-xs text-muted-foreground">Lowest: {(lowestRoi * 100).toFixed(1)}%</p>
+                        <div className="text-2xl font-bold text-green-500">{formatPercentage(highestRoi.toString())}</div>
+                        <p className="text-xs text-muted-foreground">Lowest: {formatPercentage(lowestRoi.toString())}</p>
                       </CardContent>
                     </Card>
 
                     <Card>
                       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Total Traders</CardTitle>
-                        <Users className="h-4 w-4 text-muted-foreground" />
-                      </CardHeader>
-                      <CardContent>
-                        <div className="text-2xl font-bold">{totalTraders}</div>
-                        <p className="text-xs text-muted-foreground">Unique traders calling this token</p>
-                      </CardContent>
-                    </Card>
-
-                    <Card>
-                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">First Called</CardTitle>
+                        <CardTitle className="text-sm font-medium">First Trade</CardTitle>
                         <Clock className="h-4 w-4 text-muted-foreground" />
                       </CardHeader>
                       <CardContent>
-                        <div className="text-2xl font-bold">
-                          {trades.length > 0 ? format(firstTradeDate, "MMM d, yyyy") : "N/A"}
-                        </div>
+                        <div className="text-2xl font-bold">{format(firstTradeDate, "MMM d, yyyy")}</div>
                         <p className="text-xs text-muted-foreground">
-                          {trades.length > 0 ? `Last: ${format(lastTradeDate, "MMM d, yyyy")}` : "No trades recorded"}
+                          By {firstTrader || "Unknown"}
                         </p>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Total Trades</CardTitle>
+                        <Users className="h-4 w-4 text-muted-foreground" />
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold">{filteredTrades.length}</div>
+                        <p className="text-xs text-muted-foreground">By {totalTraders} unique traders</p>
                       </CardContent>
                     </Card>
                   </div>
 
                   <Card>
                     <CardHeader>
-                      <CardTitle>Trader Distribution</CardTitle>
-                      <CardDescription>Traders who called this token</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      {trades.length > 0 ? (
-                        <div className="space-y-4">
-                          {Array.from(new Set(trades.map((t) => t.caller))).map((trader) => {
-                            const traderTrades = trades.filter((t) => t.caller === trader)
-                            const avgRoi = traderTrades.reduce((sum, t) => sum + t.roi, 0) / traderTrades.length
-
-                            return (
-                              <div key={trader} className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                  <Users className="h-4 w-4 text-muted-foreground" />
-                                  <Link href={`/rankings/${encodeURIComponent(trader)}`} className="hover:underline">
-                                    {trader}
-                                  </Link>
-                                </div>
-                                <div className="flex items-center gap-4">
-                                  <span className="text-sm text-muted-foreground">{traderTrades.length} calls</span>
-                                  <span className={avgRoi >= 0 ? "text-green-500" : "text-red-500"}>
-                                    {(avgRoi * 100).toFixed(1)}%
-                                  </span>
-                                </div>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      ) : (
-                        <div className="flex items-center justify-center h-[100px] text-muted-foreground">
-                          <p>No trader data available</p>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardHeader>
                       <CardTitle>Trade History</CardTitle>
-                      <CardDescription>All trades for this token</CardDescription>
+                      <CardDescription>All trades for {tokenInfo.baseToken?.symbol || "this token"}</CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <TradesTable trades={trades} />
+                      <div className="rounded-md border">
+                        <table className="w-full">
+                          <thead>
+                            <tr className="border-b bg-muted/50">
+                              <th className="p-3 text-left font-medium">Date</th>
+                              <th className="p-3 text-left font-medium">Trader</th>
+                              <th className="p-3 text-left font-medium">Initial MC</th>
+                              <th className="p-3 text-left font-medium">Current MC</th>
+                              <th className="p-3 text-left font-medium">ROI</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {filteredTrades.map((trade, i) => {
+                              const roi = calculateRoi(Number(trade.initial_mc))
+                              return (
+                                <tr key={i} className="border-b">
+                                  <td className="p-3">{format(new Date(trade.date_called), "MMM d, yyyy HH:mm")}</td>
+                                  <td className="p-3">
+                                    <Link
+                                      href={`/rankings/${encodeURIComponent(trade.caller)}`}
+                                      className="hover:underline text-primary"
+                                    >
+                                      {trade.caller}
+                                    </Link>
+                                  </td>
+                                  <td className="p-3">{formatNumber(trade.initial_mc.toString())}</td>
+                                  <td className="p-3">{formatNumber(currentMc.toString())}</td>
+                                  <td className={`p-3 ${roi >= 0 ? "text-green-500" : "text-red-500"}`}>
+                                    {roi === 0 ? 'N/A' : formatPercentage(roi.toString())}
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                            {filteredTrades.length === 0 && (
+                              <tr>
+                                <td colSpan={5} className="p-3 text-center text-muted-foreground">
+                                  No trades found for this token
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
                     </CardContent>
                   </Card>
                 </TabsContent>
@@ -660,11 +599,11 @@ export default async function TokenDetailPage({ params }: TokenDetailPageProps) 
           <Sidebar side="right" className="z-40" size="sm" floating={true}>
             <div className="flex flex-col w-full">
               <SidebarHeader className="border-b p-4 flex flex-col items-center text-center bg-background">
-                <h2 className="text-xl font-bold">Swap {tokenInfo.baseToken.symbol}</h2>
-                <p className="text-sm text-muted-foreground">Trade {tokenInfo.baseToken.symbol} on Trader Ranker</p>
+                <h2 className="text-xl font-bold">Swap {tokenInfo.baseToken?.symbol}</h2>
+                <p className="text-sm text-muted-foreground">Trade {tokenInfo.baseToken?.symbol} on Trader Ranker</p>
               </SidebarHeader>
               <SidebarContent className="p-4">
-                <TokenSwap tokenAddress={tokenAddress} tokenSymbol={tokenInfo.baseToken.symbol || "TOKEN"} />
+                <JupiterSwap tokenAddress={tokenAddress} tokenSymbol={tokenInfo.baseToken?.symbol || "TOKEN"} />
               </SidebarContent>
             </div>
           </Sidebar>

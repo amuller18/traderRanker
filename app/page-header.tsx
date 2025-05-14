@@ -22,6 +22,9 @@ export function PageHeader() {
             <Link href="/copy-trader" className="transition-colors hover:text-foreground/80">
               Copy Trading
             </Link>
+            <Link href="/backtest" className="transition-colors hover:text-foreground/80">
+              Backtesting
+            </Link>
           </nav>
         </div>
         <div className="flex flex-1 items-center justify-between space-x-2 md:justify-end">

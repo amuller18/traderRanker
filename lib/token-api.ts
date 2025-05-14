@@ -58,22 +58,36 @@ export async function getTokenInfo(contractAddress: string): Promise<TokenInfo[]
   try {
     console.log(`Fetching token info for: ${contractAddress}`)
 
+    // Try DexScreener first
     const url = `https://api.dexscreener.com/latest/dex/tokens/${contractAddress}`
-    const response = await fetch(url)
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
+        'Referer': 'https://dexscreener.com/',
+        'Accept': 'application/json',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Origin': 'https://dexscreener.com',
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
+      },
+      cache: 'no-store',
+    })
 
     if (!response.ok) {
-      console.error(`Error fetching data from Dexscreener: ${response.status}`)
-      return null
+      console.log(`DexScreener failed for ${contractAddress} - likely low market cap or no liquidity`)
+      // Try Jupiter as fallback
+      return await getJupiterTokenInfo(contractAddress)
     }
 
     const data = await response.json()
-
     const pairs = data.pairs
+
     if (!pairs || pairs.length === 0) {
-      console.log(`No trading pairs found for address: ${contractAddress}`)
-      return null
+      console.log(`No trading pairs found in DexScreener for ${contractAddress} - likely low market cap or no liquidity`)
+      return await getJupiterTokenInfo(contractAddress)
     }
 
+    // Map the pairs to our TokenInfo format
     const tokenInformation: TokenInfo[] = pairs.map((pair: any) => {
       // Handle transactions data which might be in different formats
       let transactions = pair.txns
@@ -90,6 +104,12 @@ export async function getTokenInfo(contractAddress: string): Promise<TokenInfo[]
         }
       }
 
+      // Log market cap for debugging
+      const marketCap = pair.marketCap || 0
+      if (marketCap < 10000) {
+        console.log(`Low market cap detected for ${contractAddress}: $${marketCap}`)
+      }
+
       return {
         baseToken: {
           address: pair.baseToken?.address || contractAddress,
@@ -98,12 +118,12 @@ export async function getTokenInfo(contractAddress: string): Promise<TokenInfo[]
         },
         priceUsd: pair.priceUsd || "0",
         transactions: transactions || { buys: 0, sells: 0 },
-        volume: pair.volume || { h24: 0, h6: 0, h1: 0 },
-        priceChange: pair.priceChange || { h24: 0, h6: 0, h1: 0 },
-        liquidity: pair.liquidity || { usd: 0, base: 0, quote: 0 },
+        volume: pair.volume || { h24: 0 },
+        priceChange: pair.priceChange || { h24: 0 },
+        liquidity: pair.liquidity || { usd: 0 },
         mintAddress: pair.pairAddress || "",
         marketInfo: {
-          marketCap: pair.marketCap || 0,
+          marketCap: marketCap,
           fdv: pair.fdv || 0,
           pairCreatedAt: pair.pairCreatedAt || 0,
         },
@@ -117,6 +137,73 @@ export async function getTokenInfo(contractAddress: string): Promise<TokenInfo[]
     return tokenInformation
   } catch (error) {
     console.error(`Error fetching token info: ${error}`)
+    // Try Jupiter as fallback
+    return await getJupiterTokenInfo(contractAddress)
+  }
+}
+
+/**
+ * Fetches token information from Jupiter API as fallback
+ */
+async function getJupiterTokenInfo(contractAddress: string): Promise<TokenInfo[] | null> {
+  try {
+    console.log(`Fetching token info from Jupiter for: ${contractAddress} (likely low market cap token)`)
+    
+    // Get token list from Jupiter's new API endpoint
+    const response = await fetch("https://token.jup.ag/strict")
+    if (!response.ok) {
+      console.error(`Error fetching Jupiter token list: ${response.status}`)
+      return null
+    }
+
+    const tokens = await response.json()
+    const token = tokens.find((t: any) => t.address === contractAddress)
+
+    if (!token) {
+      console.log(`Token not found in Jupiter: ${contractAddress} - may be very new or delisted`)
+      return null
+    }
+
+    // Create a TokenInfo object from Jupiter data
+    const tokenInfo: TokenInfo = {
+      baseToken: {
+        address: token.address,
+        name: token.name || "Unknown",
+        symbol: token.symbol || "UNKNOWN",
+      },
+      priceUsd: "0", // Jupiter doesn't provide price directly
+      transactions: { buys: 0, sells: 0 },
+      volume: { h24: 0 },
+      priceChange: { h24: 0 },
+      liquidity: { usd: 0 },
+      mintAddress: token.address,
+      marketInfo: {
+        marketCap: 0, // Explicitly set to 0 for low market cap tokens
+        fdv: 0,
+        pairCreatedAt: 0,
+      },
+      info: {
+        websites: [],
+        socials: [],
+      },
+    }
+
+    // Try to get price from Jupiter's price API
+    try {
+      const priceResponse = await fetch(`https://price.jup.ag/v4/price?ids=${contractAddress}`)
+      if (priceResponse.ok) {
+        const priceData = await priceResponse.json()
+        if (priceData.data[contractAddress]) {
+          tokenInfo.priceUsd = priceData.data[contractAddress].price.toString()
+        }
+      }
+    } catch (error) {
+      console.log(`Could not fetch price from Jupiter for ${contractAddress}`)
+    }
+
+    return [tokenInfo]
+  } catch (error) {
+    console.error(`Error fetching Jupiter token info: ${error}`)
     return null
   }
 }
@@ -132,7 +219,7 @@ export async function getTokenSupply(contractAddress: string): Promise<number> {
       jsonrpc: "2.0",
       id: 1,
       method: "getTokenSupply",
-      params: [contractAddress],
+      params: [contractAddress]
     }
 
     const response = await fetch(url, {
@@ -150,8 +237,8 @@ export async function getTokenSupply(contractAddress: string): Promise<number> {
 
     const data = await response.json()
 
-    if (data.result?.value?.uiAmount) {
-      return Number.parseInt(data.result.value.uiAmount)
+    if (data.result?.value?.uiAmountString) {
+      return parseFloat(data.result.value.uiAmountString)
     }
 
     return 0

@@ -10,7 +10,7 @@ export const revalidate = 0 // Don't cache this page
 export default async function TradesPage() {
   // Default filters - set very wide ranges to ensure all trades are shown initially
   const defaultFilters: TradeFilterOptions = {
-    roiRange: [-10, 10],
+    roiRange: [-1000, 1000], // Much wider range to ensure we get all trades
     marketCapRange: [0, 1000000000],
     dateRange: [new Date(0), new Date()], // From beginning of time to now
     searchTerm: "",

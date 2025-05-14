@@ -1,164 +1,190 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
-import type { Trade } from "@/lib/mock-data-provider"
-import { ArrowUpDown, ChevronDown, ChevronUp, ExternalLink } from "lucide-react"
-import { formatDistanceToNow } from "date-fns"
+import type { Trade } from "@/lib/trader-data"
+import { ArrowUpDown, ChevronDown, ChevronUp, ExternalLink, ChevronLeft, ChevronRight } from "lucide-react"
+import { format } from "date-fns"
+import Link from "next/link"
+import { useRouter, useSearchParams } from "next/navigation"
+import { formatMarketCap, formatROI } from "@/lib/utils"
+import type { TokenInfo } from "@/lib/token-data"
 
 interface TraderTradesProps {
   trades: Trade[]
+  currentPage: number
+  totalPages: number
+  totalTrades: number
 }
 
-type SortField = "date_called" | "roi" | "initial_mc"
-type SortDirection = "asc" | "desc"
-
-export function TraderTrades({ trades }: TraderTradesProps) {
-  const [sortField, setSortField] = useState<SortField>("date_called")
-  const [sortDirection, setSortDirection] = useState<SortDirection>("desc")
-
-  const handleSort = (field: SortField) => {
-    if (field === sortField) {
-      setSortDirection(sortDirection === "asc" ? "desc" : "asc")
-    } else {
-      setSortField(field)
-      setSortDirection("desc")
-    }
-  }
-
-  const sortedTrades = [...trades].sort((a, b) => {
-    if (sortField === "date_called") {
-      const aDate = new Date(a.date_called).getTime()
-      const bDate = new Date(b.date_called).getTime()
-      return sortDirection === "asc" ? aDate - bDate : bDate - aDate
-    } else {
-      const aValue = a[sortField]
-      const bValue = b[sortField]
-      return sortDirection === "asc" ? aValue - bValue : bValue - aValue
-    }
-  })
-
-  const formatMarketCap = (mc: number) => {
-    if (mc >= 1_000_000_000) return `$${(mc / 1_000_000_000).toFixed(2)}B`
-    if (mc >= 1_000_000) return `$${(mc / 1_000_000).toFixed(2)}M`
-    if (mc >= 1_000) return `$${(mc / 1_000).toFixed(2)}K`
-    return `$${mc.toFixed(2)}`
-  }
+export function TraderTrades({ trades, currentPage, totalPages, totalTrades }: TraderTradesProps) {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const [tokenInfos, setTokenInfos] = useState<Record<string, number>>({})
+  const [loadingStates, setLoadingStates] = useState<Record<string, boolean>>({})
+  const [errorStates, setErrorStates] = useState<Record<string, boolean>>({})
+  const fetchedTokensRef = useRef<Set<string>>(new Set())
 
   const getPerformanceClass = (roi: number) => {
-    if (roi >= 1) return "text-green-500 font-medium"
-    if (roi >= 0) return "text-green-400"
-    if (roi >= -0.5) return "text-orange-400"
-    return "text-red-500"
+    if (roi > 0) return "text-green-500"
+    if (roi < 0) return "text-red-500"
+    return "text-muted-foreground"
   }
 
-  const formatDate = (dateString: string) => {
+  const handlePageChange = (newPage: number) => {
+    const params = new URLSearchParams(searchParams.toString())
+    params.set("page", newPage.toString())
+    router.push(`?${params.toString()}`)
+  }
+
+  // Update ROI for a single trade
+  const updateTradeRoi = async (trade: Trade) => {
+    if (fetchedTokensRef.current.has(trade.ca)) return
+    
+    setLoadingStates(prev => ({ ...prev, [trade.ca]: true }))
+    setErrorStates(prev => ({ ...prev, [trade.ca]: false }))
+    
     try {
-      const date = new Date(dateString)
-      return formatDistanceToNow(date, { addSuffix: true })
-    } catch (e) {
-      return dateString
+      console.log('Fetching token info for:', trade.ca)
+      const url = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/token-info?address=${encodeURIComponent(trade.ca)}`
+      console.log('Request URL:', url)
+      
+      const response = await fetch(url)
+      console.log('Response status:', response.status)
+      
+      if (!response.ok) {
+        console.error('Error response:', response.status, response.statusText)
+        if (response.status === 404) {
+          setErrorStates(prev => ({ ...prev, [trade.ca]: true }))
+          return
+        }
+        throw new Error(`Failed to fetch token info: ${response.status} ${response.statusText}`)
+      }
+      
+      const tokenInfo: TokenInfo = await response.json()
+      console.log('Received token info:', tokenInfo)
+      
+      const fdv = tokenInfo?.marketInfo?.fdv
+      console.log('FDV value:', fdv)
+      
+      if (typeof fdv === 'number' && !isNaN(fdv)) {
+        setTokenInfos(prev => ({
+          ...prev,
+          [trade.ca]: fdv
+        }))
+        fetchedTokensRef.current.add(trade.ca)
+      } else {
+        console.warn('Invalid FDV value:', fdv)
+        setErrorStates(prev => ({ ...prev, [trade.ca]: true }))
+      }
+    } catch (error) {
+      console.error(`Error fetching token info for ${trade.ca}:`, error)
+      setErrorStates(prev => ({ ...prev, [trade.ca]: true }))
+    } finally {
+      setLoadingStates(prev => ({ ...prev, [trade.ca]: false }))
     }
   }
 
+  // Update ROI for all trades
+  useEffect(() => {
+    const updates = trades.reduce((acc, trade) => {
+      if (!tokenInfos[trade.ca] && !loadingStates[trade.ca] && !fetchedTokensRef.current.has(trade.ca)) {
+        acc.push(trade)
+      }
+      return acc
+    }, [] as Trade[])
+
+    const processUpdates = async () => {
+      await Promise.all(updates.map(trade => updateTradeRoi(trade)))
+    }
+
+    if (updates.length > 0) {
+      processUpdates()
+    }
+  }, [trades])
+
   return (
-    <div className="rounded-md border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead className="w-[180px]">
-              <Button
-                variant="ghost"
-                onClick={() => handleSort("date_called")}
-                className="flex items-center gap-1 p-0 h-auto font-medium"
-              >
-                Date Called
-                {sortField === "date_called" ? (
-                  sortDirection === "asc" ? (
-                    <ChevronUp className="h-4 w-4" />
-                  ) : (
-                    <ChevronDown className="h-4 w-4" />
-                  )
-                ) : (
-                  <ArrowUpDown className="h-4 w-4" />
-                )}
-              </Button>
-            </TableHead>
-            <TableHead>Token</TableHead>
-            <TableHead className="w-[150px]">
-              <Button
-                variant="ghost"
-                onClick={() => handleSort("initial_mc")}
-                className="flex items-center gap-1 p-0 h-auto font-medium"
-              >
-                Initial MC
-                {sortField === "initial_mc" ? (
-                  sortDirection === "asc" ? (
-                    <ChevronUp className="h-4 w-4" />
-                  ) : (
-                    <ChevronDown className="h-4 w-4" />
-                  )
-                ) : (
-                  <ArrowUpDown className="h-4 w-4" />
-                )}
-              </Button>
-            </TableHead>
-            <TableHead className="w-[120px]">
-              <Button
-                variant="ghost"
-                onClick={() => handleSort("roi")}
-                className="flex items-center gap-1 p-0 h-auto font-medium"
-              >
-                ROI
-                {sortField === "roi" ? (
-                  sortDirection === "asc" ? (
-                    <ChevronUp className="h-4 w-4" />
-                  ) : (
-                    <ChevronDown className="h-4 w-4" />
-                  )
-                ) : (
-                  <ArrowUpDown className="h-4 w-4" />
-                )}
-              </Button>
-            </TableHead>
-            <TableHead className="w-[120px]">High ROI</TableHead>
-            <TableHead className="w-[100px]">Link</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {sortedTrades.length === 0 ? (
-            <TableRow>
-              <TableCell colSpan={6} className="h-24 text-center">
-                No trades found.
-              </TableCell>
-            </TableRow>
-          ) : (
-            sortedTrades.map((trade) => (
-              <TableRow key={`${trade.caller}-${trade.ca}-${trade.date_called}`}>
-                <TableCell>{formatDate(trade.date_called)}</TableCell>
-                <TableCell>
-                  <div className="font-medium truncate max-w-[200px]" title={trade.ca}>
-                    {trade.ca.substring(0, 6)}...{trade.ca.substring(trade.ca.length - 4)}
-                  </div>
-                </TableCell>
-                <TableCell>{formatMarketCap(trade.initial_mc)}</TableCell>
-                <TableCell className={getPerformanceClass(trade.roi)}>{(trade.roi * 100).toFixed(1)}%</TableCell>
-                <TableCell className={getPerformanceClass(trade.roi_at_high)}>
-                  {(trade.roi_at_high * 100).toFixed(1)}%
-                </TableCell>
-                <TableCell>
-                  <a href={`https://solscan.io/token/${trade.ca}`} target="_blank" rel="noopener noreferrer">
-                    <Button variant="ghost" size="icon">
-                      <ExternalLink className="h-4 w-4" />
-                    </Button>
-                  </a>
-                </TableCell>
-              </TableRow>
-            ))
-          )}
-        </TableBody>
-      </Table>
+    <div className="space-y-4">
+      <div className="rounded-md border">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b bg-muted/50">
+                <th className="px-4 py-3 text-left text-sm font-medium w-[120px]">Date</th>
+                <th className="px-4 py-3 text-left text-sm font-medium">Token</th>
+                <th className="px-4 py-3 text-left text-sm font-medium">Initial MC</th>
+                <th className="px-4 py-3 text-left text-sm font-medium">Current MC</th>
+                <th className="px-4 py-3 text-left text-sm font-medium">ROI</th>
+              </tr>
+            </thead>
+            <tbody>
+              {trades.map((trade) => {
+                const currentMc = tokenInfos[trade.ca] || trade.current_mc
+                const roi = ((currentMc - trade.initial_mc) / trade.initial_mc) * 100
+                const isLoading = loadingStates[trade.ca]
+                const hasError = errorStates[trade.ca]
+
+                return (
+                  <tr key={`${trade.caller}_${trade.ca}_${trade.date_called}`} className="border-b">
+                    <td className="px-4 py-3 text-sm whitespace-nowrap">{format(new Date(trade.date_called), "MMM d, yyyy")}</td>
+                    <td className="px-4 py-3 text-sm">
+                      <Link href={`/token-analysis/${trade.ca}`} className="text-primary hover:underline">
+                        {trade.ca}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-3 text-sm">{formatMarketCap(trade.initial_mc)}</td>
+                    <td className="px-4 py-3 text-sm">
+                      {isLoading ? (
+                        <span className="animate-pulse text-muted-foreground">•••</span>
+                      ) : hasError ? (
+                        <span className="text-muted-foreground">N/A</span>
+                      ) : (
+                        formatMarketCap(currentMc)
+                      )}
+                    </td>
+                    <td className={`px-4 py-3 text-sm ${getPerformanceClass(roi)}`}>
+                      {isLoading ? (
+                        <span className="animate-pulse text-muted-foreground">•••%</span>
+                      ) : hasError ? (
+                        <span className="text-muted-foreground">N/A</span>
+                      ) : (
+                        `${roi.toFixed(1)}%`
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-muted-foreground">
+          Page {currentPage} of {totalPages}
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handlePageChange(currentPage - 1)}
+            disabled={currentPage === 1}
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Previous
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handlePageChange(currentPage + 1)}
+            disabled={currentPage === totalPages}
+          >
+            Next
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
     </div>
   )
 }

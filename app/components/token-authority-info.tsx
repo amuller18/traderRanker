@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { ExternalLink, ShieldAlert, ShieldCheck, Loader2 } from "lucide-react"
+import { ExternalLink, ShieldAlert, ShieldCheck, Loader2, AlertTriangle, RefreshCw } from "lucide-react"
+import { Button } from "@/components/ui/button"
 
 interface TokenAuthorityInfoProps {
   tokenAddress: string
@@ -23,31 +24,107 @@ export function TokenAuthorityInfo({ tokenAddress }: TokenAuthorityInfoProps) {
   const [authorities, setAuthorities] = useState<TokenAuthorities | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [retryCount, setRetryCount] = useState(0)
 
   useEffect(() => {
+    let isMounted = true
+    let abortController: AbortController | null = null
+
     async function fetchTokenAuthorities() {
+      // Cancel any existing request
+      if (abortController) {
+        abortController.abort()
+      }
+
+      // Create new AbortController for this request
+      abortController = new AbortController()
+      const signal = abortController.signal
+
+      if (!isMounted) return
+
       setLoading(true)
       setError(null)
 
       try {
-        const response = await fetch(`/api/token-authorities?address=${encodeURIComponent(tokenAddress)}`)
+        // Add timeout to the fetch request
+        const timeoutId = setTimeout(() => {
+          if (abortController) {
+            abortController.abort()
+          }
+        }, 30000) // 30 second timeout
+
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/token-authorities?address=${encodeURIComponent(tokenAddress)}`,
+          { 
+            signal,
+            headers: {
+              'Cache-Control': 'no-cache',
+              'Pragma': 'no-cache'
+            }
+          }
+        )
+
+        clearTimeout(timeoutId)
+
+        if (!isMounted) return
 
         if (!response.ok) {
-          throw new Error(`Failed to fetch token authorities: ${response.status}`)
+          const errorData = await response.json().catch(() => ({}))
+          let errorMessage = errorData.error || `Failed to fetch token authorities: ${response.status}`
+          
+          // Handle specific error cases
+          if (response.status === 429) {
+            errorMessage = "Rate limit exceeded. Please try again in a few moments."
+          } else if (response.status === 503) {
+            errorMessage = "Service temporarily unavailable. Please try again later."
+          }
+          
+          throw new Error(errorMessage)
         }
 
         const data = await response.json()
+        if (!isMounted) return
+
+        if (data.error) {
+          throw new Error(data.error)
+        }
+
         setAuthorities(data)
       } catch (err) {
-        console.error("Error fetching token authorities:", err)
-        setError(err instanceof Error ? err.message : "Failed to fetch token authorities")
+        if (!isMounted) return
+
+        if (err instanceof Error) {
+          if (err.name === 'AbortError') {
+            console.log('Request was aborted')
+            return
+          }
+          console.error("Error fetching token authorities:", err)
+          setError(err.message)
+        } else {
+          console.error("Unknown error:", err)
+          setError("Failed to fetch token authorities")
+        }
       } finally {
-        setLoading(false)
+        if (isMounted) {
+          setLoading(false)
+        }
       }
     }
 
     fetchTokenAuthorities()
-  }, [tokenAddress])
+
+    return () => {
+      isMounted = false
+      if (abortController) {
+        abortController.abort()
+      }
+    }
+  }, [tokenAddress, retryCount])
+
+  // Handle retry
+  const handleRetry = () => {
+    setRetryCount((prev) => prev + 1)
+  }
 
   // Helper function to format address for display
   const formatAddress = (address: string | null) => {
@@ -72,7 +149,16 @@ export function TokenAuthorityInfo({ tokenAddress }: TokenAuthorityInfoProps) {
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
         ) : error ? (
-          <div className="text-red-500 py-2">{error}</div>
+          <div className="flex flex-col items-center justify-center py-4 text-red-500 gap-4">
+            <div className="flex flex-col items-center gap-2">
+              <AlertTriangle className="h-6 w-6" />
+              <p className="text-center">{error}</p>
+            </div>
+            <Button onClick={handleRetry} variant="outline" size="sm" className="flex items-center gap-2">
+              <RefreshCw className="h-4 w-4" />
+              Retry
+            </Button>
+          </div>
         ) : authorities ? (
           <div className="space-y-4">
             <div className="space-y-2">

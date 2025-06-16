@@ -17,6 +17,7 @@ export interface Trade {
   profit: number
   is_winner: boolean
   multiples_hit: number[]
+  supply?: number
 }
 
 export interface TokenInfo {

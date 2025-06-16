@@ -43,11 +43,46 @@ export default async function TraderDetailPage({ params, searchParams }: TraderD
     notFound()
   }
 
-  // Calculate trader stats from trades
+  // Fetch current market data for all trades
+  const tokenInfos = await Promise.all(
+    allTrades.map(async (trade) => {
+      try {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/token-info?address=${trade.ca}`)
+        if (response.ok) {
+          const data = await response.json()
+          return {
+            token: trade.ca,
+            marketInfo: data.marketInfo
+          }
+        }
+      } catch (error) {
+        console.error(`Error fetching token info for ${trade.ca}:`, error)
+      }
+      return {
+        token: trade.ca,
+        marketInfo: null
+      }
+    })
+  )
+
+  // Calculate trader stats from trades with current market data
   const total_calls = allTrades.length
-  const winning_calls = allTrades.filter(trade => trade.roi_at_high > 0).length
+  const winning_calls = allTrades.filter((trade, index) => {
+    const tokenInfo = tokenInfos[index]
+    if (!tokenInfo?.marketInfo) return false
+    const currentMc = tokenInfo.marketInfo.fdv || 0
+    return currentMc > trade.initial_mc
+  }).length
   const win_rate = total_calls > 0 ? winning_calls / total_calls : 0
-  const average_roi = total_calls > 0 ? allTrades.reduce((sum, trade) => sum + trade.roi_at_high, 0) / total_calls : 0
+
+  // Calculate average ROI using current market data
+  const average_roi = total_calls > 0 ? allTrades.reduce((sum, trade, index) => {
+    const tokenInfo = tokenInfos[index]
+    if (!tokenInfo?.marketInfo) return sum
+    const currentMc = tokenInfo.marketInfo.fdv || 0
+    const roi = ((currentMc - trade.initial_mc) / trade.initial_mc) * 100
+    return sum + roi
+  }, 0) / total_calls : 0
 
   // Calculate market cap performance
   const microCapTrades = allTrades.filter(trade => trade.initial_mc < 1_000_000)
@@ -58,9 +93,24 @@ export default async function TraderDetailPage({ params, searchParams }: TraderD
 
   const calculateCapStats = (capTrades: Trade[]) => {
     if (capTrades.length === 0) return { roi: 0, winrate: 0 }
-    const roi = capTrades.reduce((sum, trade) => sum + trade.roi_at_high, 0) / capTrades.length
-    const winrate = capTrades.filter(trade => trade.roi_at_high > 0).length / capTrades.length
-    return { roi, winrate }
+    
+    let totalRoi = 0
+    let winningTrades = 0
+    
+    capTrades.forEach((trade, index) => {
+      const tokenInfo = tokenInfos[allTrades.indexOf(trade)]
+      if (!tokenInfo?.marketInfo) return
+      
+      const currentMc = tokenInfo.marketInfo.fdv || 0
+      const roi = ((currentMc - trade.initial_mc) / trade.initial_mc) * 100
+      totalRoi += roi
+      if (currentMc > trade.initial_mc) winningTrades++
+    })
+    
+    return {
+      roi: totalRoi / capTrades.length,
+      winrate: winningTrades / capTrades.length
+    }
   }
 
   const microCapStats = calculateCapStats(microCapTrades)
@@ -107,93 +157,25 @@ export default async function TraderDetailPage({ params, searchParams }: TraderD
 
       <DataSourceStatus usingMockData={usingMockData} />
 
-      <div className="flex flex-col gap-2 mb-8">
-        <h1 className="text-3xl font-bold tracking-tight">{trader.caller}</h1>
-        <p className="text-muted-foreground">Detailed performance analysis and trade history</p>
-      </div>
-
-      <div className="space-y-8">
-        <PerformanceMetrics trader={trader} />
-
-        <div className="grid gap-8 md:grid-cols-2">
-          <MarketCapPerformance trader={trader} />
-
-          <div className="space-y-4">
-            <h2 className="text-2xl font-bold tracking-tight">Performance Summary</h2>
-            <div className="grid gap-4">
-              <div className="grid grid-cols-2 gap-4 p-4 border rounded-lg">
-                <div>
-                  <div className="text-sm font-medium text-muted-foreground">Win Rate</div>
-                  <div className="text-2xl font-bold">{(trader.win_rate * 100).toFixed(1)}%</div>
-                </div>
-                <div>
-                  <div className="text-sm font-medium text-muted-foreground">Total Calls</div>
-                  <div className="text-2xl font-bold">{trader.total_calls}</div>
-                </div>
-                <div>
-                  <div className="text-sm font-medium text-muted-foreground">Winning Calls</div>
-                  <div className="text-2xl font-bold">{trader.winning_calls}</div>
-                </div>
-                <div>
-                  <div className="text-sm font-medium text-muted-foreground">Average ROI</div>
-                  <div className={`text-2xl font-bold ${trader.average_roi >= 0 ? "text-green-500" : "text-red-500"}`}>
-                    {(trader.average_roi * 100).toFixed(1)}%
-                  </div>
-                </div>
-                <div>
-                  <div className="text-sm font-medium text-muted-foreground">Micro Cap ROI</div>
-                  <div className={`text-2xl font-bold ${trader.micro_cap_roi >= 0 ? "text-green-500" : "text-red-500"}`}>
-                    {(trader.micro_cap_roi * 100).toFixed(1)}%
-                  </div>
-                </div>
-                <div>
-                  <div className="text-sm font-medium text-muted-foreground">Small Cap ROI</div>
-                  <div className={`text-2xl font-bold ${trader.small_cap_roi >= 0 ? "text-green-500" : "text-red-500"}`}>
-                    {(trader.small_cap_roi * 100).toFixed(1)}%
-                  </div>
-                </div>
-                <div>
-                  <div className="text-sm font-medium text-muted-foreground">Mid Cap ROI</div>
-                  <div className={`text-2xl font-bold ${trader.mid_cap_roi >= 0 ? "text-green-500" : "text-red-500"}`}>
-                    {(trader.mid_cap_roi * 100).toFixed(1)}%
-                  </div>
-                </div>
-                <div>
-                  <div className="text-sm font-medium text-muted-foreground">Large Cap ROI</div>
-                  <div className={`text-2xl font-bold ${trader.large_cap_roi >= 0 ? "text-green-500" : "text-red-500"}`}>
-                    {(trader.large_cap_roi * 100).toFixed(1)}%
-                  </div>
-                </div>
-                <div>
-                  <div className="text-sm font-medium text-muted-foreground">Mega Cap ROI</div>
-                  <div className={`text-2xl font-bold ${trader.mega_cap_roi >= 0 ? "text-green-500" : "text-red-500"}`}>
-                    {(trader.mega_cap_roi * 100).toFixed(1)}%
-                  </div>
-                </div>
-              </div>
-            </div>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight">Trade History</h2>
+            <p className="text-muted-foreground">Recent trading activity and performance</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">
+              Showing {startIndex + 1}-{Math.min(endIndex, totalTrades)} of {totalTrades} trades
+            </span>
           </div>
         </div>
-
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-2xl font-bold tracking-tight">Trade History</h2>
-              <p className="text-muted-foreground">Recent trading activity and performance</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">
-                Showing {startIndex + 1}-{Math.min(endIndex, totalTrades)} of {totalTrades} trades
-              </span>
-            </div>
-          </div>
-          <TraderTrades 
-            trades={paginatedTrades} 
-            currentPage={page}
-            totalPages={totalPages}
-            totalTrades={totalTrades}
-          />
-        </div>
+        <TraderTrades 
+          trades={paginatedTrades} 
+          currentPage={page}
+          totalPages={totalPages}
+          totalTrades={totalTrades}
+          traderName={traderId}
+        />
       </div>
     </div>
   )

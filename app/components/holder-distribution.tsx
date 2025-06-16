@@ -71,7 +71,7 @@ export function HolderDistribution({ tokenAddress }: HolderDistributionProps) {
         }, 30000) // 30 second timeout
 
         const response = await fetch(
-          `/api/token-holders?address=${encodeURIComponent(tokenAddress)}&t=${Date.now()}`,
+          `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/token-holders?address=${encodeURIComponent(tokenAddress)}&t=${Date.now()}`,
           { 
             signal,
             headers: {

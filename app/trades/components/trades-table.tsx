@@ -65,7 +65,7 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
     setErrorStates(prev => ({ ...prev, [trade.ca]: false }))
     
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/token-info?address=${encodeURIComponent(trade.ca)}`)
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/token-info?address=${encodeURIComponent(trade.ca)}`)
       if (!response.ok) {
         if (response.status === 404) {
           setErrorStates(prev => ({ ...prev, [trade.ca]: true }))

@@ -20,7 +20,6 @@ export interface TraderStats {
 }
 
 export interface Trade {
-  partition_key: string
   ca: string
   caller: string
   date_called: string
@@ -28,16 +27,55 @@ export interface Trade {
   low_time: string
   initial_mc: number
   current_mc: number
+  high_mc: number
+  low_mc: number
   high_price: number
   low_price: number
-  roi: number
-  roi_at_high: number
-  roi_at_low: number
-  profit_at_high: number
-  profit_at_low: number
-  profit: number
-  is_winner: boolean
-  multiples_hit: number[]
+  price_change_24h: number
+  volume_24h: number
+  liquidity: number
+  holders: number
+  market_cap_rank: number
+  market_cap_change_24h: number
+  market_cap_change_percentage_24h: number
+  market_cap_dominance: number
+  fully_diluted_valuation: number
+  total_volume: number
+  high_24h: number
+  low_24h: number
+  price_change_percentage_24h: number
+  price_change_percentage_7d: number
+  price_change_percentage_14d: number
+  price_change_percentage_30d: number
+  price_change_percentage_60d: number
+  price_change_percentage_200d: number
+  price_change_percentage_1y: number
+  market_cap_change_24h_in_currency: number
+  market_cap_change_percentage_24h_in_currency: number
+  total_supply: number
+  max_supply: number
+  circulating_supply: number
+  last_updated: string
+  sparkline_in_7d: {
+    price: number[]
+  }
+  price_change_percentage_1h_in_currency: number
+  price_change_percentage_24h_in_currency: number
+  price_change_percentage_7d_in_currency: number
+  price_change_percentage_14d_in_currency: number
+  price_change_percentage_30d_in_currency: number
+  price_change_percentage_60d_in_currency: number
+  price_change_percentage_200d_in_currency: number
+  price_change_percentage_1y_in_currency: number
+  market_cap_change_24h_in_currency: number
+  market_cap_change_percentage_24h_in_currency: number
+  total_supply: number
+  max_supply: number
+  circulating_supply: number
+  last_updated: string
+  sparkline_in_7d: {
+    price: number[]
+  }
 }
 
 export interface FilterOptions {
@@ -58,6 +96,40 @@ export interface TradeFilterOptions {
 
 // Mock data for fallback
 import { mockTraderStats, mockTrades } from "./mock-data"
+
+// Mock data for when database connection fails
+const MOCK_TRADES: Trade[] = [
+  {
+    ca: "mock_token_1",
+    caller: "Mock Trader 1",
+    date_called: new Date().toISOString(),
+    initial_mc: 1000000,
+    current_mc: 1500000,
+    high_mc: 2000000,
+    low_mc: 900000,
+    high_price: 0.002,
+    low_price: 0.0009,
+    high_time: new Date().toISOString(),
+    low_time: new Date().toISOString(),
+    total_supply: 1000000000,
+    circulating_supply: 500000000
+  },
+  {
+    ca: "mock_token_2",
+    caller: "Mock Trader 2",
+    date_called: new Date().toISOString(),
+    initial_mc: 5000000,
+    current_mc: 4000000,
+    high_mc: 6000000,
+    low_mc: 3500000,
+    high_price: 0.006,
+    low_price: 0.0035,
+    high_time: new Date().toISOString(),
+    low_time: new Date().toISOString(),
+    total_supply: 1000000000,
+    circulating_supply: 500000000
+  }
+]
 
 // Helper function to safely parse numeric values
 function safeParseFloat(value: any): number {
@@ -141,7 +213,6 @@ export function convertToTrade(item: DynamoDBItem): Trade {
   const isWinner = roiAtHigh > 0
 
   return {
-    partition_key: item.partition_key,
     ca: item.ca,
     caller: item.caller,
     date_called: item.date_called,
@@ -149,8 +220,55 @@ export function convertToTrade(item: DynamoDBItem): Trade {
     low_time: item.low_time,
     initial_mc: initialMc,
     current_mc: currentMc,
+    high_mc: highMc,
+    low_mc: lowMc,
     high_price: item.high_price,
     low_price: item.low_price,
+    price_change_24h: safeParseFloat(item.price_change_24h || 0),
+    volume_24h: safeParseFloat(item.volume_24h || 0),
+    liquidity: safeParseFloat(item.liquidity || 0),
+    holders: safeParseInt(item.holders || 0),
+    market_cap_rank: safeParseInt(item.market_cap_rank || 0),
+    market_cap_change_24h: safeParseFloat(item.market_cap_change_24h || 0),
+    market_cap_change_percentage_24h: safeParseFloat(item.market_cap_change_percentage_24h || 0),
+    market_cap_dominance: safeParseFloat(item.market_cap_dominance || 0),
+    fully_diluted_valuation: safeParseFloat(item.fully_diluted_valuation || 0),
+    total_volume: safeParseFloat(item.total_volume || 0),
+    high_24h: safeParseFloat(item.high_24h || 0),
+    low_24h: safeParseFloat(item.low_24h || 0),
+    price_change_percentage_24h: safeParseFloat(item.price_change_percentage_24h || 0),
+    price_change_percentage_7d: safeParseFloat(item.price_change_percentage_7d || 0),
+    price_change_percentage_14d: safeParseFloat(item.price_change_percentage_14d || 0),
+    price_change_percentage_30d: safeParseFloat(item.price_change_percentage_30d || 0),
+    price_change_percentage_60d: safeParseFloat(item.price_change_percentage_60d || 0),
+    price_change_percentage_200d: safeParseFloat(item.price_change_percentage_200d || 0),
+    price_change_percentage_1y: safeParseFloat(item.price_change_percentage_1y || 0),
+    market_cap_change_24h_in_currency: safeParseFloat(item.market_cap_change_24h_in_currency || 0),
+    market_cap_change_percentage_24h_in_currency: safeParseFloat(item.market_cap_change_percentage_24h_in_currency || 0),
+    total_supply: safeParseFloat(item.total_supply || 0),
+    max_supply: safeParseFloat(item.max_supply || 0),
+    circulating_supply: safeParseFloat(item.circulating_supply || 0),
+    last_updated: String(item.last_updated || ""),
+    sparkline_in_7d: {
+      price: Array.isArray(item.sparkline_in_7d) ? item.sparkline_in_7d.map(Number) : typeof item.sparkline_in_7d === 'string' ? JSON.parse(item.sparkline_in_7d).map(Number) : [],
+    },
+    price_change_percentage_1h_in_currency: safeParseFloat(item.price_change_percentage_1h_in_currency || 0),
+    price_change_percentage_24h_in_currency: safeParseFloat(item.price_change_percentage_24h_in_currency || 0),
+    price_change_percentage_7d_in_currency: safeParseFloat(item.price_change_percentage_7d_in_currency || 0),
+    price_change_percentage_14d_in_currency: safeParseFloat(item.price_change_percentage_14d_in_currency || 0),
+    price_change_percentage_30d_in_currency: safeParseFloat(item.price_change_percentage_30d_in_currency || 0),
+    price_change_percentage_60d_in_currency: safeParseFloat(item.price_change_percentage_60d_in_currency || 0),
+    price_change_percentage_200d_in_currency: safeParseFloat(item.price_change_percentage_200d_in_currency || 0),
+    price_change_percentage_1y_in_currency: safeParseFloat(item.price_change_percentage_1y_in_currency || 0),
+    market_cap_change_24h_in_currency: safeParseFloat(item.market_cap_change_24h_in_currency || 0),
+    market_cap_change_percentage_24h_in_currency: safeParseFloat(item.market_cap_change_percentage_24h_in_currency || 0),
+    total_supply: safeParseFloat(item.total_supply || 0),
+    max_supply: safeParseFloat(item.max_supply || 0),
+    circulating_supply: safeParseFloat(item.circulating_supply || 0),
+    last_updated: String(item.last_updated || ""),
+    sparkline_in_7d: {
+      price: Array.isArray(item.sparkline_in_7d) ? item.sparkline_in_7d.map(Number) : typeof item.sparkline_in_7d === 'string' ? JSON.parse(item.sparkline_in_7d).map(Number) : [],
+    },
     roi,
     roi_at_high: roiAtHigh,
     roi_at_low: roiAtLow,
@@ -158,11 +276,6 @@ export function convertToTrade(item: DynamoDBItem): Trade {
     profit_at_low: profitAtLow,
     profit,
     is_winner: isWinner,
-    multiples_hit: Array.isArray(item.multiples_hit) 
-      ? item.multiples_hit.map(Number)
-      : typeof item.multiples_hit === 'string'
-        ? JSON.parse(item.multiples_hit).map(Number)
-        : []
   }
 }
 
@@ -391,7 +504,7 @@ export async function getTraderStats(filters?: FilterOptions): Promise<TraderSta
     // Calculate stats for each trader
     const stats = Object.entries(tradesByTrader).map(([caller, trades]) => {
       const total_calls = trades.length
-      const winning_calls = trades.filter((trade) => trade.roi_at_high > 0).length
+      const winning_calls = trades.filter((trade) => trade.is_winner).length
       const win_rate = total_calls > 0 ? winning_calls / total_calls : 0
       const average_roi = total_calls > 0 ? trades.reduce((sum, trade) => sum + trade.roi_at_high, 0) / total_calls : 0
 
@@ -405,7 +518,7 @@ export async function getTraderStats(filters?: FilterOptions): Promise<TraderSta
       const calculateCapStats = (capTrades: Trade[]) => {
         if (capTrades.length === 0) return { roi: 0, winrate: 0 }
         const roi = capTrades.reduce((sum, trade) => sum + trade.roi_at_high, 0) / capTrades.length
-        const winrate = capTrades.filter(trade => trade.roi_at_high > 0).length / capTrades.length
+        const winrate = capTrades.filter(trade => trade.is_winner).length / capTrades.length
         return { roi, winrate }
       }
 
@@ -524,26 +637,28 @@ export async function deleteTrade(caller: string, ca: string, date_called: strin
 // Function to check if we're using mock data
 export async function isUsingMockData(): Promise<boolean> {
   try {
-    // Get the table name from environment variable or use default
-    const tableName = process.env.DYNAMODB_TRADER_STATISTICS || "CallerStatistics"
-
-    // Try to scan the table with a small limit
-    const items = await scanTable(tableName, {
-      limit: 1,
-    })
-
-    // If we got items and they don't match our mock data, we're using real data
-    if (items.length > 0) {
-      const firstTrader = convertToTraderStats(items[0])
-      // Check if this matches our first mock trader
-      return firstTrader.caller === mockTraderStats[0].caller
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/using-mock-data`)
+    if (!response.ok) {
+      throw new Error('Failed to check mock data status')
     }
-
-    // No items or error means we're using mock data
-    return true
+    const data = await response.json()
+    return data.usingMockData
   } catch (error) {
-    console.error("Error checking if using mock data:", error)
-    return true // Assume mock data on error
+    console.error('Error checking mock data status:', error)
+    return true // Default to mock data on error
+  }
+}
+
+export async function fetchAllTrades(): Promise<Trade[]> {
+  try {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/trades`)
+    if (!response.ok) {
+      throw new Error('Failed to fetch trades')
+    }
+    return await response.json()
+  } catch (error) {
+    console.error('Error fetching trades:', error)
+    return MOCK_TRADES
   }
 }
 

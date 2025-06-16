@@ -208,40 +208,168 @@ async function getJupiterTokenInfo(contractAddress: string): Promise<TokenInfo[]
   }
 }
 
-/**
- * Fetches token supply from Solana RPC API
- */
-export async function getTokenSupply(contractAddress: string): Promise<number> {
+// RPC endpoints
+const MAINNET_RPC = "https://api.mainnet-beta.solana.com"
+const QUICKNODE_RPC = process.env.QUICKNODE_RPC || "https://api.mainnet-beta.solana.com"
+
+// Cache configuration
+const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+const cache = new Map<string, { data: any; timestamp: number }>()
+
+// Rate limit configuration
+const RATE_LIMIT_DELAY = 1000 // 1 second delay between requests
+let lastRequestTime = 0
+
+// Helper function to enforce rate limiting
+async function enforceRateLimit() {
+  const now = Date.now()
+  const timeSinceLastRequest = now - lastRequestTime
+  if (timeSinceLastRequest < RATE_LIMIT_DELAY) {
+    await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_DELAY - timeSinceLastRequest))
+  }
+  lastRequestTime = Date.now()
+}
+
+// Function to make RPC request
+async function makeRpcRequest(method: string, params: any[], useMainnet = true) {
   try {
-    const url = "https://api.mainnet-beta.solana.com"
+    // Check cache first
+    const cacheKey = `${method}-${JSON.stringify(params)}-${useMainnet}`
+    const cachedData = cache.get(cacheKey)
+    if (cachedData && Date.now() - cachedData.timestamp < CACHE_TTL) {
+      console.log('Using cached data for:', method)
+      return cachedData.data
+    }
+
+    // Enforce rate limiting
+    await enforceRateLimit()
 
     const payload = {
       jsonrpc: "2.0",
       id: 1,
-      method: "getTokenSupply",
-      params: [contractAddress]
+      method,
+      params,
     }
 
-    const response = await fetch(url, {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 15000) // 15 second timeout
+
+    // Try mainnet first, fallback to QuickNode if it fails
+    const endpoint = useMainnet ? MAINNET_RPC : QUICKNODE_RPC
+    
+    const response = await fetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(payload),
+      signal: controller.signal
     })
 
+    clearTimeout(timeoutId)
+
     if (!response.ok) {
-      console.error(`Error fetching token supply: ${response.status}`)
-      return 0
+      // If mainnet fails, try QuickNode as fallback
+      if (useMainnet) {
+        console.log("Mainnet request failed, falling back to QuickNode...")
+        return makeRpcRequest(method, params, false)
+      }
+      throw new Error(`Failed to fetch data: ${response.status}`)
     }
 
     const data = await response.json()
-
-    if (data.result?.value?.uiAmountString) {
-      return parseFloat(data.result.value.uiAmountString)
+    if (data.error) {
+      // If mainnet returns error, try QuickNode as fallback
+      if (useMainnet) {
+        console.log("Mainnet returned error, falling back to QuickNode...")
+        return makeRpcRequest(method, params, false)
+      }
+      throw new Error(data.error.message || 'RPC error')
     }
 
-    return 0
+    // Cache successful response
+    cache.set(cacheKey, {
+      data: data.result,
+      timestamp: Date.now()
+    })
+
+    return data.result
+  } catch (error) {
+    // If mainnet request fails, try QuickNode as fallback
+    if (useMainnet) {
+      console.log("Mainnet request failed, falling back to QuickNode...")
+      return makeRpcRequest(method, params, false)
+    }
+    console.error("RPC request failed:", error)
+    throw error
+  }
+}
+
+/**
+ * Fetches token supply from Solana RPC API with fallbacks
+ */
+export async function getTokenSupply(contractAddress: string): Promise<number> {
+  try {
+    // Check cache first
+    const cacheKey = `supply-${contractAddress}`
+    const cachedData = cache.get(cacheKey)
+    if (cachedData && Date.now() - cachedData.timestamp < CACHE_TTL) {
+      console.log('Using cached supply data')
+      return cachedData.data
+    }
+
+    console.log('=== TOKEN SUPPLY DEBUG ===')
+    console.log(`Token Address: ${contractAddress}`)
+    
+    // First try DexScreener
+    console.log('\n1. Trying DexScreener...')
+    const dexScreenerResponse = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${contractAddress}`)
+    const dexData = await dexScreenerResponse.json()
+    
+    if (dexData.pairs && dexData.pairs.length > 0) {
+      const pair = dexData.pairs[0]
+      const supply = pair.marketInfo?.supply || pair.liquidity?.usd || pair.priceUsd
+      if (supply) {
+        console.log('\nFound supply from DexScreener:', supply)
+        const finalSupply = Number(supply)
+        cache.set(cacheKey, {
+          data: finalSupply,
+          timestamp: Date.now()
+        })
+        return finalSupply
+      }
+    }
+
+    // Fallback to Solana RPC
+    console.log('\n2. Trying Solana RPC...')
+    const result = await makeRpcRequest("getTokenSupply", [contractAddress])
+    const supply = result.value
+
+    if (!supply) {
+      throw new Error('Could not determine token supply')
+    }
+
+    let finalSupply = 0
+    if (supply.uiAmount !== undefined && supply.uiAmount !== null) {
+      finalSupply = supply.uiAmount
+    } else if (supply.uiAmountString) {
+      finalSupply = parseFloat(supply.uiAmountString)
+    } else if (supply.amount && supply.decimals !== undefined) {
+      const rawAmount = BigInt(supply.amount)
+      const decimals = supply.decimals
+      finalSupply = Number(rawAmount) / Math.pow(10, decimals)
+    }
+
+    if (finalSupply <= 0) {
+      throw new Error('Invalid token supply')
+    }
+
+    console.log('\nReturning supply:', finalSupply)
+    cache.set(cacheKey, {
+      data: finalSupply,
+      timestamp: Date.now()
+    })
+    return finalSupply
   } catch (error) {
     console.error(`Error fetching token supply: ${error}`)
     return 0

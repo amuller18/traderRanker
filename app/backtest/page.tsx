@@ -1,34 +1,22 @@
-import { fetchAllTradesFiltered } from "@/app/actions/trader-actions"
+import { fetchAllTrades } from "@/app/actions/trader-actions"
 import { isUsingMockData } from "@/lib/trader-data"
-import { DataSourceStatus } from "@/app/components/data-source-status"
 import { BacktestClientPage } from "./client-page"
+import type { Trade } from "@/lib/trader-data"
 
 export const dynamic = "force-dynamic"
 
 export default async function BacktestPage() {
-  let trades = []
-  let usingMockData = true
+  let trades: Trade[] = []
 
   try {
-    // Check if we're using mock data
-    usingMockData = await isUsingMockData()
-
-    // Fetch all trades for backtesting
-    trades = await fetchAllTradesFiltered({
-      roiRange: [-Infinity, Infinity],
-      marketCapRange: [0, 1e12],
-      dateRange: [new Date(0), new Date()],
-    })
-    console.log(`Loaded ${trades.length} trades for backtesting (using ${usingMockData ? "mock" : "real"} data)`)
+    trades = await fetchAllTrades()
   } catch (error) {
-    console.error("Error loading trades for backtesting:", error)
-    // Continue with empty array, the client component will handle it
+    console.error("Error fetching trades:", error)
+    // Continue with empty trades array
   }
 
   return (
-    <div className="container py-8">
-      <DataSourceStatus usingMockData={usingMockData} />
-
+    <div className="container mx-auto py-8">
       <div className="flex flex-col gap-2 mb-8">
         <h1 className="text-3xl font-bold tracking-tight">Strategy Backtesting</h1>
         <p className="text-muted-foreground">

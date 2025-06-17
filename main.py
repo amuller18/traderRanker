@@ -34,6 +34,11 @@ from typing import Any, Dict, List, Optional, Tuple
 import json
 import logging.handlers
 import sys
+from io import BytesIO
+import matplotlib.pyplot as plt
+from fastapi.responses import StreamingResponse
+import itertools
+from matplotlib.dates import DateFormatter
 
 import aiohttp
 import async_timeout
@@ -94,7 +99,74 @@ def is_valid_solana_address(address: str) -> bool:
         return len(base58.b58decode(address)) == 32
     except Exception:
         return False
+    
+def start_timestamp(req: SimulationRequest) -> int:
+    """Return the exact unix 'time_from' value used everywhere."""
+    if req.start_unix is not None:
+        return int(req.start_unix)
+    # floor to the nearest timeframe block so keys align
+    base = int((datetime.utcnow() - timedelta(days=req.days_back)).timestamp())
+    block = req.timeframe_minutes * 60
+    return base - (base % block)
 
+def _ledger_charts_png(sim_results: list[SimulationResult]) -> tuple[BytesIO, BytesIO]:
+    """
+    Build two charts:
+      • value of each token (one colour per token, dots at every 5-min bar)
+      • cumulative account value (single line)
+    Returns (per_token_png, cumulative_png)
+    """
+    if not sim_results:
+        raise ValueError("no simulations supplied")
+
+    # 1) collect ledgers into a dict[token]→DataFrame
+    token_frames = {}
+    for res in sim_results:
+        if res.ledger is None:
+            continue
+        rows = [pt.dict() if hasattr(pt, "dict") else pt.model_dump() for pt in res.ledger]
+        df = (pd.DataFrame(rows)
+              .assign(t=lambda d: pd.to_datetime(d["ts"], unit="s"))
+              .set_index("t"))
+        token_frames[res.token] = df
+
+    # 2) Align all ledgers on the same time grid (outer join + ffill)
+    all_times = sorted(set(itertools.chain.from_iterable(df.index for df in token_frames.values())))
+    aligned = {
+        tok: df.reindex(all_times).ffill()
+        for tok, df in token_frames.items()
+    }
+
+    # 3) Build the cumulative equity curve
+    cum_df = sum(df["value"] for df in aligned.values())
+
+    # 4) ─── plot token-by-token ─────────────────────────────────────────
+    per_png = BytesIO()
+    fig1, ax1 = plt.subplots(figsize=(10, 4))
+    for tok, df in aligned.items():
+        ax1.plot(df.index, df["value"], marker="o", markersize=2, label=tok)
+    ax1.set_title("Position value per token")
+    ax1.set_ylabel("USD")
+    ax1.xaxis.set_major_formatter(DateFormatter('%m-%d %H:%M'))
+    ax1.legend(loc="upper left", fontsize="small")
+    fig1.tight_layout()
+    fig1.savefig(per_png, format="png", dpi=120)
+    plt.close(fig1)
+    per_png.seek(0)
+
+    # 5) ─── plot cumulative ────────────────────────────────────────────
+    cum_png = BytesIO()
+    fig2, ax2 = plt.subplots(figsize=(10, 4))
+    ax2.plot(cum_df.index, cum_df.values, marker="o", markersize=2)
+    ax2.set_title("Cumulative account value")
+    ax2.set_ylabel("USD")
+    ax2.xaxis.set_major_formatter(DateFormatter('%m-%d %H:%M'))
+    fig2.tight_layout()
+    fig2.savefig(cum_png, format="png", dpi=120)
+    plt.close(fig2)
+    cum_png.seek(0)
+
+    return per_png, cum_png
 # ---------------------------------------------------------------------------
 # Numba-accelerated ladder back-test core
 # ---------------------------------------------------------------------------
@@ -502,6 +574,94 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 # Helper: parse "ratio:sell" list → two float lists
 # ---------------------------------------------------------------------------
+# ─── helper: align ledgers WITHOUT “infinite” forward-fill ────────────────
+def _aligned_ledgers(sim_results: list[SimulationResult]) -> dict[str, pd.DataFrame]:
+    """
+    Return {token: df} where df.index is datetime and df['value'] is USD equity.
+    Each df is time-clipped at its own last bar, so no horizontal tail.
+    """
+    frames = {}
+    for res in sim_results:
+        if res.ledger is None:
+            continue
+        rows = [pt.dict() if hasattr(pt, "dict") else pt.model_dump()
+                for pt in res.ledger]
+        df = (pd.DataFrame(rows)
+              .assign(t=lambda d: pd.to_datetime(d["ts"], unit="s"))
+              .set_index("t"))
+        frames[res.token] = df
+
+    # outer-join on all times, but later mask beyond each token’s last bar
+    all_times = sorted(set(itertools.chain.from_iterable(df.index for df in frames.values())))
+    aligned = {}
+    for tok, df in frames.items():
+        last = df.index[-1]
+        tmp = df.reindex(all_times).ffill()
+        tmp = tmp[tmp.index <= last]          # clip forward-fill tail
+        aligned[tok] = tmp
+    return aligned
+
+# ── place below _aligned_ledgers ─────────────────────────────────────────
+def _ledger_to_equity_df(res: SimulationResult) -> pd.DataFrame:
+    """
+    Return a DataFrame with
+      • index = datetime
+      • columns: ['value', 'realized', 'equity', 'sell_marker']
+    """
+    rows = [pt.dict() if hasattr(pt, "dict") else pt.model_dump()
+            for pt in res.ledger or []]
+
+    df = (pd.DataFrame(rows)
+            .assign(t=lambda d: pd.to_datetime(d["ts"], unit="s"))
+            .set_index("t"))
+
+    df["equity"] = df["value"] + df["realized"]
+
+    # mark bars where coins_held drops (TP or SL)
+    delta = df["coins_held"].diff().fillna(0)
+    df["sell_marker"] = np.where(delta < 0, df["equity"], np.nan)
+    return df
+
+# ─── build the two PNGs (per-token + cumulative) ──────────────────────────
+# ── replace _build_value_pngs with this version ──────────────────────────
+def _build_value_pngs(sim_results: list[SimulationResult]) -> tuple[BytesIO, BytesIO]:
+    # convert ledgers
+    token_dfs = {r.token: _ledger_to_equity_df(r) for r in sim_results if r.ledger}
+
+    # common time-axis (outer join)
+    all_times = sorted(set(itertools.chain.from_iterable(df.index for df in token_dfs.values())))
+    aligned = {tok: df.reindex(all_times).ffill() for tok, df in token_dfs.items()}
+
+    # ── per-token plot ───────────────────────────────────────────────────
+    per_png = BytesIO()
+    fig1, ax1 = plt.subplots(figsize=(10, 4))
+    for tok, df in aligned.items():
+        ax1.plot(df.index, df["equity"], label=tok, linewidth=1)
+        ax1.scatter(df.index, df["sell_marker"], marker="s", s=20, color="red")  # red “S”
+    ax1.set_title("Position equity per token (red S = sell)")
+    ax1.set_ylabel("USD")
+    ax1.xaxis.set_major_formatter(DateFormatter('%m-%d %H:%M'))
+    ax1.legend(fontsize="small")
+    fig1.tight_layout()
+    fig1.savefig(per_png, format="png", dpi=120)
+    plt.close(fig1)
+    per_png.seek(0)
+
+    # ── cumulative plot ──────────────────────────────────────────────────
+    cum_df = sum(df["equity"] for df in aligned.values())
+    cum_png = BytesIO()
+    fig2, ax2 = plt.subplots(figsize=(10, 4))
+    ax2.plot(cum_df.index, cum_df.values, linewidth=1)
+    ax2.set_title("Cumulative account equity")
+    ax2.set_ylabel("USD")
+    ax2.xaxis.set_major_formatter(DateFormatter('%m-%d %H:%M'))
+    fig2.tight_layout()
+    fig2.savefig(cum_png, format="png", dpi=120)
+    plt.close(fig2)
+    cum_png.seek(0)
+
+    return per_png, cum_png
+
 
 def _parse_ladder(raw: List[str]) -> Tuple[List[float], List[float]]:
     ratios, sells = [], []
@@ -563,8 +723,9 @@ def run_simulation_with_ledger(
     # ---------------------------------------------------------------------- #
     # loop over bars
     # ---------------------------------------------------------------------- #
-    for ts, row in df_ohlc.iterrows():
-        price = float(row["close"])
+    for _, row in df_ohlc.iterrows():
+        ts     = int(row["t"].timestamp())           # <-- real unix seconds
+        price  = float(row["close"])
 
         tp_hit = sl_hit = None
 
@@ -611,44 +772,57 @@ def run_simulation_with_ledger(
             break
 
     # Final point with the *live* Birdeye price if newer than last bar --------
-    last_bar_ts = ledger[-1].ts
-    now_ts      = int(pd.Timestamp.utcnow().timestamp())
 
-    if current_price and now_ts > last_bar_ts:
-        equity     = coins * current_price
-        unrealized = equity + realized - start_cash_usd
+    equity     = coins * current_price
+    unrealized = equity + realized - start_cash_usd
 
-        ledger.append(
-            PositionPoint(
-                ts         = now_ts,
-                value      = equity,
-                coins_held = coins,
-                realized   = realized,
-                unrealized = unrealized,
-            )
-        )
+    
+    realized_total = (
+        realized - start_cash_usd
+        if coins == 0
+        else realized - (entry_coins - coins) * entry_price
+    )
+
+    ledger_out = [
+        pt.dict() if hasattr(pt, "dict") else pt.model_dump()   # v1 / v2
+        for pt in ledger
+    ]
+
+    return {
+        "ledger":            ledger_out,
+        "realized_profit":   round(realized_total, 6),
+        "unrealized_profit": round(ledger[-1].unrealized, 6),
+        "coins_left":        round(coins, 6),
+        "tps_hit":           [tp_levels[i] for i in sorted(tp_fired)],
+        "sls_hit":           [sl_levels[i] for i in sorted(sl_fired)],
+    }
+
+def _price_chart_png(df_ohlc: pd.DataFrame) -> BytesIO:
+    """
+    Return a PNG line chart (with dot markers) of 5-minute CLOSE prices.
+    """
+    # df_ohlc already has a 't' column in datetime64[ns] after build_ohlc()
+    df = df_ohlc.copy().assign(t=lambda d: pd.to_datetime(d["t"]))
+
+    fig, ax = plt.subplots(figsize=(8, 3))
+    ax.plot(df["t"], df["close"], marker="o", markersize=3, linewidth=1)
+
+    ax.set_xlabel("Time (UTC)")
+    ax.set_ylabel("Close price")
+    ax.set_title("5-minute price chart")
+    fig.autofmt_xdate()          # nicer x-labels
+    fig.tight_layout()
+
+    buf = BytesIO()
+    fig.savefig(buf, format="png", dpi=120)
+    plt.close(fig)
+    buf.seek(0)
+    return buf
 
     # ---------------------------------------------------------------------- #
     # package for the API response
     # ---------------------------------------------------------------------- #
-    realized_total = realized - start_cash_usd if coins == 0 else realized - (
-        entry_coins - coins
-    ) * entry_price
 
-    try:                       # works on Pydantic v1.x
-        ledger_out = [pt.dict() if hasattr(pt, "dict") else pt for pt in ledger]
-    except AttributeError:     # fallback for Pydantic v2.x
-        ledger_out = [pt.model_dump() if hasattr(pt, "model_dump") else pt
-                    for pt in ledger]
-
-    return dict(
-        ledger=ledger_out,
-        realized_profit=round(realized_total, 6),
-        unrealized_profit=round(ledger[-1].unrealized, 6),
-        coins_left=round(coins, 6),
-        tps_hit=[tp_levels[i] for i in sorted(tp_fired)],
-        sls_hit=[sl_levels[i] for i in sorted(sl_fired)],
-    )
 
 # ---------------------------------------------------------------------------
 # Routes – only /api/simulate changed to support ladders & new engine
@@ -676,7 +850,75 @@ async def _cached_history(
     mint, items = res
     history_cache[key] = items
     return mint, items
+from fastapi.responses import StreamingResponse, Response
+from starlette.responses import JSONResponse
+from zipfile import ZipFile, ZIP_DEFLATED
 
+@app.post("/api/value_charts")
+async def value_charts(req: SimulationRequest):
+    """
+    Returns two PNGs zipped together:
+      value_per_token.png   – separate line for each token
+      cumulative_value.png  – sum of all tokens
+    """
+    sims = await simulate(req)                       # reuse existing logic
+    errors = [s.error for s in sims if s.error]
+    if errors:
+        return JSONResponse({"errors": errors}, status_code=400)
+
+    per_png, cum_png = _ledger_charts_png(sims)
+
+    # One neat ZIP so Swagger lets you download a single file
+    buf = BytesIO()
+    with ZipFile(buf, "w", ZIP_DEFLATED) as z:
+        z.writestr("value_per_token.png", per_png.getvalue())
+        z.writestr("cumulative_value.png", cum_png.getvalue())
+    buf.seek(0)
+    headers = {"Content-Disposition": "attachment; filename=value_charts.zip"}
+    return Response(content=buf.getvalue(),
+                    media_type="application/zip",
+                    headers=headers)
+
+@app.post("/api/price_chart", response_class=StreamingResponse)
+async def price_chart(req: SimulationRequest):
+    # 1) run simulate() just to validate inputs and (usually) fill the cache
+    await simulate(req)
+
+    mint     = req.tokens[0]
+    start_ts = start_timestamp(req)
+    tf       = req.timeframe_minutes
+
+    # 2) guarantee we have the OHLC source data
+    key = (mint, start_ts, tf)
+    if key not in history_cache:
+        async with aiohttp.ClientSession() as sess:
+            _, items = await _cached_history(sess, mint, start_ts, tf)
+    else:
+        items = history_cache[key]
+
+    if not items:
+        raise HTTPException(500, "no price history")
+
+    df_ohlc = build_ohlc(items, tf)
+    png     = _price_chart_png(df_ohlc)   # <- line+dots helper from previous reply
+    return StreamingResponse(png, media_type="image/png")
+
+@app.post("/api/value_chart/per_token", response_class=StreamingResponse)
+async def chart_per_token(req: SimulationRequest):
+    sims = await simulate(req)
+    if any(s.error for s in sims):
+        raise HTTPException(400, {"errors": [s.error for s in sims if s.error]})
+    per_png, _ = _build_value_pngs(sims)
+    return StreamingResponse(per_png, media_type="image/png")
+
+
+@app.post("/api/value_chart/cumulative", response_class=StreamingResponse)
+async def chart_cumulative(req: SimulationRequest):
+    sims = await simulate(req)
+    if any(s.error for s in sims):
+        raise HTTPException(400, {"errors": [s.error for s in sims if s.error]})
+    _, cum_png = _build_value_pngs(sims)
+    return StreamingResponse(cum_png, media_type="image/png")
 
 @app.post("/api/simulate", response_model=list[SimulationResult])
 async def simulate(req: SimulationRequest) -> list[SimulationResult]:

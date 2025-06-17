@@ -859,3 +859,429 @@ AttributeError: 'dict' object has no attribute 'unrealized'
 2025-06-16 14:06:32,060 - INFO - Built OHLC data with shape: (201, 6)
 2025-06-16 14:06:33,992 - INFO - Birdeye API response for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: Status=200, Response={"data":{"items":[{"unixTime":1750104300,"value":0.33666001336055335},{"unixTime":1750104360,"value":0.33666001336055335}]},"success":true}
 2025-06-16 14:06:33,993 - INFO - Current price for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: 0.33666001336055335
+2025-06-17 01:00:42,749 - INFO - ============================================================
+2025-06-17 01:00:42,749 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-06-17 01:00:42,750 - INFO - ============================================================
+2025-06-17 01:06:43,061 - INFO - Fetching price history for 68qjXgdWrgERGCzArxZXKHcLPK5eKEU5b7DdtarREKgb from 1749906403 to 1750143960
+2025-06-17 01:06:43,439 - ERROR - Failed to fetch price history for 68qjXgdWrgERGCzArxZXKHcLPK5eKEU5b7DdtarREKgb. Status: 429, Response: {"success":false,"message":"Too many requests"}
+2025-06-17 01:06:43,440 - ERROR - Error fetching price history for 68qjXgdWrgERGCzArxZXKHcLPK5eKEU5b7DdtarREKgb: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=68qjXgdWrgERGCzArxZXKHcLPK5eKEU5b7DdtarREKgb&address_type=token&type=1m&time_from=1749906403&time_to=1750143960'
+Traceback (most recent call last):
+  File "C:\Users\alexj\OneDrive\Desktop\traderRanker\main.py", line 239, in fetch_history_price
+    raise aiohttp.ClientResponseError(
+aiohttp.client_exceptions.ClientResponseError: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=68qjXgdWrgERGCzArxZXKHcLPK5eKEU5b7DdtarREKgb&address_type=token&type=1m&time_from=1749906403&time_to=1750143960'
+2025-06-17 01:06:43,540 - INFO - Birdeye API response for 68qjXgdWrgERGCzArxZXKHcLPK5eKEU5b7DdtarREKgb: Status=200, Response={"data":{"items":[]},"success":true}
+2025-06-17 01:06:43,540 - ERROR - No price data in response for 68qjXgdWrgERGCzArxZXKHcLPK5eKEU5b7DdtarREKgb. Full response: {'data': {'items': []}, 'success': True}
+2025-06-17 01:06:45,731 - ERROR - No price data in response for 68qjXgdWrgERGCzArxZXKHcLPK5eKEU5b7DdtarREKgb. Full response: {'data': {'items': []}, 'success': True}
+2025-06-17 01:07:05,392 - INFO - Fetching price history for 68qjXgdWrgERGCzArxZXKHcLPK5eKEU5b7DdtarREKgb from 1749906425 to 1750144020
+2025-06-17 01:07:05,696 - ERROR - Failed to fetch price history for 68qjXgdWrgERGCzArxZXKHcLPK5eKEU5b7DdtarREKgb. Status: 429, Response: {"success":false,"message":"Too many requests"}
+2025-06-17 01:07:05,697 - ERROR - Error fetching price history for 68qjXgdWrgERGCzArxZXKHcLPK5eKEU5b7DdtarREKgb: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=68qjXgdWrgERGCzArxZXKHcLPK5eKEU5b7DdtarREKgb&address_type=token&type=1m&time_from=1749906425&time_to=1750144020'
+Traceback (most recent call last):
+  File "C:\Users\alexj\OneDrive\Desktop\traderRanker\main.py", line 239, in fetch_history_price
+    raise aiohttp.ClientResponseError(
+aiohttp.client_exceptions.ClientResponseError: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=68qjXgdWrgERGCzArxZXKHcLPK5eKEU5b7DdtarREKgb&address_type=token&type=1m&time_from=1749906425&time_to=1750144020'
+2025-06-17 01:07:05,752 - INFO - Birdeye API response for 68qjXgdWrgERGCzArxZXKHcLPK5eKEU5b7DdtarREKgb: Status=200, Response={"data":{"items":[]},"success":true}
+2025-06-17 01:07:05,752 - ERROR - No price data in response for 68qjXgdWrgERGCzArxZXKHcLPK5eKEU5b7DdtarREKgb. Full response: {'data': {'items': []}, 'success': True}
+2025-06-17 01:07:07,996 - ERROR - No price data in response for 68qjXgdWrgERGCzArxZXKHcLPK5eKEU5b7DdtarREKgb. Full response: {'data': {'items': []}, 'success': True}
+2025-06-17 01:08:01,053 - INFO - Fetching price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr from 1749906481 to 1750144080
+2025-06-17 01:08:01,404 - INFO - Birdeye API response for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: Status=429, Response={"success":false,"message":"Too many requests"}
+2025-06-17 01:08:01,405 - WARNING - Rate limit hit for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr, waiting 2s before retry
+2025-06-17 01:08:01,845 - INFO - Successfully retrieved 1000 valid price points for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr
+2025-06-17 01:08:01,853 - INFO - Built OHLC data with shape: (201, 6)
+2025-06-17 01:08:03,730 - INFO - Birdeye API response for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: Status=200, Response={"data":{"items":[{"unixTime":1750144020,"value":0.3161163532262392},{"unixTime":1750144080,"value":0.3161163532262392}]},"success":true}
+2025-06-17 01:08:03,731 - INFO - Current price for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: 0.3161163532262392
+2025-06-17 01:08:03,736 - ERROR - simulation for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr failed
+Traceback (most recent call last):
+  File "C:\Users\alexj\OneDrive\Desktop\traderRanker\main.py", line 791, in simulate
+    out.append(SimulationResult(token=mint, **sim))
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: main.SimulationResult() argument after ** must be a mapping, not NoneType
+2025-06-17 01:08:35,052 - INFO - Fetching price history for FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo from 1749906515 to 1750144080
+2025-06-17 01:08:35,368 - ERROR - Failed to fetch price history for FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo. Status: 429, Response: {"success":false,"message":"Too many requests"}
+2025-06-17 01:08:35,369 - ERROR - Error fetching price history for FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo&address_type=token&type=1m&time_from=1749906515&time_to=1750144080'
+Traceback (most recent call last):
+  File "C:\Users\alexj\OneDrive\Desktop\traderRanker\main.py", line 239, in fetch_history_price
+    raise aiohttp.ClientResponseError(
+aiohttp.client_exceptions.ClientResponseError: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo&address_type=token&type=1m&time_from=1749906515&time_to=1750144080'
+2025-06-17 01:08:35,399 - INFO - Birdeye API response for FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo: Status=200, Response={"data":{"items":[]},"success":true}
+2025-06-17 01:08:35,399 - ERROR - No price data in response for FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo. Full response: {'data': {'items': []}, 'success': True}
+2025-06-17 01:08:37,661 - ERROR - No price data in response for FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo. Full response: {'data': {'items': []}, 'success': True}
+2025-06-17 01:09:13,019 - INFO - Fetching price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr from 1749906553 to 1750144140
+2025-06-17 01:09:13,335 - ERROR - Failed to fetch price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr. Status: 429, Response: {"success":false,"message":"Too many requests"}
+2025-06-17 01:09:13,336 - ERROR - Error fetching price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr&address_type=token&type=1m&time_from=1749906553&time_to=1750144140'
+Traceback (most recent call last):
+  File "C:\Users\alexj\OneDrive\Desktop\traderRanker\main.py", line 239, in fetch_history_price
+    raise aiohttp.ClientResponseError(
+aiohttp.client_exceptions.ClientResponseError: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr&address_type=token&type=1m&time_from=1749906553&time_to=1750144140'
+2025-06-17 01:09:13,395 - INFO - Birdeye API response for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: Status=200, Response={"data":{"items":[{"unixTime":1750144080,"value":0.31643307036041723},{"unixTime":1750144140,"value":0.31643307036041723}]},"success":true}
+2025-06-17 01:09:13,396 - INFO - Current price for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: 0.31643307036041723
+2025-06-17 01:09:16,179 - INFO - Successfully retrieved 1000 valid price points for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr
+2025-06-17 01:09:16,182 - INFO - Built OHLC data with shape: (200, 6)
+2025-06-17 01:09:16,187 - ERROR - simulation for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr failed
+Traceback (most recent call last):
+  File "C:\Users\alexj\OneDrive\Desktop\traderRanker\main.py", line 791, in simulate
+    out.append(SimulationResult(token=mint, **sim))
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: main.SimulationResult() argument after ** must be a mapping, not NoneType
+2025-06-17 01:11:53,029 - INFO - ============================================================
+2025-06-17 01:11:53,030 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-06-17 01:11:53,030 - INFO - ============================================================
+2025-06-17 01:11:57,762 - INFO - Fetching price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr from 1749906717 to 1750144260
+2025-06-17 01:11:58,100 - ERROR - Failed to fetch price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr. Status: 429, Response: {"success":false,"message":"Too many requests"}
+2025-06-17 01:11:58,101 - ERROR - Error fetching price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr&address_type=token&type=1m&time_from=1749906717&time_to=1750144260'
+Traceback (most recent call last):
+  File "C:\Users\alexj\OneDrive\Desktop\traderRanker\main.py", line 239, in fetch_history_price
+    raise aiohttp.ClientResponseError(
+aiohttp.client_exceptions.ClientResponseError: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr&address_type=token&type=1m&time_from=1749906717&time_to=1750144260'
+2025-06-17 01:11:58,156 - INFO - Birdeye API response for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: Status=200, Response={"data":{"items":[{"unixTime":1750144200,"value":0.31643307036041723},{"unixTime":1750144260,"value":0.31643307036041723}]},"success":true}
+2025-06-17 01:11:58,157 - INFO - Current price for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: 0.31643307036041723
+2025-06-17 01:12:00,904 - INFO - Successfully retrieved 1000 valid price points for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr
+2025-06-17 01:12:00,913 - INFO - Built OHLC data with shape: (201, 6)
+2025-06-17 01:12:00,926 - ERROR - simulation for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr failed
+Traceback (most recent call last):
+  File "C:\Users\alexj\OneDrive\Desktop\traderRanker\main.py", line 791, in simulate
+    out.append(SimulationResult(token=mint, **sim))
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: main.SimulationResult() argument after ** must be a mapping, not NoneType
+2025-06-17 01:12:37,060 - INFO - ============================================================
+2025-06-17 01:12:37,061 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-06-17 01:12:37,061 - INFO - ============================================================
+2025-06-17 01:12:44,618 - INFO - Fetching price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr from 1749906764 to 1750144320
+2025-06-17 01:12:45,185 - INFO - Birdeye API response for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: Status=429, Response={"success":false,"message":"Too many requests"}
+2025-06-17 01:12:45,186 - WARNING - Rate limit hit for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr, waiting 2s before retry
+2025-06-17 01:12:45,438 - INFO - Successfully retrieved 1000 valid price points for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr
+2025-06-17 01:12:45,444 - INFO - Built OHLC data with shape: (201, 6)
+2025-06-17 01:12:47,531 - INFO - Birdeye API response for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: Status=200, Response={"data":{"items":[{"unixTime":1750144260,"value":0.31643307036041723},{"unixTime":1750144320,"value":0.31643307036041723}]},"success":true}
+2025-06-17 01:12:47,532 - INFO - Current price for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: 0.31643307036041723
+2025-06-17 01:12:47,538 - ERROR - simulation for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr failed
+Traceback (most recent call last):
+  File "C:\Users\alexj\OneDrive\Desktop\traderRanker\main.py", line 791, in simulate
+    out.append(SimulationResult(token=mint, **sim))
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: main.SimulationResult() argument after ** must be a mapping, not NoneType
+2025-06-17 01:14:56,946 - INFO - ============================================================
+2025-06-17 01:14:56,947 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-06-17 01:14:56,947 - INFO - ============================================================
+2025-06-17 01:15:01,015 - INFO - Fetching price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr from 1749906901 to 1750144500
+2025-06-17 01:15:01,356 - ERROR - Failed to fetch price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr. Status: 429, Response: {"success":false,"message":"Too many requests"}
+2025-06-17 01:15:01,357 - ERROR - Error fetching price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr&address_type=token&type=1m&time_from=1749906901&time_to=1750144500'
+Traceback (most recent call last):
+  File "C:\Users\alexj\OneDrive\Desktop\traderRanker\main.py", line 239, in fetch_history_price
+    raise aiohttp.ClientResponseError(
+aiohttp.client_exceptions.ClientResponseError: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr&address_type=token&type=1m&time_from=1749906901&time_to=1750144500'
+2025-06-17 01:15:01,407 - INFO - Birdeye API response for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: Status=200, Response={"data":{"items":[{"unixTime":1750144440,"value":0.3158569914568882},{"unixTime":1750144500,"value":0.3158569914568882}]},"success":true}
+2025-06-17 01:15:01,408 - INFO - Current price for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: 0.3158569914568882
+2025-06-17 01:15:04,067 - INFO - Successfully retrieved 1000 valid price points for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr
+2025-06-17 01:15:04,081 - INFO - Built OHLC data with shape: (201, 6)
+2025-06-17 01:15:13,768 - INFO - Fetching price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr from 1749906913 to 1750144500
+2025-06-17 01:15:14,073 - ERROR - Failed to fetch price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr. Status: 429, Response: {"success":false,"message":"Too many requests"}
+2025-06-17 01:15:14,074 - ERROR - Error fetching price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr&address_type=token&type=1m&time_from=1749906913&time_to=1750144500'
+Traceback (most recent call last):
+  File "C:\Users\alexj\OneDrive\Desktop\traderRanker\main.py", line 239, in fetch_history_price
+    raise aiohttp.ClientResponseError(
+aiohttp.client_exceptions.ClientResponseError: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr&address_type=token&type=1m&time_from=1749906913&time_to=1750144500'
+2025-06-17 01:15:14,122 - INFO - Birdeye API response for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: Status=200, Response={"data":{"items":[{"unixTime":1750144440,"value":0.3158569914568882},{"unixTime":1750144500,"value":0.3158569914568882}]},"success":true}
+2025-06-17 01:15:14,123 - INFO - Current price for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: 0.3158569914568882
+2025-06-17 01:15:16,819 - INFO - Successfully retrieved 1000 valid price points for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr
+2025-06-17 01:15:16,824 - INFO - Built OHLC data with shape: (201, 6)
+2025-06-17 01:16:33,711 - INFO - ============================================================
+2025-06-17 01:16:33,711 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-06-17 01:16:33,712 - INFO - ============================================================
+2025-06-17 01:16:37,232 - INFO - Fetching price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr from 1749906997 to 1750144560
+2025-06-17 01:16:37,537 - ERROR - Failed to fetch price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr. Status: 429, Response: {"success":false,"message":"Too many requests"}
+2025-06-17 01:16:37,538 - ERROR - Error fetching price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr&address_type=token&type=1m&time_from=1749906997&time_to=1750144560'
+Traceback (most recent call last):
+  File "C:\Users\alexj\OneDrive\Desktop\traderRanker\main.py", line 239, in fetch_history_price
+    raise aiohttp.ClientResponseError(
+aiohttp.client_exceptions.ClientResponseError: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr&address_type=token&type=1m&time_from=1749906997&time_to=1750144560'
+2025-06-17 01:16:37,601 - INFO - Birdeye API response for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: Status=200, Response={"data":{"items":[{"unixTime":1750144500,"value":0.3158569914568882},{"unixTime":1750144560,"value":0.3158569914568882}]},"success":true}
+2025-06-17 01:16:37,602 - INFO - Current price for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: 0.3158569914568882
+2025-06-17 01:16:40,326 - INFO - Successfully retrieved 1000 valid price points for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr
+2025-06-17 01:16:40,332 - INFO - Built OHLC data with shape: (201, 6)
+2025-06-17 01:17:26,520 - INFO - Fetching price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr from 1749907046 to 1750144620
+2025-06-17 01:17:27,197 - INFO - Birdeye API response for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: Status=429, Response={"success":false,"message":"Too many requests"}
+2025-06-17 01:17:27,198 - WARNING - Rate limit hit for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr, waiting 2s before retry
+2025-06-17 01:17:27,391 - INFO - Successfully retrieved 1000 valid price points for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr
+2025-06-17 01:17:27,395 - INFO - Built OHLC data with shape: (201, 6)
+2025-06-17 01:17:29,548 - INFO - Birdeye API response for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: Status=200, Response={"data":{"items":[{"unixTime":1750144560,"value":0.3158569914568882},{"unixTime":1750144620,"value":0.3158569914568882}]},"success":true}
+2025-06-17 01:17:29,549 - INFO - Current price for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: 0.3158569914568882
+2025-06-17 01:20:13,108 - INFO - ============================================================
+2025-06-17 01:20:13,108 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-06-17 01:20:13,109 - INFO - ============================================================
+2025-06-17 01:20:16,329 - INFO - Fetching price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr from 1749907216 to 1750144800
+2025-06-17 01:20:16,665 - ERROR - Failed to fetch price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr. Status: 429, Response: {"success":false,"message":"Too many requests"}
+2025-06-17 01:20:16,666 - ERROR - Error fetching price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr&address_type=token&type=1m&time_from=1749907216&time_to=1750144800'
+Traceback (most recent call last):
+  File "C:\Users\alexj\OneDrive\Desktop\traderRanker\main.py", line 239, in fetch_history_price
+    raise aiohttp.ClientResponseError(
+aiohttp.client_exceptions.ClientResponseError: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr&address_type=token&type=1m&time_from=1749907216&time_to=1750144800'
+2025-06-17 01:20:16,771 - INFO - Birdeye API response for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: Status=200, Response={"data":{"items":[{"unixTime":1750144740,"value":0.31601572059788413},{"unixTime":1750144800,"value":0.31601572059788413}]},"success":true}
+2025-06-17 01:20:16,772 - INFO - Current price for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: 0.31601572059788413
+2025-06-17 01:20:19,413 - INFO - Successfully retrieved 1000 valid price points for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr
+2025-06-17 01:20:19,419 - INFO - Built OHLC data with shape: (201, 6)
+2025-06-17 01:20:48,407 - INFO - Fetching price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr from 1749907248 to 1750144800
+2025-06-17 01:20:48,726 - INFO - Birdeye API response for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: Status=429, Response={"success":false,"message":"Too many requests"}
+2025-06-17 01:20:48,727 - WARNING - Rate limit hit for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr, waiting 2s before retry
+2025-06-17 01:20:49,229 - INFO - Successfully retrieved 1000 valid price points for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr
+2025-06-17 01:20:49,234 - INFO - Built OHLC data with shape: (201, 6)
+2025-06-17 01:20:51,081 - INFO - Birdeye API response for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: Status=200, Response={"data":{"items":[{"unixTime":1750144740,"value":0.31601572059788413},{"unixTime":1750144800,"value":0.31601572059788413}]},"success":true}
+2025-06-17 01:20:51,082 - INFO - Current price for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: 0.31601572059788413
+2025-06-17 01:21:11,189 - INFO - Fetching price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr from 1749907271 to 1750144860
+2025-06-17 01:21:11,492 - INFO - Birdeye API response for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: Status=429, Response={"success":false,"message":"Too many requests"}
+2025-06-17 01:21:11,493 - WARNING - Rate limit hit for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr, waiting 2s before retry
+2025-06-17 01:21:11,954 - INFO - Successfully retrieved 1000 valid price points for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr
+2025-06-17 01:21:11,959 - INFO - Built OHLC data with shape: (201, 6)
+2025-06-17 01:21:13,833 - INFO - Birdeye API response for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: Status=200, Response={"data":{"items":[{"unixTime":1750144800,"value":0.31601572059788413},{"unixTime":1750144860,"value":0.31601572059788413}]},"success":true}
+2025-06-17 01:21:13,834 - INFO - Current price for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: 0.31601572059788413
+2025-06-17 01:22:15,876 - INFO - ============================================================
+2025-06-17 01:22:15,876 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-06-17 01:22:15,877 - INFO - ============================================================
+2025-06-17 01:22:18,489 - INFO - Fetching price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr from 1749907338 to 1750144920
+2025-06-17 01:22:18,820 - ERROR - Failed to fetch price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr. Status: 429, Response: {"success":false,"message":"Too many requests"}
+2025-06-17 01:22:18,821 - ERROR - Error fetching price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr&address_type=token&type=1m&time_from=1749907338&time_to=1750144920'
+Traceback (most recent call last):
+  File "C:\Users\alexj\OneDrive\Desktop\traderRanker\main.py", line 239, in fetch_history_price
+    raise aiohttp.ClientResponseError(
+aiohttp.client_exceptions.ClientResponseError: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr&address_type=token&type=1m&time_from=1749907338&time_to=1750144920'
+2025-06-17 01:22:18,881 - INFO - Birdeye API response for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: Status=200, Response={"data":{"items":[{"unixTime":1750144860,"value":0.31285151998782673},{"unixTime":1750144920,"value":0.31285151998782673}]},"success":true}
+2025-06-17 01:22:18,882 - INFO - Current price for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: 0.31285151998782673
+2025-06-17 01:22:21,638 - INFO - Successfully retrieved 1000 valid price points for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr
+2025-06-17 01:22:21,645 - INFO - Built OHLC data with shape: (201, 6)
+2025-06-17 01:22:33,465 - INFO - ============================================================
+2025-06-17 01:22:33,466 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-06-17 01:22:33,466 - INFO - ============================================================
+2025-06-17 01:22:39,178 - INFO - Fetching price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr from 1749907359 to 1750144920
+2025-06-17 01:22:39,506 - INFO - Birdeye API response for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: Status=429, Response={"success":false,"message":"Too many requests"}
+2025-06-17 01:22:39,507 - WARNING - Rate limit hit for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr, waiting 2s before retry
+2025-06-17 01:22:39,882 - INFO - Successfully retrieved 1000 valid price points for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr
+2025-06-17 01:22:39,889 - INFO - Built OHLC data with shape: (201, 6)
+2025-06-17 01:22:41,828 - INFO - Birdeye API response for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: Status=200, Response={"data":{"items":[{"unixTime":1750144860,"value":0.31285151998782673},{"unixTime":1750144920,"value":0.31285151998782673}]},"success":true}
+2025-06-17 01:22:41,829 - INFO - Current price for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: 0.31285151998782673
+2025-06-17 01:23:41,907 - INFO - ============================================================
+2025-06-17 01:23:41,907 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-06-17 01:23:41,908 - INFO - ============================================================
+2025-06-17 01:24:53,989 - INFO - ============================================================
+2025-06-17 01:24:53,990 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-06-17 01:24:53,990 - INFO - ============================================================
+2025-06-17 01:25:05,875 - INFO - ============================================================
+2025-06-17 01:25:05,876 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-06-17 01:25:05,876 - INFO - ============================================================
+2025-06-17 01:25:20,721 - INFO - Fetching price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr from 1749907520 to 1750145100
+2025-06-17 01:25:21,062 - ERROR - Failed to fetch price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr. Status: 429, Response: {"success":false,"message":"Too many requests"}
+2025-06-17 01:25:21,063 - ERROR - Error fetching price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr&address_type=token&type=1m&time_from=1749907520&time_to=1750145100'
+Traceback (most recent call last):
+  File "C:\Users\alexj\OneDrive\Desktop\traderRanker\main.py", line 239, in fetch_history_price
+    raise aiohttp.ClientResponseError(
+aiohttp.client_exceptions.ClientResponseError: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr&address_type=token&type=1m&time_from=1749907520&time_to=1750145100'
+2025-06-17 01:25:21,128 - INFO - Birdeye API response for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: Status=200, Response={"data":{"items":[{"unixTime":1750145040,"value":0.31541100097893393},{"unixTime":1750145100,"value":0.31541100097893393}]},"success":true}
+2025-06-17 01:25:21,129 - INFO - Current price for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: 0.31541100097893393
+2025-06-17 01:25:23,787 - INFO - Successfully retrieved 1000 valid price points for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr
+2025-06-17 01:25:23,797 - INFO - Built OHLC data with shape: (201, 6)
+2025-06-17 01:27:07,009 - INFO - ============================================================
+2025-06-17 01:27:07,010 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-06-17 01:27:07,010 - INFO - ============================================================
+2025-06-17 01:27:08,542 - INFO - ============================================================
+2025-06-17 01:27:08,542 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-06-17 01:27:08,543 - INFO - ============================================================
+2025-06-17 01:27:51,173 - INFO - Fetching price history for FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo from 1749907671 to 1750145220
+2025-06-17 01:27:51,664 - INFO - Birdeye API response for FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo: Status=200, Response={"data":{"items":[]},"success":true}
+2025-06-17 01:27:51,665 - ERROR - No price data in response for FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo. Full response: {'data': {'items': []}, 'success': True}
+2025-06-17 01:27:51,796 - ERROR - Failed to fetch price history for FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo. Status: 429, Response: {"success":false,"message":"Too many requests"}
+2025-06-17 01:27:51,797 - ERROR - Error fetching price history for FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo&address_type=token&type=1m&time_from=1749907671&time_to=1750145220'
+Traceback (most recent call last):
+  File "C:\Users\alexj\OneDrive\Desktop\traderRanker\main.py", line 247, in fetch_history_price
+    raise aiohttp.ClientResponseError(
+aiohttp.client_exceptions.ClientResponseError: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo&address_type=token&type=1m&time_from=1749907671&time_to=1750145220'
+2025-06-17 01:27:54,089 - ERROR - No price data in response for FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo. Full response: {'data': {'items': []}, 'success': True}
+2025-06-17 01:27:54,091 - INFO - Fetching price history for FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo from 0 to 1750145220
+2025-06-17 01:27:54,350 - ERROR - Failed to fetch price history for FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo. Status: 429, Response: {"success":false,"message":"Too many requests"}
+2025-06-17 01:27:54,351 - ERROR - Error fetching price history for FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo&address_type=token&type=1m&time_from=0&time_to=1750145220'
+Traceback (most recent call last):
+  File "C:\Users\alexj\OneDrive\Desktop\traderRanker\main.py", line 247, in fetch_history_price
+    raise aiohttp.ClientResponseError(
+aiohttp.client_exceptions.ClientResponseError: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo&address_type=token&type=1m&time_from=0&time_to=1750145220'
+2025-06-17 01:27:56,632 - ERROR - No price data in response for FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo. Full response: {'data': {'items': []}, 'success': True}
+2025-06-17 01:28:20,907 - INFO - Fetching price history for FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo from 1749907700 to 1750145280
+2025-06-17 01:28:21,288 - INFO - Birdeye API response for FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo: Status=429, Response={"success":false,"message":"Too many requests"}
+2025-06-17 01:28:21,289 - WARNING - Rate limit hit for FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo, waiting 2s before retry
+2025-06-17 01:28:21,290 - ERROR - No price data in response for FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo. Full response: {'data': {'items': []}, 'success': True}
+2025-06-17 01:28:23,295 - ERROR - Error fetching current price for FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo: Session is closed
+Traceback (most recent call last):
+  File "C:\Users\alexj\OneDrive\Desktop\traderRanker\main.py", line 318, in fetch_current_price
+    async with session.get(url, params=params, headers=headers) as r:
+  File "C:\Users\alexj\AppData\Local\Programs\Python\Python311\Lib\site-packages\aiohttp\client.py", line 1425, in __aenter__
+    self._resp: _RetType = await self._coro
+                           ^^^^^^^^^^^^^^^^
+  File "C:\Users\alexj\AppData\Local\Programs\Python\Python311\Lib\site-packages\aiohttp\client.py", line 512, in _request
+    raise RuntimeError("Session is closed")
+RuntimeError: Session is closed
+2025-06-17 01:28:27,304 - ERROR - Error fetching current price for FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo: Session is closed
+Traceback (most recent call last):
+  File "C:\Users\alexj\OneDrive\Desktop\traderRanker\main.py", line 318, in fetch_current_price
+    async with session.get(url, params=params, headers=headers) as r:
+  File "C:\Users\alexj\AppData\Local\Programs\Python\Python311\Lib\site-packages\aiohttp\client.py", line 1425, in __aenter__
+    self._resp: _RetType = await self._coro
+                           ^^^^^^^^^^^^^^^^
+  File "C:\Users\alexj\AppData\Local\Programs\Python\Python311\Lib\site-packages\aiohttp\client.py", line 512, in _request
+    raise RuntimeError("Session is closed")
+RuntimeError: Session is closed
+2025-06-17 01:28:35,787 - INFO - ============================================================
+2025-06-17 01:28:35,789 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-06-17 01:28:35,789 - INFO - ============================================================
+2025-06-17 01:28:46,223 - INFO - Fetching price history for FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo from 1749907726 to 1750145280
+2025-06-17 01:28:46,564 - ERROR - Failed to fetch price history for FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo. Status: 429, Response: {"success":false,"message":"Too many requests"}
+2025-06-17 01:28:46,565 - ERROR - Error fetching price history for FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo&address_type=token&type=1m&time_from=1749907726&time_to=1750145280'
+Traceback (most recent call last):
+  File "C:\Users\alexj\OneDrive\Desktop\traderRanker\main.py", line 247, in fetch_history_price
+    raise aiohttp.ClientResponseError(
+aiohttp.client_exceptions.ClientResponseError: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo&address_type=token&type=1m&time_from=1749907726&time_to=1750145280'
+2025-06-17 01:28:46,687 - INFO - Birdeye API response for FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo: Status=200, Response={"data":{"items":[]},"success":true}
+2025-06-17 01:28:46,688 - ERROR - No price data in response for FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo. Full response: {'data': {'items': []}, 'success': True}
+2025-06-17 01:28:48,870 - ERROR - No price data in response for FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo. Full response: {'data': {'items': []}, 'success': True}
+2025-06-17 01:28:48,871 - INFO - Fetching price history for FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo from 0 to 1750145280
+2025-06-17 01:28:49,163 - ERROR - Failed to fetch price history for FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo. Status: 429, Response: {"success":false,"message":"Too many requests"}
+2025-06-17 01:28:49,164 - ERROR - Error fetching price history for FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo&address_type=token&type=1m&time_from=0&time_to=1750145280'
+Traceback (most recent call last):
+  File "C:\Users\alexj\OneDrive\Desktop\traderRanker\main.py", line 247, in fetch_history_price
+    raise aiohttp.ClientResponseError(
+aiohttp.client_exceptions.ClientResponseError: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo&address_type=token&type=1m&time_from=0&time_to=1750145280'
+2025-06-17 01:28:51,435 - ERROR - No price data in response for FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo. Full response: {'data': {'items': []}, 'success': True}
+2025-06-17 01:29:00,240 - INFO - Fetching price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr from 1749907740 to 1750145340
+2025-06-17 01:29:00,506 - INFO - Birdeye API response for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: Status=429, Response={"success":false,"message":"Too many requests"}
+2025-06-17 01:29:00,507 - WARNING - Rate limit hit for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr, waiting 2s before retry
+2025-06-17 01:29:01,087 - INFO - Successfully retrieved 1000 valid price points for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr
+2025-06-17 01:29:01,093 - INFO - Built OHLC data with shape: (201, 6)
+2025-06-17 01:29:03,249 - INFO - Birdeye API response for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: Status=200, Response={"data":{"items":[{"unixTime":1750145280,"value":0.31402749451341155},{"unixTime":1750145340,"value":0.31402749451341155}]},"success":true}
+2025-06-17 01:29:03,250 - INFO - Current price for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: 0.31402749451341155
+2025-06-17 01:29:03,268 - INFO - Fetching price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr from 0 to 1750145340
+2025-06-17 01:29:03,558 - ERROR - Failed to fetch price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr. Status: 429, Response: {"success":false,"message":"Too many requests"}
+2025-06-17 01:29:03,559 - ERROR - Error fetching price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr&address_type=token&type=1m&time_from=0&time_to=1750145340'
+Traceback (most recent call last):
+  File "C:\Users\alexj\OneDrive\Desktop\traderRanker\main.py", line 247, in fetch_history_price
+    raise aiohttp.ClientResponseError(
+aiohttp.client_exceptions.ClientResponseError: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr&address_type=token&type=1m&time_from=0&time_to=1750145340'
+2025-06-17 01:29:06,683 - INFO - Successfully retrieved 1000 valid price points for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr
+2025-06-17 01:29:06,689 - INFO - Built OHLC data with shape: (201, 6)
+2025-06-17 01:31:52,735 - INFO - ============================================================
+2025-06-17 01:31:52,735 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-06-17 01:31:52,736 - INFO - ============================================================
+2025-06-17 01:32:38,387 - INFO - ============================================================
+2025-06-17 01:32:38,387 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-06-17 01:32:38,388 - INFO - ============================================================
+2025-06-17 01:32:52,150 - INFO - Fetching price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr from 1749907972 to 1750145520
+2025-06-17 01:32:52,514 - ERROR - Failed to fetch price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr. Status: 429, Response: {"success":false,"message":"Too many requests"}
+2025-06-17 01:32:52,515 - ERROR - Error fetching price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr&address_type=token&type=1m&time_from=1749907972&time_to=1750145520'
+Traceback (most recent call last):
+  File "C:\Users\alexj\OneDrive\Desktop\traderRanker\main.py", line 308, in fetch_history_price
+    raise aiohttp.ClientResponseError(
+aiohttp.client_exceptions.ClientResponseError: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr&address_type=token&type=1m&time_from=1749907972&time_to=1750145520'
+2025-06-17 01:32:52,577 - INFO - Birdeye API response for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: Status=200, Response={"data":{"items":[{"unixTime":1750145460,"value":0.3134857177907284},{"unixTime":1750145520,"value":0.3134857177907284}]},"success":true}
+2025-06-17 01:32:52,578 - INFO - Current price for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: 0.3134857177907284
+2025-06-17 01:32:55,317 - INFO - Successfully retrieved 1000 valid price points for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr
+2025-06-17 01:32:55,323 - INFO - Built OHLC data with shape: (201, 6)
+2025-06-17 01:35:22,503 - INFO - ============================================================
+2025-06-17 01:35:22,503 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-06-17 01:35:22,503 - INFO - ============================================================
+2025-06-17 01:35:51,615 - INFO - ============================================================
+2025-06-17 01:35:51,615 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-06-17 01:35:51,616 - INFO - ============================================================
+2025-06-17 01:36:06,365 - INFO - Fetching price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr from 1749908166 to 1750145760
+2025-06-17 01:36:06,713 - INFO - Birdeye API response for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: Status=429, Response={"success":false,"message":"Too many requests"}
+2025-06-17 01:36:06,714 - WARNING - Rate limit hit for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr, waiting 2s before retry
+2025-06-17 01:36:07,190 - INFO - Successfully retrieved 1000 valid price points for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr
+2025-06-17 01:36:07,200 - INFO - Built OHLC data with shape: (201, 6)
+2025-06-17 01:36:09,063 - INFO - Birdeye API response for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: Status=200, Response={"data":{"items":[{"unixTime":1750145700,"value":0.3134857177907284},{"unixTime":1750145760,"value":0.3134857177907284}]},"success":true}
+2025-06-17 01:36:09,064 - INFO - Current price for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: 0.3134857177907284
+2025-06-17 01:39:01,849 - INFO - Fetching price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr from 1749908341 to 1750145940
+2025-06-17 01:39:02,191 - INFO - Birdeye API response for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: Status=429, Response={"success":false,"message":"Too many requests"}
+2025-06-17 01:39:02,192 - WARNING - Rate limit hit for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr, waiting 2s before retry
+2025-06-17 01:39:02,700 - INFO - Successfully retrieved 1000 valid price points for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr
+2025-06-17 01:39:02,704 - INFO - Built OHLC data with shape: (68, 6)
+2025-06-17 01:39:04,502 - INFO - Birdeye API response for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: Status=200, Response={"data":{"items":[{"unixTime":1750145880,"value":0.3159541682572591},{"unixTime":1750145940,"value":0.3159541682572591}]},"success":true}
+2025-06-17 01:39:04,503 - INFO - Current price for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: 0.3159541682572591
+2025-06-17 01:40:31,265 - INFO - ============================================================
+2025-06-17 01:40:31,265 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-06-17 01:40:31,266 - INFO - ============================================================
+2025-06-17 01:40:33,065 - INFO - ============================================================
+2025-06-17 01:40:33,066 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-06-17 01:40:33,066 - INFO - ============================================================
+2025-06-17 01:40:35,921 - INFO - Fetching price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr from 1749908435 to 1750146000
+2025-06-17 01:40:36,238 - INFO - Birdeye API response for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: Status=429, Response={"success":false,"message":"Too many requests"}
+2025-06-17 01:40:36,239 - WARNING - Rate limit hit for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr, waiting 2s before retry
+2025-06-17 01:40:36,802 - INFO - Successfully retrieved 1000 valid price points for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr
+2025-06-17 01:40:36,808 - INFO - Built OHLC data with shape: (68, 6)
+2025-06-17 01:40:38,588 - INFO - Birdeye API response for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: Status=200, Response={"data":{"items":[{"unixTime":1750145940,"value":0.3159541682572591},{"unixTime":1750146000,"value":0.3159541682572591}]},"success":true}
+2025-06-17 01:40:38,589 - INFO - Current price for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: 0.3159541682572591
+2025-06-17 01:41:08,754 - INFO - Fetching price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr from 1749908468 to 1750146060
+2025-06-17 01:41:09,074 - INFO - Birdeye API response for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: Status=429, Response={"success":false,"message":"Too many requests"}
+2025-06-17 01:41:09,075 - WARNING - Rate limit hit for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr, waiting 2s before retry
+2025-06-17 01:41:09,544 - INFO - Successfully retrieved 1000 valid price points for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr
+2025-06-17 01:41:09,548 - INFO - Built OHLC data with shape: (68, 6)
+2025-06-17 01:41:11,379 - INFO - Birdeye API response for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: Status=200, Response={"data":{"items":[{"unixTime":1750146000,"value":0.3159541682572591},{"unixTime":1750146060,"value":0.3159541682572591}]},"success":true}
+2025-06-17 01:41:11,380 - INFO - Current price for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: 0.3159541682572591
+2025-06-17 01:41:33,662 - INFO - Fetching price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr from 1749908493 to 1750146060
+2025-06-17 01:41:33,971 - ERROR - Failed to fetch price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr. Status: 429, Response: {"success":false,"message":"Too many requests"}
+2025-06-17 01:41:33,972 - ERROR - Error fetching price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr&address_type=token&type=1m&time_from=1749908493&time_to=1750146060'
+Traceback (most recent call last):
+  File "C:\Users\alexj\OneDrive\Desktop\traderRanker\main.py", line 308, in fetch_history_price
+    raise aiohttp.ClientResponseError(
+aiohttp.client_exceptions.ClientResponseError: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr&address_type=token&type=1m&time_from=1749908493&time_to=1750146060'
+2025-06-17 01:41:34,057 - INFO - Birdeye API response for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: Status=200, Response={"data":{"items":[{"unixTime":1750146000,"value":0.3159541682572591},{"unixTime":1750146060,"value":0.3159541682572591}]},"success":true}
+2025-06-17 01:41:34,059 - INFO - Current price for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: 0.3159541682572591
+2025-06-17 01:41:36,711 - INFO - Successfully retrieved 1000 valid price points for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr
+2025-06-17 01:41:36,716 - INFO - Built OHLC data with shape: (68, 6)
+2025-06-17 01:43:33,752 - INFO - ============================================================
+2025-06-17 01:43:33,752 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-06-17 01:43:33,753 - INFO - ============================================================
+2025-06-17 01:43:53,452 - INFO - ============================================================
+2025-06-17 01:43:53,453 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-06-17 01:43:53,453 - INFO - ============================================================
+2025-06-17 01:43:56,223 - INFO - Fetching price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr from 1749908636 to 1750146180
+2025-06-17 01:43:56,631 - INFO - Birdeye API response for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: Status=200, Response={"data":{"items":[{"unixTime":1750146120,"value":0.3159541682572591},{"unixTime":1750146180,"value":0.3140884902539736}]},"success":true}
+2025-06-17 01:43:56,632 - INFO - Current price for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: 0.3140884902539736
+2025-06-17 01:43:56,771 - ERROR - Failed to fetch price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr. Status: 429, Response: {"success":false,"message":"Too many requests"}
+2025-06-17 01:43:56,772 - ERROR - Error fetching price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr&address_type=token&type=1m&time_from=1749908636&time_to=1750146180'
+Traceback (most recent call last):
+  File "C:\Users\alexj\OneDrive\Desktop\traderRanker\main.py", line 308, in fetch_history_price
+    raise aiohttp.ClientResponseError(
+aiohttp.client_exceptions.ClientResponseError: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr&address_type=token&type=1m&time_from=1749908636&time_to=1750146180'
+2025-06-17 01:43:59,586 - INFO - Successfully retrieved 1000 valid price points for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr
+2025-06-17 01:43:59,594 - INFO - Built OHLC data with shape: (68, 6)
+2025-06-17 01:45:01,005 - INFO - Fetching price history for FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo from 1749908701 to 1750146300
+2025-06-17 01:45:01,338 - ERROR - Failed to fetch price history for FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo. Status: 429, Response: {"success":false,"message":"Too many requests"}
+2025-06-17 01:45:01,339 - ERROR - Error fetching price history for FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo&address_type=token&type=1m&time_from=1749908701&time_to=1750146300'
+Traceback (most recent call last):
+  File "C:\Users\alexj\OneDrive\Desktop\traderRanker\main.py", line 308, in fetch_history_price
+    raise aiohttp.ClientResponseError(
+aiohttp.client_exceptions.ClientResponseError: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo&address_type=token&type=1m&time_from=1749908701&time_to=1750146300'
+2025-06-17 01:45:01,407 - INFO - Birdeye API response for FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo: Status=200, Response={"data":{"items":[]},"success":true}
+2025-06-17 01:45:01,408 - ERROR - No price data in response for FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo. Full response: {'data': {'items': []}, 'success': True}
+2025-06-17 01:45:03,630 - ERROR - No price data in response for FRhB8L7Y9Qq41qZXYLtC2nw8An1RJfLLxRF2x9RwLLMo. Full response: {'data': {'items': []}, 'success': True}
+2025-06-17 01:45:09,696 - INFO - Fetching price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr from 1749908709 to 1750146300
+2025-06-17 01:45:10,010 - ERROR - Failed to fetch price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr. Status: 429, Response: {"success":false,"message":"Too many requests"}
+2025-06-17 01:45:10,011 - ERROR - Error fetching price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr&address_type=token&type=1m&time_from=1749908709&time_to=1750146300'
+Traceback (most recent call last):
+  File "C:\Users\alexj\OneDrive\Desktop\traderRanker\main.py", line 308, in fetch_history_price
+    raise aiohttp.ClientResponseError(
+aiohttp.client_exceptions.ClientResponseError: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr&address_type=token&type=1m&time_from=1749908709&time_to=1750146300'
+2025-06-17 01:45:10,045 - INFO - Birdeye API response for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: Status=200, Response={"data":{"items":[{"unixTime":1750146240,"value":0.31545080703475753},{"unixTime":1750146300,"value":0.31545080703475753}]},"success":true}
+2025-06-17 01:45:10,046 - INFO - Current price for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: 0.31545080703475753
+2025-06-17 01:45:12,850 - INFO - Successfully retrieved 1000 valid price points for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr
+2025-06-17 01:45:12,855 - INFO - Built OHLC data with shape: (201, 6)
+2025-06-17 01:45:32,165 - INFO - Fetching price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr from 1749908732 to 1750146300
+2025-06-17 01:45:32,468 - ERROR - Failed to fetch price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr. Status: 429, Response: {"success":false,"message":"Too many requests"}
+2025-06-17 01:45:32,469 - ERROR - Error fetching price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr&address_type=token&type=1m&time_from=1749908732&time_to=1750146300'
+Traceback (most recent call last):
+  File "C:\Users\alexj\OneDrive\Desktop\traderRanker\main.py", line 308, in fetch_history_price
+    raise aiohttp.ClientResponseError(
+aiohttp.client_exceptions.ClientResponseError: 429, message='{"success":false,"message":"Too many requests"}', url='https://public-api.birdeye.so/defi/history_price?address=7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr&address_type=token&type=1m&time_from=1749908732&time_to=1750146300'
+2025-06-17 01:45:32,526 - INFO - Birdeye API response for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: Status=200, Response={"data":{"items":[{"unixTime":1750146240,"value":0.31545080703475753},{"unixTime":1750146300,"value":0.3154940343228206}]},"success":true}
+2025-06-17 01:45:32,527 - INFO - Current price for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: 0.3154940343228206
+2025-06-17 01:45:35,344 - INFO - Successfully retrieved 1000 valid price points for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr
+2025-06-17 01:45:35,349 - INFO - Built OHLC data with shape: (201, 6)
+2025-06-17 01:45:50,189 - INFO - Fetching price history for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr from 1749908750 to 1750146300
+2025-06-17 01:45:50,508 - INFO - Birdeye API response for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: Status=429, Response={"success":false,"message":"Too many requests"}
+2025-06-17 01:45:50,509 - WARNING - Rate limit hit for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr, waiting 2s before retry
+2025-06-17 01:45:51,081 - INFO - Successfully retrieved 1000 valid price points for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr
+2025-06-17 01:45:51,087 - INFO - Built OHLC data with shape: (201, 6)
+2025-06-17 01:45:52,890 - INFO - Birdeye API response for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: Status=200, Response={"data":{"items":[{"unixTime":1750146240,"value":0.31545080703475753},{"unixTime":1750146300,"value":0.3160954027597314}]},"success":true}
+2025-06-17 01:45:52,891 - INFO - Current price for 7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr: 0.3160954027597314

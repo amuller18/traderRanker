@@ -71,6 +71,7 @@ logger.info("=" * 60)
 # Constants / config
 # ---------------------------------------------------------------------------
 BIRDEYE_API_KEY = "0c96b594d358413d939d025b646d466c"
+COINGECKO_API_KEY = "CG-8jAASUaSyaz4VEsDjonVgjNr"
 print(BIRDEYE_API_KEY)
 HTTP_TIMEOUT = 10
 RETRIES = 3
@@ -291,7 +292,7 @@ async def fetch_history_price(
         "type": "1m",
         "time_from": start_unix,
         "time_to": end_ts,
-    }
+    }   
     headers = {
         "X-API-KEY": BIRDEYE_API_KEY,
         "x-chain": "solana",
@@ -574,7 +575,7 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 # Helper: parse "ratio:sell" list → two float lists
 # ---------------------------------------------------------------------------
-# ─── helper: align ledgers WITHOUT “infinite” forward-fill ────────────────
+# ─── helper: align ledgers WITHOUT "infinite" forward-fill ────────────────
 def _aligned_ledgers(sim_results: list[SimulationResult]) -> dict[str, pd.DataFrame]:
     """
     Return {token: df} where df.index is datetime and df['value'] is USD equity.
@@ -591,7 +592,7 @@ def _aligned_ledgers(sim_results: list[SimulationResult]) -> dict[str, pd.DataFr
               .set_index("t"))
         frames[res.token] = df
 
-    # outer-join on all times, but later mask beyond each token’s last bar
+    # outer-join on all times, but later mask beyond each token's last bar
     all_times = sorted(set(itertools.chain.from_iterable(df.index for df in frames.values())))
     aligned = {}
     for tok, df in frames.items():
@@ -634,29 +635,45 @@ def _build_value_pngs(sim_results: list[SimulationResult]) -> tuple[BytesIO, Byt
 
     # ── per-token plot ───────────────────────────────────────────────────
     per_png = BytesIO()
-    fig1, ax1 = plt.subplots(figsize=(10, 4))
+    fig1, ax1 = plt.subplots(figsize=(12, 6))
     for tok, df in aligned.items():
         ax1.plot(df.index, df["equity"], label=tok, linewidth=1)
-        ax1.scatter(df.index, df["sell_marker"], marker="s", s=20, color="red")  # red “S”
+        ax1.scatter(df.index, df["sell_marker"], marker="s", s=20, color="red")  # red "S"
     ax1.set_title("Position equity per token (red S = sell)")
     ax1.set_ylabel("USD")
-    ax1.xaxis.set_major_formatter(DateFormatter('%m-%d %H:%M'))
+    ax1.set_xlabel("Time")
+    
+    # Improve time formatting
+    if len(all_times) > 0:
+        ax1.xaxis.set_major_formatter(DateFormatter('%m-%d %H:%M'))
+        ax1.xaxis.set_major_locator(plt.MaxNLocator(8))  # Limit number of ticks
+        plt.setp(ax1.xaxis.get_majorticklabels(), rotation=45, ha='right')
+    
     ax1.legend(fontsize="small")
+    ax1.grid(True, alpha=0.3)
     fig1.tight_layout()
-    fig1.savefig(per_png, format="png", dpi=120)
+    fig1.savefig(per_png, format="png", dpi=120, bbox_inches='tight')
     plt.close(fig1)
     per_png.seek(0)
 
     # ── cumulative plot ──────────────────────────────────────────────────
     cum_df = sum(df["equity"] for df in aligned.values())
     cum_png = BytesIO()
-    fig2, ax2 = plt.subplots(figsize=(10, 4))
-    ax2.plot(cum_df.index, cum_df.values, linewidth=1)
+    fig2, ax2 = plt.subplots(figsize=(12, 6))
+    ax2.plot(cum_df.index, cum_df.values, linewidth=2, color='green')
     ax2.set_title("Cumulative account equity")
     ax2.set_ylabel("USD")
-    ax2.xaxis.set_major_formatter(DateFormatter('%m-%d %H:%M'))
+    ax2.set_xlabel("Time")
+    
+    # Improve time formatting
+    if len(all_times) > 0:
+        ax2.xaxis.set_major_formatter(DateFormatter('%m-%d %H:%M'))
+        ax2.xaxis.set_major_locator(plt.MaxNLocator(8))  # Limit number of ticks
+        plt.setp(ax2.xaxis.get_majorticklabels(), rotation=45, ha='right')
+    
+    ax2.grid(True, alpha=0.3)
     fig2.tight_layout()
-    fig2.savefig(cum_png, format="png", dpi=120)
+    fig2.savefig(cum_png, format="png", dpi=120, bbox_inches='tight')
     plt.close(fig2)
     cum_png.seek(0)
 
@@ -669,12 +686,16 @@ def _parse_ladder(raw: List[str]) -> Tuple[List[float], List[float]]:
         try:
             r, s = item.split(":")
             r, s = float(r), float(s)
+            # Allow 0:0 as a way to disable a level
+            if r == 0 and s == 0:
+                continue
+            # For non-zero values, validate as before
             if r <= 0 or s <= 0 or s > 1:
                 raise ValueError
             ratios.append(r)
             sells.append(s)
         except Exception:
-            raise HTTPException(status_code=400, detail=f"Invalid ladder value '{item}' (want 'ratio:sell')")
+            raise HTTPException(status_code=400, detail=f"Invalid ladder value '{item}' (want 'ratio:sell' or '0:0' to disable)")
     if sum(sells) > 1 + 1e-9:
         raise HTTPException(status_code=400, detail="Sum of sell fractions exceeds 1.0")
     return ratios, sells
@@ -699,7 +720,7 @@ def run_simulation_with_ledger(
         Ladder percentages in *return* terms   (e.g. 0.10 == +10 %).
     tp_sizes / sl_sizes
         Matching list of *fractions* of the starting position to close
-        (e.g. 0.25 means “sell 25 % of original coins”).
+        (e.g. 0.25 means "sell 25 % of original coins").
     """
     if df_ohlc.empty:
         raise ValueError("Empty OHLC dataframe")
@@ -837,7 +858,7 @@ async def _cached_history(
     tf: int,
 ) -> tuple[str, list[dict]] | None:
     """
-    Tiny in-memory cache so we don’t hammer Birdeye if the same request
+    Tiny in-memory cache so we don't hammer Birdeye if the same request
     is repeated during one server run.
     """
     key = (mint, start_ts, tf)
@@ -919,7 +940,10 @@ async def chart_cumulative(req: SimulationRequest):
         raise HTTPException(400, {"errors": [s.error for s in sims if s.error]})
     _, cum_png = _build_value_pngs(sims)
     return StreamingResponse(cum_png, media_type="image/png")
-
+@app.get("/ping")
+async def ping():
+    return {"status": "ok"}
+    
 @app.post("/api/simulate", response_model=list[SimulationResult])
 async def simulate(req: SimulationRequest) -> list[SimulationResult]:
     """
@@ -1015,6 +1039,101 @@ async def simulate(req: SimulationRequest) -> list[SimulationResult]:
 # ---------------------------------------------------------------------------
 
 # ... (place the unchanged endpoints / helper functions here)
+
+# ---------------------------------------------------------------------------
+# CoinGecko Bulk Price Endpoint
+# ---------------------------------------------------------------------------
+
+class BulkPriceRequest(BaseModel):
+    tokens: List[str]
+
+class TokenPriceResult(BaseModel):
+    token: str
+    price: float
+    market_cap: float
+    error: Optional[str] = None
+
+@app.post("/api/bulk-token-prices", response_model=List[TokenPriceResult])
+async def bulk_token_prices(req: BulkPriceRequest):
+    """
+    Fetch current prices for multiple tokens using CoinGecko API.
+    Uses the exact same API call as specified in the curl command.
+    """
+    if not req.tokens:
+        raise HTTPException(400, "No tokens provided")
+    
+    # CoinGecko API has a limit of 100 tokens per request
+    BATCH_SIZE = 100
+    results = []
+    
+    # Process tokens in batches
+    for i in range(0, len(req.tokens), BATCH_SIZE):
+        batch = req.tokens[i:i + BATCH_SIZE]
+        contract_addresses = ",".join(batch)
+        
+        try:
+            # Use the exact same API call as the curl command
+            url = f"https://api.coingecko.com/api/v3/simple/token_price/solana?contract_addresses={contract_addresses}&vs_currencies=usd"
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    url,
+                    headers={
+                        "accept": "application/json",
+                        "x-cg-demo-api-key": COINGECKO_API_KEY
+                    },
+                    timeout=aiohttp.ClientTimeout(total=HTTP_TIMEOUT)
+                ) as response:
+                    if not response.ok:
+                        logger.error(f"CoinGecko API error: {response.status}")
+                        # Add error results for this batch
+                        for token in batch:
+                            results.append(TokenPriceResult(
+                                token=token,
+                                price=0,
+                                market_cap=0,
+                                error=f"CoinGecko API error: {response.status}"
+                            ))
+                        continue
+                    
+                    price_data = await response.json()
+                    
+                    # Process each token in the batch
+                    for token in batch:
+                        if token in price_data and "usd" in price_data[token]:
+                            price = price_data[token]["usd"]
+                            # Use default supply of 1e9 for market cap calculation
+                            market_cap = price * 1e9
+                            
+                            results.append(TokenPriceResult(
+                                token=token,
+                                price=price,
+                                market_cap=market_cap
+                            ))
+                        else:
+                            results.append(TokenPriceResult(
+                                token=token,
+                                price=0,
+                                market_cap=0,
+                                error="Price not available"
+                            ))
+            
+            # Add delay between batches to respect rate limits
+            if i + BATCH_SIZE < len(req.tokens):
+                await asyncio.sleep(1)
+                
+        except Exception as e:
+            logger.error(f"Error processing batch {i}-{i + BATCH_SIZE}: {e}")
+            # Add error results for this batch
+            for token in batch:
+                results.append(TokenPriceResult(
+                    token=token,
+                    price=0,
+                    market_cap=0,
+                    error=f"Batch processing failed: {str(e)}"
+                ))
+    
+    return results
 
 # ---------------------------------------------------------------------------
 # Dev entry-point

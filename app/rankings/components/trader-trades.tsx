@@ -48,19 +48,23 @@ export function TraderTrades({ trades, currentPage, totalPages, totalTrades, tra
     setErrorStates(prev => ({ ...prev, [trade.ca]: false }))
     
     try {
+      // Use the new CoinGecko bulk price endpoint
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/token-info?address=${encodeURIComponent(trade.ca)}`,
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/bulk-token-prices`,
         {
+          method: 'POST',
           headers: {
+            'Content-Type': 'application/json',
             'Cache-Control': 'no-cache',
             'Pragma': 'no-cache'
-          }
+          },
+          body: JSON.stringify({ tokens: [trade.ca] })
         }
       )
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
-        let errorMessage = errorData.error || `Failed to fetch token info: ${response.status}`
+        let errorMessage = errorData.error || `Failed to fetch token price: ${response.status}`
         
         if (response.status === 429) {
           errorMessage = "Rate limit exceeded. Please try again in a few moments."
@@ -71,37 +75,31 @@ export function TraderTrades({ trades, currentPage, totalPages, totalTrades, tra
         throw new Error(errorMessage)
       }
       
-      const tokenInfo: TokenInfo = await response.json()
+      const results = await response.json()
+      const tokenResult = results.find((r: any) => r.token === trade.ca)
       
-      if (tokenInfo.error) {
-        if (tokenInfo.error === "No trading pairs found") {
-          // For tokens with no trading pairs, use the initial MC as current MC
-          setTokenInfos(prev => ({
-            ...prev,
-            [trade.ca]: {
-              fdv: trade.initial_mc,
-              price: 0,
-              volume24h: 0,
-              liquidity: 0
-            }
-          }))
-          fetchedTokensRef.current.add(trade.ca)
-          return
+      if (!tokenResult) {
+        throw new Error("Token result not found")
+      }
+      
+      if (tokenResult.error) {
+        throw new Error(tokenResult.error)
+      }
+      
+      // Use the market cap from CoinGecko
+      setTokenInfos(prev => ({
+        ...prev,
+        [trade.ca]: {
+          fdv: tokenResult.market_cap,
+          price: tokenResult.price,
+          volume24h: 0,
+          liquidity: 0
         }
-        throw new Error(tokenInfo.error)
-      }
+      }))
+      fetchedTokensRef.current.add(trade.ca)
       
-      if (tokenInfo.marketInfo) {
-        setTokenInfos(prev => ({
-          ...prev,
-          [trade.ca]: tokenInfo.marketInfo
-        }))
-        fetchedTokensRef.current.add(trade.ca)
-      } else {
-        throw new Error("Invalid market data received")
-      }
     } catch (error) {
-      console.error(`Error fetching token info for ${trade.ca}:`, error)
+      console.error(`Error fetching token price for ${trade.ca}:`, error)
       setErrorStates(prev => ({ ...prev, [trade.ca]: true }))
     } finally {
       setLoadingStates(prev => ({ ...prev, [trade.ca]: false }))

@@ -47,7 +47,7 @@ interface Trade {
   circulating_supply?: number
 }
 import { Button } from "@/components/ui/button"
-import { Plus, Minus } from "lucide-react"
+import { Plus, Minus, Download } from "lucide-react"
 import { Input } from "@/components/ui/input"
 
 interface TakeProfitLevel {
@@ -80,20 +80,39 @@ interface BacktestResult {
   stopLossesHit: number[]
   positionSize: number
   isBankrupt: boolean
+  finalValue: number
+  entryPrice: number
+}
+
+// Updated interfaces to match the new FastAPI response
+interface PositionPoint {
+  ts: number
+  value: number
+  coins_held: number
+  unrealized: number
+  realized: number
 }
 
 interface SimulationResult {
   token: string
-  entry_price: number
-  final_usd: number
-  roi_percent: number
-  tps_hit: number[]
-  sls_hit: number[]
+  ledger: PositionPoint[] | null
+  realized_profit: number | null
+  unrealized_profit: number | null
+  coins_left: number | null
+  tps_hit: number[] | null
+  sls_hit: number[] | null
   error?: string
 }
 
 interface BacktestClientPageProps {
   initialTrades: Trade[]
+}
+
+// Chart data interfaces
+interface ChartDataPoint {
+  timestamp: number
+  date: string
+  [key: string]: any // For dynamic token values
 }
 
 function formatLargeNumber(num: number): string {
@@ -130,6 +149,28 @@ function safeFormatDate(date: Date | string, fallback: string = "N/A"): string {
   }
 }
 
+function formatChartDate(timestamp: number): string {
+  const date = new Date(timestamp * 1000)
+  const now = new Date()
+  const isToday = date.toDateString() === now.toDateString()
+  
+  if (isToday) {
+    return date.toLocaleTimeString('en-US', { 
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    })
+  } else {
+    return date.toLocaleDateString('en-US', { 
+      month: 'short', 
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    })
+  }
+}
+
 export function BacktestClientPage({ initialTrades }: BacktestClientPageProps) {
   const [takeProfits, setTakeProfits] = useState<TakeProfitLevel[]>([{ percentage: 100, sellPercentage: 100 }])
   const [stopLosses, setStopLosses] = useState<StopLossLevel[]>([])
@@ -142,9 +183,12 @@ export function BacktestClientPage({ initialTrades }: BacktestClientPageProps) {
   const [isRunning, setIsRunning] = useState(false)
   const [backtestResults, setBacktestResults] = useState<BacktestResult[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [simulationErrors, setSimulationErrors] = useState<string[]>([])
   const [backtestDuration, setBacktestDuration] = useState<number | null>(null)
   const [apiStatus, setApiStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking')
   const [apiUrl] = useState(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000')
+  const [chartData, setChartData] = useState<ChartDataPoint[]>([])
+  const [cumulativeChartData, setCumulativeChartData] = useState<ChartDataPoint[]>([])
 
   const callers = useMemo(() => {
     const uniqueCallers = new Set(initialTrades.map(trade => trade.caller))
@@ -222,6 +266,125 @@ export function BacktestClientPage({ initialTrades }: BacktestClientPageProps) {
     return () => clearInterval(intervalId)
   }, [apiUrl])
 
+  // Helper function to convert take profit/stop loss levels to the format expected by the API
+  const convertLadderLevels = (levels: TakeProfitLevel[] | StopLossLevel[], isTakeProfit: boolean) => {
+    if (levels.length === 0) {
+      return []
+    }
+    
+    return levels.map(level => {
+      // For take profits: percentage is positive (e.g., 100% = 1.0)
+      // For stop losses: percentage is negative (e.g., -10% = 0.1)
+      const ratio = isTakeProfit ? level.percentage / 100 : Math.abs(level.percentage) / 100
+      const sellFraction = level.sellPercentage / 100
+      
+      // Allow 0:0 to disable a level
+      if (ratio === 0 && sellFraction === 0) {
+        return "0:0"
+      }
+      
+      return `${ratio.toFixed(4)}:${sellFraction.toFixed(4)}`
+    }).filter(level => level !== "0:0") // Remove disabled levels
+  }
+
+  // Function to generate chart data from simulation results
+  const generateChartData = (simulationResults: SimulationResult[]) => {
+    const validResults = simulationResults.filter(r => r.ledger && r.ledger.length > 0)
+    
+    if (validResults.length === 0) {
+      setChartData([])
+      setCumulativeChartData([])
+      return
+    }
+
+    // Collect all timestamps and find the time range
+    const allTimestamps = new Set<number>()
+    let earliestTime = Infinity
+    let latestTime = 0
+    
+    validResults.forEach(result => {
+      result.ledger!.forEach(point => {
+        allTimestamps.add(point.ts)
+        earliestTime = Math.min(earliestTime, point.ts)
+        latestTime = Math.max(latestTime, point.ts)
+      })
+    })
+
+    const sortedTimestamps = Array.from(allTimestamps).sort((a, b) => a - b)
+
+    // Generate individual token chart data
+    const individualChartData: ChartDataPoint[] = sortedTimestamps.map(ts => {
+      const dataPoint: ChartDataPoint = {
+        timestamp: ts,
+        date: formatChartDate(ts)
+      }
+
+      validResults.forEach(result => {
+        const ledgerPoint = result.ledger!.find(p => p.ts === ts)
+        if (ledgerPoint) {
+          const equity = ledgerPoint.value + ledgerPoint.realized
+          dataPoint[result.token] = equity
+        } else {
+          // If no data point for this timestamp, use the last available value
+          const lastPoint = result.ledger!.filter(p => p.ts <= ts).pop()
+          if (lastPoint) {
+            const equity = lastPoint.value + lastPoint.realized
+            dataPoint[result.token] = equity
+          }
+        }
+      })
+
+      return dataPoint
+    })
+
+    // Generate cumulative chart data
+    const cumulativeChartData: ChartDataPoint[] = sortedTimestamps.map(ts => {
+      const dataPoint: ChartDataPoint = {
+        timestamp: ts,
+        date: formatChartDate(ts),
+        cumulative: 0
+      }
+
+      let cumulativeValue = 0
+      validResults.forEach(result => {
+        const ledgerPoint = result.ledger!.find(p => p.ts === ts)
+        if (ledgerPoint) {
+          const equity = ledgerPoint.value + ledgerPoint.realized
+          cumulativeValue += equity
+        } else {
+          // If no data point for this timestamp, use the last available value
+          const lastPoint = result.ledger!.filter(p => p.ts <= ts).pop()
+          if (lastPoint) {
+            const equity = lastPoint.value + lastPoint.realized
+            cumulativeValue += equity
+          }
+        }
+      })
+
+      dataPoint.cumulative = cumulativeValue
+      return dataPoint
+    })
+
+    console.log('Chart time range:', {
+      earliest: new Date(earliestTime * 1000).toISOString(),
+      latest: new Date(latestTime * 1000).toISOString(),
+      dataPoints: individualChartData.length,
+      timeSpan: `${Math.round((latestTime - earliestTime) / 3600)} hours`
+    })
+
+    // Log sample data points for debugging
+    if (individualChartData.length > 0) {
+      console.log('Sample chart data:', {
+        first: individualChartData[0],
+        last: individualChartData[individualChartData.length - 1],
+        totalPoints: individualChartData.length
+      })
+    }
+
+    setChartData(individualChartData)
+    setCumulativeChartData(cumulativeChartData)
+  }
+
   const runBacktest = async () => {
     console.log('Starting backtest...')
     if (apiStatus !== 'connected') {
@@ -232,6 +395,10 @@ export function BacktestClientPage({ initialTrades }: BacktestClientPageProps) {
 
     setIsRunning(true)
     setError(null)
+    setSimulationErrors([])
+    setBacktestResults([])
+    setChartData([])
+    setCumulativeChartData([])
     const results: BacktestResult[] = []
     const startTime = Date.now()
 
@@ -245,6 +412,23 @@ export function BacktestClientPage({ initialTrades }: BacktestClientPageProps) {
         return
       }
 
+      // Calculate the earliest trade date to use as start time
+      const earliestTradeDate = new Date(Math.min(...filteredTrades.map(trade => new Date(trade.date_called).getTime())))
+      const startUnix = Math.floor(earliestTradeDate.getTime() / 1000)
+      
+      console.log('Trade date range:', {
+        earliest: earliestTradeDate.toISOString(),
+        latest: new Date().toISOString(),
+        startUnix
+      })
+
+      // Convert ladder levels to API format
+      const tpLevels = convertLadderLevels(takeProfits, true)
+      const slLevels = convertLadderLevels(stopLosses, false)
+
+      console.log('TP levels:', tpLevels)
+      console.log('SL levels:', slLevels)
+
       // Call FastAPI simulate endpoint with timeout and retries
       const maxRetries = 3
       let lastError: Error | null = null
@@ -253,21 +437,33 @@ export function BacktestClientPage({ initialTrades }: BacktestClientPageProps) {
         console.log(`Attempt ${attempt} of ${maxRetries}`)
         try {
           const controller = new AbortController()
-          const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 second timeout
+          const timeoutId = setTimeout(() => controller.abort(), 60000) // 60 second timeout
+
+          const requestBody = {
+            tokens,
+            amount_usd: initialCapital,
+            start_unix: startUnix,  // Use actual trade start time
+            tp: tpLevels,
+            sl: slLevels,
+            timeframe_minutes: 5,
+            days_back: 30  // Fallback for maximum range
+          }
 
           console.log('Sending request to:', `${apiUrl}/api/simulate`)
+          console.log('Request body:', JSON.stringify(requestBody, null, 2))
+          console.log('Time range:', {
+            from: earliestTradeDate.toISOString(),
+            to: new Date().toISOString(),
+            startUnix,
+            daysBack: Math.ceil((Date.now() - earliestTradeDate.getTime()) / (1000 * 60 * 60 * 24))
+          })
+
           const response = await fetch(`${apiUrl}/api/simulate`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-              tokens,
-              amount_usd: initialCapital,
-              take_profits: takeProfits,
-              stop_losses: stopLosses,
-              timeframe_minutes: 5
-            }),
+            body: JSON.stringify(requestBody),
             signal: controller.signal
           })
 
@@ -288,43 +484,46 @@ export function BacktestClientPage({ initialTrades }: BacktestClientPageProps) {
             throw new Error('Invalid response format from API')
           }
 
-          // Log each result to see what's happening
-          simulationResults.forEach((result, index) => {
-            console.log(`Result ${index + 1}:`, {
-              token: result.token,
-              hasError: !!result.error,
-              error: result.error,
-              hasEntryPrice: !!result.entry_price,
-              hasFinalUsd: !!result.final_usd,
-              hasRoi: !!result.roi_percent
-            })
-          })
-
           // Filter out failed simulations
           const validResults = simulationResults.filter(result => {
-            const isValid = !result.error && 
-                          result.entry_price !== undefined && 
-                          result.final_usd !== undefined && 
-                          result.roi_percent !== undefined
+            const isValid = !result.error && result.ledger && result.ledger.length > 0
             if (!isValid) {
               console.warn(`Invalid result for token ${result.token}:`, {
                 error: result.error,
-                entry_price: result.entry_price,
-                final_usd: result.final_usd,
-                roi_percent: result.roi_percent
+                hasLedger: !!result.ledger,
+                ledgerLength: result.ledger?.length || 0
               })
             }
             return isValid
           })
           console.log(`Valid results: ${validResults.length}/${simulationResults.length}`)
 
+          // Collect errors for display
+          const errors = simulationResults
+            .filter(r => r.error)
+            .map(r => `${r.token}: ${r.error}`)
+          setSimulationErrors(errors)
+
           if (validResults.length === 0) {
-            const errorDetails = simulationResults
-              .filter(r => r.error)
-              .map(r => `${r.token}: ${r.error}`)
-              .join('\n')
+            const errorDetails = errors.join('\n')
             throw new Error(`No valid simulation results returned. Errors:\n${errorDetails}`)
           }
+
+          // Log successful results
+          console.log(`Successfully processed ${validResults.length} tokens`)
+          validResults.forEach(result => {
+            console.log(`Token ${result.token}:`, {
+              ledgerEntries: result.ledger?.length || 0,
+              realizedProfit: result.realized_profit,
+              unrealizedProfit: result.unrealized_profit,
+              coinsLeft: result.coins_left,
+              tpsHit: result.tps_hit?.length || 0,
+              slsHit: result.sls_hit?.length || 0
+            })
+          })
+
+          // Generate chart data
+          generateChartData(simulationResults)
 
           // Process results
           let portfolioValue = initialCapital
@@ -334,8 +533,8 @@ export function BacktestClientPage({ initialTrades }: BacktestClientPageProps) {
             const trade = filteredTrades[i]
             const simResult = validResults.find((r: SimulationResult) => r.token === trade.ca)
 
-            if (!simResult) {
-              console.warn(`Skipping invalid trade: ${trade.ca} - No simulation result found`)
+            if (!simResult || !simResult.ledger) {
+              console.warn(`Skipping invalid trade: ${trade.ca} - No simulation result or ledger found`)
               continue
             }
 
@@ -351,23 +550,33 @@ export function BacktestClientPage({ initialTrades }: BacktestClientPageProps) {
                 profit: 0,
                 cumulativeProfit: 0,
                 trade,
-                exitPrice: simResult.entry_price || 0,
+                exitPrice: 0,
                 exitDate: safeFormatDate(entryDate),
                 roi: -100,
                 unrealizedGain: 0,
                 realizedGain: -portfolioValue,
                 remainingPosition: 0,
-                takeProfitsHit: [],
-                stopLossesHit: [],
+                takeProfitsHit: simResult.tps_hit || [],
+                stopLossesHit: simResult.sls_hit || [],
                 positionSize: 0,
-                isBankrupt: true
+                isBankrupt: true,
+                finalValue: 0,
+                entryPrice: 0
               })
               break
             }
 
-            // Calculate returns
-            const profit = (simResult.final_usd || 0) - positionSize
-            portfolioValue = portfolioValue - positionSize + (simResult.final_usd || 0)
+            // Get the last ledger entry for final values
+            const lastLedgerEntry = simResult.ledger[simResult.ledger.length - 1]
+            const firstLedgerEntry = simResult.ledger[0]
+            
+            // Calculate returns based on the ledger
+            const totalValue = lastLedgerEntry.value + lastLedgerEntry.realized
+            const profit = totalValue - positionSize
+            portfolioValue = portfolioValue - positionSize + totalValue
+
+            // Calculate entry price from first ledger entry
+            const entryPrice = firstLedgerEntry.value / firstLedgerEntry.coins_held
 
             // Check bankruptcy
             if (portfolioValue <= 0) {
@@ -381,18 +590,20 @@ export function BacktestClientPage({ initialTrades }: BacktestClientPageProps) {
               cumulativeProfit: portfolioValue,
               trade: {
                 ...trade,
-                current_mc: simResult.final_usd || 0
+                current_mc: totalValue
               },
-              exitPrice: simResult.entry_price || 0,
-              exitDate: safeFormatDate(entryDate),
-              roi: simResult.roi_percent || 0,
-              unrealizedGain: profit,
-              realizedGain: profit,
-              remainingPosition: 0,
+              exitPrice: lastLedgerEntry.value / (lastLedgerEntry.coins_held || 1), // Approximate exit price
+              exitDate: safeFormatDate(new Date(lastLedgerEntry.ts * 1000)),
+              roi: positionSize > 0 ? (profit / positionSize) * 100 : 0,
+              unrealizedGain: lastLedgerEntry.unrealized,
+              realizedGain: lastLedgerEntry.realized,
+              remainingPosition: lastLedgerEntry.coins_held || 0,
               takeProfitsHit: simResult.tps_hit || [],
               stopLossesHit: simResult.sls_hit || [],
               positionSize,
-              isBankrupt
+              isBankrupt,
+              finalValue: totalValue,
+              entryPrice
             })
           }
 
@@ -452,7 +663,7 @@ export function BacktestClientPage({ initialTrades }: BacktestClientPageProps) {
       winningTrades,
       isBankrupt: bankruptTrade !== -1,
       tradesUntilBankruptcy,
-      finalPortfolioValue
+      finalPortfolioValue: Math.max(0, finalPortfolioValue) // Ensure non-negative
     }
   }, [backtestResults, initialCapital])
 
@@ -466,12 +677,24 @@ export function BacktestClientPage({ initialTrades }: BacktestClientPageProps) {
     }
   }
 
+  const disableTakeProfit = (index: number) => {
+    const newTakeProfits = [...takeProfits]
+    newTakeProfits[index] = { percentage: 0, sellPercentage: 0 }
+    setTakeProfits(newTakeProfits)
+  }
+
   const addStopLoss = () => {
     setStopLosses([...stopLosses, { percentage: -10, sellPercentage: 100 }])
   }
 
   const removeStopLoss = (index: number) => {
     setStopLosses(stopLosses.filter((_, i) => i !== index))
+  }
+
+  const disableStopLoss = (index: number) => {
+    const newStopLosses = [...stopLosses]
+    newStopLosses[index] = { percentage: 0, sellPercentage: 0 }
+    setStopLosses(newStopLosses)
   }
 
   const updateTakeProfit = (index: number, field: keyof TakeProfitLevel, value: string) => {
@@ -509,6 +732,25 @@ export function BacktestClientPage({ initialTrades }: BacktestClientPageProps) {
         )}
       </div>
 
+      {/* Feature Description */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Ladder-Based Backtesting</CardTitle>
+          <CardDescription>
+            Advanced backtesting with dynamic take-profit and stop-loss ladders. Each level can specify both the profit/loss percentage and the fraction of the position to sell.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="text-sm text-muted-foreground space-y-2">
+            <p>• <strong>Take Profit Ladders:</strong> Set multiple profit targets with different sell percentages</p>
+            <p>• <strong>Stop Loss Ladders:</strong> Set multiple stop-loss levels with different sell percentages</p>
+            <p>• <strong>Position Ledgers:</strong> Track detailed position values over time with realized/unrealized PnL</p>
+            <p>• <strong>Value Charts:</strong> Visualize position values and cumulative account performance</p>
+            <p>• <strong>Real-time Data:</strong> Uses Birdeye API for accurate price data and current market conditions</p>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Strategy Settings */}
       <Card>
         <CardHeader>
@@ -524,17 +766,21 @@ export function BacktestClientPage({ initialTrades }: BacktestClientPageProps) {
                 Add Level
               </Button>
             </div>
+            <p className="text-sm text-muted-foreground">
+              Set multiple profit targets. Use "Disable" to turn off a level without removing it.
+            </p>
             <div className="grid gap-4">
               {takeProfits.map((tp, index) => (
-                <div key={index} className="flex items-center gap-4">
+                <div key={index} className={`flex items-center gap-4 p-3 border rounded-lg ${tp.percentage === 0 && tp.sellPercentage === 0 ? 'bg-gray-50 opacity-60' : ''}`}>
                   <div className="flex-1">
                     <Label>Take Profit (%)</Label>
                     <Input
                       type="number"
                       value={tp.percentage}
                       onChange={(e) => updateTakeProfit(index, "percentage", e.target.value)}
-                      min={10}
+                      min={0}
                       max={10000}
+                      disabled={tp.percentage === 0 && tp.sellPercentage === 0}
                     />
                   </div>
                   <div className="flex-1">
@@ -543,19 +789,38 @@ export function BacktestClientPage({ initialTrades }: BacktestClientPageProps) {
                       type="number"
                       value={tp.sellPercentage}
                       onChange={(e) => updateTakeProfit(index, "sellPercentage", e.target.value)}
-                      min={1}
+                      min={0}
                       max={100}
+                      disabled={tp.percentage === 0 && tp.sellPercentage === 0}
                     />
                   </div>
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={() => removeTakeProfit(index)} 
-                    className="mt-6"
-                    disabled={takeProfits.length === 1}
-                  >
-                    <Minus className="h-4 w-4" />
-                  </Button>
+                  <div className="flex gap-2 mt-6">
+                    {tp.percentage === 0 && tp.sellPercentage === 0 ? (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => updateTakeProfit(index, "percentage", "100")}
+                      >
+                        Enable
+                      </Button>
+                    ) : (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => disableTakeProfit(index)}
+                      >
+                        Disable
+                      </Button>
+                    )}
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => removeTakeProfit(index)} 
+                      disabled={takeProfits.length === 1}
+                    >
+                      <Minus className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -569,9 +834,12 @@ export function BacktestClientPage({ initialTrades }: BacktestClientPageProps) {
                 Add Level
               </Button>
             </div>
+            <p className="text-sm text-muted-foreground">
+              Set multiple stop-loss levels. Use "Disable" to turn off a level without removing it.
+            </p>
             <div className="grid gap-4">
               {stopLosses.map((sl, index) => (
-                <div key={index} className="flex items-center gap-4">
+                <div key={index} className={`flex items-center gap-4 p-3 border rounded-lg ${sl.percentage === 0 && sl.sellPercentage === 0 ? 'bg-gray-50 opacity-60' : ''}`}>
                   <div className="flex-1">
                     <Label>Stop Loss (%)</Label>
                     <Input
@@ -580,6 +848,7 @@ export function BacktestClientPage({ initialTrades }: BacktestClientPageProps) {
                       onChange={(e) => updateStopLoss(index, "percentage", e.target.value)}
                       min={-99}
                       max={0}
+                      disabled={sl.percentage === 0 && sl.sellPercentage === 0}
                     />
                   </div>
                   <div className="flex-1">
@@ -588,13 +857,33 @@ export function BacktestClientPage({ initialTrades }: BacktestClientPageProps) {
                       type="number"
                       value={sl.sellPercentage}
                       onChange={(e) => updateStopLoss(index, "sellPercentage", e.target.value)}
-                      min={1}
+                      min={0}
                       max={100}
+                      disabled={sl.percentage === 0 && sl.sellPercentage === 0}
                     />
                   </div>
-                  <Button variant="ghost" size="sm" onClick={() => removeStopLoss(index)} className="mt-6">
-                    <Minus className="h-4 w-4" />
-                  </Button>
+                  <div className="flex gap-2 mt-6">
+                    {sl.percentage === 0 && sl.sellPercentage === 0 ? (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => updateStopLoss(index, "percentage", "-10")}
+                      >
+                        Enable
+                      </Button>
+                    ) : (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => disableStopLoss(index)}
+                      >
+                        Disable
+                      </Button>
+                    )}
+                    <Button variant="ghost" size="sm" onClick={() => removeStopLoss(index)}>
+                      <Minus className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -729,10 +1018,30 @@ export function BacktestClientPage({ initialTrades }: BacktestClientPageProps) {
             </div>
           )}
 
+          {simulationErrors.length > 0 && (
+            <div className="p-4 text-sm bg-yellow-50 rounded-md">
+              <div className="font-medium text-yellow-800 mb-2">
+                Simulation Errors ({simulationErrors.length} tokens failed):
+              </div>
+              <div className="space-y-1">
+                {simulationErrors.map((error, index) => (
+                  <div key={index} className="text-yellow-700 font-mono text-xs">
+                    {error}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="flex justify-between items-center">
-            <p className="text-sm text-muted-foreground">
-              {filteredTrades.length} trades will be analyzed
-            </p>
+            <div className="text-sm text-muted-foreground">
+              <div>{filteredTrades.length} trades will be analyzed</div>
+              {filteredTrades.length > 0 && (
+                <div className="text-xs">
+                  Time range: {safeFormatDate(new Date(Math.min(...filteredTrades.map(trade => new Date(trade.date_called).getTime()))))} to {safeFormatDate(new Date())}
+                </div>
+              )}
+            </div>
             <Button 
               onClick={runBacktest} 
               disabled={isRunning || filteredTrades.length === 0}
@@ -744,6 +1053,154 @@ export function BacktestClientPage({ initialTrades }: BacktestClientPageProps) {
         </CardContent>
       </Card>
 
+      {/* Individual Position Charts */}
+      {chartData.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Individual Position Values</CardTitle>
+            <CardDescription>
+              Position equity for each token over time
+              {chartData.length > 0 && (
+                <span className="block text-xs text-muted-foreground mt-1">
+                  Time range: {formatChartDate(chartData[0].timestamp)} to {formatChartDate(chartData[chartData.length - 1].timestamp)}
+                </span>
+              )}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[400px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={chartData}>
+                  <defs>
+                    <linearGradient id="colorPortfolio" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#22c55e" stopOpacity={0.8}/>
+                      <stop offset="95%" stopColor="#22c55e" stopOpacity={0.1}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.1} />
+                  <XAxis 
+                    dataKey="date" 
+                    angle={-45}
+                    textAnchor="end"
+                    height={80}
+                    tick={{ fill: '#9CA3AF', fontSize: 12 }}
+                    stroke="#374151"
+                    interval="preserveStartEnd"
+                    minTickGap={50}
+                  />
+                  <YAxis 
+                    domain={['auto', 'auto']} 
+                    tickFormatter={(value) => `$${formatLargeNumber(value)}`}
+                    tick={{ fill: '#9CA3AF', fontSize: 12 }}
+                    stroke="#374151"
+                    width={80}
+                  />
+                  <Tooltip 
+                    formatter={(value: number) => [`$${formatLargeNumber(value)}`, 'Position Value']}
+                    contentStyle={{
+                      backgroundColor: '#1F2937',
+                      border: 'none',
+                      borderRadius: '8px',
+                      color: '#F3F4F6'
+                    }}
+                    labelStyle={{ color: '#9CA3AF' }}
+                  />
+                  <Legend 
+                    verticalAlign="top" 
+                    height={36}
+                    wrapperStyle={{ color: '#9CA3AF' }}
+                  />
+                  {Object.keys(chartData[0] || {}).filter(key => key !== 'timestamp' && key !== 'date').map((token, index) => (
+                    <Line
+                      key={token}
+                      type="monotone"
+                      dataKey={token}
+                      stroke={`hsl(${index * 137.5 % 360}, 70%, 50%)`}
+                      name={token.slice(0, 6) + '...' + token.slice(-4)}
+                      dot={false}
+                      strokeWidth={2}
+                    />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Cumulative Chart */}
+      {cumulativeChartData.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Cumulative Account Value</CardTitle>
+            <CardDescription>
+              Total portfolio value across all positions
+              {cumulativeChartData.length > 0 && (
+                <span className="block text-xs text-muted-foreground mt-1">
+                  Time range: {formatChartDate(cumulativeChartData[0].timestamp)} to {formatChartDate(cumulativeChartData[cumulativeChartData.length - 1].timestamp)}
+                </span>
+              )}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[400px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={cumulativeChartData}>
+                  <defs>
+                    <linearGradient id="colorCumulative" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.1}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.1} />
+                  <XAxis 
+                    dataKey="date" 
+                    angle={-45}
+                    textAnchor="end"
+                    height={80}
+                    tick={{ fill: '#9CA3AF', fontSize: 12 }}
+                    stroke="#374151"
+                    interval="preserveStartEnd"
+                    minTickGap={50}
+                  />
+                  <YAxis 
+                    domain={['auto', 'auto']} 
+                    tickFormatter={(value) => `$${formatLargeNumber(value)}`}
+                    tick={{ fill: '#9CA3AF', fontSize: 12 }}
+                    stroke="#374151"
+                    width={80}
+                  />
+                  <Tooltip 
+                    formatter={(value: number) => [`$${formatLargeNumber(value)}`, 'Cumulative Value']}
+                    contentStyle={{
+                      backgroundColor: '#1F2937',
+                      border: 'none',
+                      borderRadius: '8px',
+                      color: '#F3F4F6'
+                    }}
+                    labelStyle={{ color: '#9CA3AF' }}
+                  />
+                  <Legend 
+                    verticalAlign="top" 
+                    height={36}
+                    wrapperStyle={{ color: '#9CA3AF' }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="cumulative"
+                    stroke="#3b82f6"
+                    name="Cumulative Portfolio Value"
+                    dot={false}
+                    strokeWidth={3}
+                    fill="url(#colorCumulative)"
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Results Summary */}
       {summaryStats && (
         <Card>
@@ -752,6 +1209,18 @@ export function BacktestClientPage({ initialTrades }: BacktestClientPageProps) {
             <CardDescription>Performance metrics for the selected strategy</CardDescription>
           </CardHeader>
           <CardContent>
+            {/* Time Range Info */}
+            {chartData.length > 0 && (
+              <div className="mb-6 p-4 bg-muted rounded-lg">
+                <div className="text-sm font-medium text-muted-foreground mb-2">Simulation Time Range</div>
+                <div className="text-sm">
+                  <div>From: {formatChartDate(chartData[0].timestamp)}</div>
+                  <div>To: {formatChartDate(chartData[chartData.length - 1].timestamp)}</div>
+                  <div>Duration: {Math.round((chartData[chartData.length - 1].timestamp - chartData[0].timestamp) / 3600)} hours</div>
+                </div>
+              </div>
+            )}
+            
             <div className="grid gap-4 md:grid-cols-5">
               <div className="space-y-1">
                 <div className="text-sm font-medium text-muted-foreground">Total Profit</div>
@@ -788,89 +1257,6 @@ export function BacktestClientPage({ initialTrades }: BacktestClientPageProps) {
         </Card>
       )}
 
-      {/* Profit Chart */}
-      {backtestResults.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Portfolio Value Over Time</CardTitle>
-            <CardDescription>Portfolio value following the selected strategy</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="h-[400px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={backtestResults}>
-                  <defs>
-                    <linearGradient id="colorPortfolio" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#22c55e" stopOpacity={0.8}/>
-                      <stop offset="95%" stopColor="#22c55e" stopOpacity={0.1}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.1} />
-                  <XAxis 
-                    dataKey="date" 
-                    angle={-45}
-                    textAnchor="end"
-                    height={80}
-                    tick={{ fill: '#9CA3AF', fontSize: 12 }}
-                    stroke="#374151"
-                    tickFormatter={(value) => {
-                      const date = new Date(value)
-                      return date.toLocaleDateString('en-US', { 
-                        month: 'short', 
-                        day: 'numeric',
-                        year: '2-digit'
-                      })
-                    }}
-                  />
-                  <YAxis 
-                    domain={['auto', 'auto']} 
-                    tickFormatter={(value) => `$${formatLargeNumber(value)}`}
-                    tick={{ fill: '#9CA3AF', fontSize: 12 }}
-                    stroke="#374151"
-                    width={80}
-                  />
-                  <Tooltip 
-                    formatter={(value: number) => [`$${formatLargeNumber(value)}`, 'Portfolio Value']}
-                    contentStyle={{
-                      backgroundColor: '#1F2937',
-                      border: 'none',
-                      borderRadius: '8px',
-                      color: '#F3F4F6'
-                    }}
-                    labelStyle={{ color: '#9CA3AF' }}
-                    labelFormatter={(label) => {
-                      const date = new Date(label)
-                      return date.toLocaleDateString('en-US', { 
-                        month: 'short', 
-                        day: 'numeric',
-                        year: 'numeric'
-                      })
-                    }}
-                  />
-                  <Legend 
-                    verticalAlign="top" 
-                    height={36}
-                    wrapperStyle={{ color: '#9CA3AF' }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="cumulativeProfit"
-                    stroke="#22c55e"
-                    name="Portfolio Value"
-                    dot={false}
-                    strokeWidth={2}
-                    fill="url(#colorPortfolio)"
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="mt-4 text-sm text-muted-foreground text-center">
-              Backtested {backtestResults.length} trades in {backtestDuration?.toFixed(2) || "N/A"} seconds
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       {/* Trade Results Table */}
       {backtestResults.length > 0 && (
         <Card>
@@ -887,12 +1273,12 @@ export function BacktestClientPage({ initialTrades }: BacktestClientPageProps) {
                     <TableHead className="whitespace-nowrap">Token</TableHead>
                     <TableHead className="whitespace-nowrap">Caller</TableHead>
                     <TableHead className="whitespace-nowrap">Position Size</TableHead>
-                    <TableHead className="whitespace-nowrap">Entry MC</TableHead>
-                    <TableHead className="whitespace-nowrap">Current MC</TableHead>
+                    <TableHead className="whitespace-nowrap">Entry Price</TableHead>
+                    <TableHead className="whitespace-nowrap">Final Value</TableHead>
                     <TableHead className="whitespace-nowrap">ROI</TableHead>
                     <TableHead className="whitespace-nowrap">Realized</TableHead>
                     <TableHead className="whitespace-nowrap">Unrealized</TableHead>
-                    <TableHead className="whitespace-nowrap">Remaining</TableHead>
+                    <TableHead className="whitespace-nowrap">Coins Left</TableHead>
                     <TableHead className="whitespace-nowrap">TPs Hit</TableHead>
                     <TableHead className="whitespace-nowrap">SLs Hit</TableHead>
                   </TableRow>
@@ -913,8 +1299,8 @@ export function BacktestClientPage({ initialTrades }: BacktestClientPageProps) {
                       </TableCell>
                       <TableCell className="whitespace-nowrap">{result.trade.caller}</TableCell>
                       <TableCell className="whitespace-nowrap">${formatLargeNumber(result.positionSize)}</TableCell>
-                      <TableCell className="whitespace-nowrap">${formatLargeNumber(result.trade.initial_mc)}</TableCell>
-                      <TableCell className="whitespace-nowrap">${formatLargeNumber(result.trade.current_mc)}</TableCell>
+                      <TableCell className="whitespace-nowrap">${result.entryPrice.toFixed(6)}</TableCell>
+                      <TableCell className="whitespace-nowrap">${formatLargeNumber(result.finalValue)}</TableCell>
                       <TableCell className={`whitespace-nowrap font-medium ${result.roi >= 0 ? "text-green-500" : "text-red-500"}`}>
                         {result.roi.toFixed(2)}%
                       </TableCell>
@@ -924,15 +1310,15 @@ export function BacktestClientPage({ initialTrades }: BacktestClientPageProps) {
                       <TableCell className={`whitespace-nowrap ${result.unrealizedGain >= 0 ? "text-green-500" : "text-red-500"}`}>
                         ${formatLargeNumber(result.unrealizedGain)}
                       </TableCell>
-                      <TableCell className="whitespace-nowrap">{result.remainingPosition.toFixed(1)}%</TableCell>
+                      <TableCell className="whitespace-nowrap">{result.remainingPosition.toFixed(6)}</TableCell>
                       <TableCell className="whitespace-nowrap">
                         {result.takeProfitsHit.length > 0 
-                          ? result.takeProfitsHit.map(tp => `${tp}%`).join(", ")
+                          ? result.takeProfitsHit.map(tp => `${tp.toFixed(2)}`).join(", ")
                           : "-"}
                       </TableCell>
                       <TableCell className="whitespace-nowrap">
                         {result.stopLossesHit.length > 0 
-                          ? result.stopLossesHit.map(sl => `${sl}%`).join(", ")
+                          ? result.stopLossesHit.map(sl => `${sl.toFixed(2)}`).join(", ")
                           : "-"}
                       </TableCell>
                     </TableRow>

@@ -5,6 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button"
 import { ChevronDown, ChevronUp } from "lucide-react"
 import { formatROI } from "@/lib/utils"
+import { fetchTraderStats } from "@/app/actions/trader-actions"
 import Link from "next/link"
 
 interface Trader {
@@ -24,9 +25,7 @@ export function TraderRankings() {
   useEffect(() => {
     const fetchTraders = async () => {
       try {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/traders`)
-        if (!response.ok) throw new Error('Failed to fetch traders')
-        const data = await response.json()
+        const data = await fetchTraderStats()
         setTraders(data)
       } catch (error) {
         console.error('Error fetching traders:', error)
@@ -105,7 +104,7 @@ export function TraderRankings() {
           {sortedTraders.map((trader) => (
             <TableRow key={trader.caller}>
               <TableCell>
-                <Link href={`/trader/${trader.caller}`} className="text-primary hover:underline">
+                <Link href={`/rankings/${trader.caller}`} className="text-primary hover:underline">
                   {trader.caller}
                 </Link>
               </TableCell>

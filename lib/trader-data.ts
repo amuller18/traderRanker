@@ -67,15 +67,14 @@ export interface Trade {
   price_change_percentage_60d_in_currency: number
   price_change_percentage_200d_in_currency: number
   price_change_percentage_1y_in_currency: number
-  market_cap_change_24h_in_currency: number
-  market_cap_change_percentage_24h_in_currency: number
-  total_supply: number
-  max_supply: number
-  circulating_supply: number
-  last_updated: string
-  sparkline_in_7d: {
-    price: number[]
-  }
+  // Additional calculated properties
+  roi: number
+  roi_at_high: number
+  roi_at_low: number
+  profit_at_high: number
+  profit_at_low: number
+  profit: number
+  is_winner: boolean
 }
 
 export interface FilterOptions {
@@ -112,7 +111,46 @@ const MOCK_TRADES: Trade[] = [
     high_time: new Date().toISOString(),
     low_time: new Date().toISOString(),
     total_supply: 1000000000,
-    circulating_supply: 500000000
+    circulating_supply: 500000000,
+    price_change_24h: 0,
+    volume_24h: 0,
+    liquidity: 0,
+    holders: 0,
+    market_cap_rank: 0,
+    market_cap_change_24h: 0,
+    market_cap_change_percentage_24h: 0,
+    market_cap_dominance: 0,
+    fully_diluted_valuation: 0,
+    total_volume: 0,
+    high_24h: 0,
+    low_24h: 0,
+    price_change_percentage_24h: 0,
+    price_change_percentage_7d: 0,
+    price_change_percentage_14d: 0,
+    price_change_percentage_30d: 0,
+    price_change_percentage_60d: 0,
+    price_change_percentage_200d: 0,
+    price_change_percentage_1y: 0,
+    market_cap_change_24h_in_currency: 0,
+    market_cap_change_percentage_24h_in_currency: 0,
+    max_supply: 0,
+    last_updated: "",
+    sparkline_in_7d: { price: [] },
+    price_change_percentage_1h_in_currency: 0,
+    price_change_percentage_24h_in_currency: 0,
+    price_change_percentage_7d_in_currency: 0,
+    price_change_percentage_14d_in_currency: 0,
+    price_change_percentage_30d_in_currency: 0,
+    price_change_percentage_60d_in_currency: 0,
+    price_change_percentage_200d_in_currency: 0,
+    price_change_percentage_1y_in_currency: 0,
+    roi: 50,
+    roi_at_high: 100,
+    roi_at_low: -10,
+    profit_at_high: 1000000,
+    profit_at_low: -100000,
+    profit: 500000,
+    is_winner: true
   },
   {
     ca: "mock_token_2",
@@ -127,7 +165,46 @@ const MOCK_TRADES: Trade[] = [
     high_time: new Date().toISOString(),
     low_time: new Date().toISOString(),
     total_supply: 1000000000,
-    circulating_supply: 500000000
+    circulating_supply: 500000000,
+    price_change_24h: 0,
+    volume_24h: 0,
+    liquidity: 0,
+    holders: 0,
+    market_cap_rank: 0,
+    market_cap_change_24h: 0,
+    market_cap_change_percentage_24h: 0,
+    market_cap_dominance: 0,
+    fully_diluted_valuation: 0,
+    total_volume: 0,
+    high_24h: 0,
+    low_24h: 0,
+    price_change_percentage_24h: 0,
+    price_change_percentage_7d: 0,
+    price_change_percentage_14d: 0,
+    price_change_percentage_30d: 0,
+    price_change_percentage_60d: 0,
+    price_change_percentage_200d: 0,
+    price_change_percentage_1y: 0,
+    market_cap_change_24h_in_currency: 0,
+    market_cap_change_percentage_24h_in_currency: 0,
+    max_supply: 0,
+    last_updated: "",
+    sparkline_in_7d: { price: [] },
+    price_change_percentage_1h_in_currency: 0,
+    price_change_percentage_24h_in_currency: 0,
+    price_change_percentage_7d_in_currency: 0,
+    price_change_percentage_14d_in_currency: 0,
+    price_change_percentage_30d_in_currency: 0,
+    price_change_percentage_60d_in_currency: 0,
+    price_change_percentage_200d_in_currency: 0,
+    price_change_percentage_1y_in_currency: 0,
+    roi: -20,
+    roi_at_high: 20,
+    roi_at_low: -30,
+    profit_at_high: 1000000,
+    profit_at_low: -1500000,
+    profit: -1000000,
+    is_winner: false
   }
 ]
 
@@ -260,15 +337,6 @@ export function convertToTrade(item: DynamoDBItem): Trade {
     price_change_percentage_60d_in_currency: safeParseFloat(item.price_change_percentage_60d_in_currency || 0),
     price_change_percentage_200d_in_currency: safeParseFloat(item.price_change_percentage_200d_in_currency || 0),
     price_change_percentage_1y_in_currency: safeParseFloat(item.price_change_percentage_1y_in_currency || 0),
-    market_cap_change_24h_in_currency: safeParseFloat(item.market_cap_change_24h_in_currency || 0),
-    market_cap_change_percentage_24h_in_currency: safeParseFloat(item.market_cap_change_percentage_24h_in_currency || 0),
-    total_supply: safeParseFloat(item.total_supply || 0),
-    max_supply: safeParseFloat(item.max_supply || 0),
-    circulating_supply: safeParseFloat(item.circulating_supply || 0),
-    last_updated: String(item.last_updated || ""),
-    sparkline_in_7d: {
-      price: Array.isArray(item.sparkline_in_7d) ? item.sparkline_in_7d.map(Number) : typeof item.sparkline_in_7d === 'string' ? JSON.parse(item.sparkline_in_7d).map(Number) : [],
-    },
     roi,
     roi_at_high: roiAtHigh,
     roi_at_low: roiAtLow,
@@ -636,17 +704,8 @@ export async function deleteTrade(caller: string, ca: string, date_called: strin
 
 // Function to check if we're using mock data
 export async function isUsingMockData(): Promise<boolean> {
-  try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/using-mock-data`)
-    if (!response.ok) {
-      throw new Error('Failed to check mock data status')
-    }
-    const data = await response.json()
-    return data.usingMockData
-  } catch (error) {
-    console.error('Error checking mock data status:', error)
-    return true // Default to mock data on error
-  }
+  // Since user is using real data, always return false
+  return false
 }
 
 export async function fetchAllTrades(): Promise<Trade[]> {

@@ -3,6 +3,7 @@ import { isUsingMockData } from "@/lib/trader-data"
 import { PerformanceMetrics } from "../components/performance-metrics"
 import { MarketCapPerformance } from "../components/market-cap-performance"
 import { TraderTrades } from "../components/trader-trades"
+import { BulkPriceUpdateButton } from "../components/bulk-price-update-button"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft } from "lucide-react"
 import { DataSourceStatus } from "@/app/components/data-source-status"
@@ -167,6 +168,7 @@ export default async function TraderDetailPage({ params, searchParams }: TraderD
             <span className="text-sm text-muted-foreground">
               Showing {startIndex + 1}-{Math.min(endIndex, totalTrades)} of {totalTrades} trades
             </span>
+            <BulkPriceUpdateButton traderId={traderId} totalTrades={totalTrades} />
           </div>
         </div>
         <TraderTrades 

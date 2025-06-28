@@ -1,4 +1,3 @@
-import { fetchAllTradesFiltered } from "../actions/trader-actions"
 import { isUsingMockData } from "@/lib/trader-data"
 import type { TradeFilterOptions } from "@/lib/trader-data"
 import { ClientPage } from "./client-page"
@@ -25,9 +24,17 @@ export default async function TradesPage() {
     // Check if we're using mock data
     usingMockData = await isUsingMockData()
 
-    // Fetch trades with default filters
-    trades = await fetchAllTradesFiltered(defaultFilters)
-    console.log(`Loaded ${trades.length} trades for trades page (using ${usingMockData ? "mock" : "real"} data)`)
+    // Fetch trades directly from API endpoint
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'
+    const response = await fetch(`${apiUrl}/api/trades`, { cache: 'no-store' })
+    
+    if (response.ok) {
+      trades = await response.json()
+      console.log(`Loaded ${trades.length} trades for trades page (using ${usingMockData ? "mock" : "real"} data)`)
+    } else {
+      console.error("Failed to fetch trades from API:", response.status)
+      // Continue with empty array, the client component will handle it
+    }
   } catch (error) {
     console.error("Error loading trades for trades page:", error)
     // Continue with empty array, the client component will handle it

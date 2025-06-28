@@ -99,7 +99,7 @@ import { mockTraderStats, mockTrades } from "./mock-data"
 // Mock data for when database connection fails
 const MOCK_TRADES: Trade[] = [
   {
-    ca: "mock_token_1",
+    ca: "7nZG8jEaU3HFsRQ2JkUAVPQqzGMpw37V5CYtV9JdDSLf",
     caller: "Mock Trader 1",
     date_called: new Date().toISOString(),
     initial_mc: 1000000,
@@ -153,7 +153,7 @@ const MOCK_TRADES: Trade[] = [
     is_winner: true
   },
   {
-    ca: "mock_token_2",
+    ca: "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin",
     caller: "Mock Trader 2",
     date_called: new Date().toISOString(),
     initial_mc: 5000000,
@@ -431,6 +431,14 @@ function isCacheValid(): boolean {
   return tradesCache.data !== null && (Date.now() - tradesCache.timestamp) < CACHE_EXPIRATION;
 }
 
+// Function to clear cache
+function clearCache(): void {
+  tradesCache = {
+    data: null,
+    timestamp: 0
+  };
+}
+
 // Function to get all trades with caching
 export async function getAllTrades(): Promise<Trade[]> {
   try {
@@ -453,6 +461,7 @@ export async function getAllTrades(): Promise<Trade[]> {
     // If no items found, return mock data
     if (items.length === 0) {
       console.log("No trades found in DynamoDB, using mock data")
+      clearCache(); // Clear cache to ensure fresh mock data
       tradesCache = {
         data: mockTrades,
         timestamp: Date.now()
@@ -470,6 +479,7 @@ export async function getAllTrades(): Promise<Trade[]> {
   } catch (error) {
     console.error("Error fetching all trades from DynamoDB:", error)
     console.log("Falling back to mock data due to error")
+    clearCache(); // Clear cache to ensure fresh mock data
     tradesCache = {
       data: mockTrades,
       timestamp: Date.now()
@@ -542,22 +552,7 @@ export async function getTraderStats(filters?: FilterOptions): Promise<TraderSta
   try {
     console.log("Getting trader stats with filters:", filters)
 
-    // If no filters, use direct DynamoDB query
-    if (!filters) {
-      const tableName = process.env.DYNAMODB_TRADER_STATISTICS || "CallerStatistics"
-      const items = await scanTable(tableName, {
-        consistentRead: true,
-      })
-      
-      if (items.length === 0) {
-        console.log("No trader stats found in DynamoDB, using mock data")
-        return mockTraderStats
-      }
-
-      return items.map(convertToTraderStats)
-    }
-
-    // If filters are provided, calculate stats from trades
+    // Always calculate stats from actual trades for accuracy
     const allTrades = await getAllTrades();
 
     // Group trades by trader
@@ -574,7 +569,8 @@ export async function getTraderStats(filters?: FilterOptions): Promise<TraderSta
       const total_calls = trades.length
       const winning_calls = trades.filter((trade) => trade.is_winner).length
       const win_rate = total_calls > 0 ? winning_calls / total_calls : 0
-      const average_roi = total_calls > 0 ? trades.reduce((sum, trade) => sum + trade.roi_at_high, 0) / total_calls : 0
+      // Use current ROI instead of roi_at_high for more accurate average ROI
+      const average_roi = total_calls > 0 ? trades.reduce((sum, trade) => sum + trade.roi, 0) / total_calls : 0
 
       // Calculate market cap performance
       const microCapTrades = trades.filter(trade => trade.initial_mc < 1_000_000)
@@ -585,7 +581,8 @@ export async function getTraderStats(filters?: FilterOptions): Promise<TraderSta
 
       const calculateCapStats = (capTrades: Trade[]) => {
         if (capTrades.length === 0) return { roi: 0, winrate: 0 }
-        const roi = capTrades.reduce((sum, trade) => sum + trade.roi_at_high, 0) / capTrades.length
+        // Use current ROI instead of roi_at_high for more accurate cap ROI
+        const roi = capTrades.reduce((sum, trade) => sum + trade.roi, 0) / capTrades.length
         const winrate = capTrades.filter(trade => trade.is_winner).length / capTrades.length
         return { roi, winrate }
       }
@@ -615,15 +612,19 @@ export async function getTraderStats(filters?: FilterOptions): Promise<TraderSta
       }
     })
 
-    // Apply filters
-    return stats.filter((stat) => {
-      const winRateMatch = stat.win_rate >= filters.winRateRange[0] && stat.win_rate <= filters.winRateRange[1]
-      const totalCallsMatch = stat.total_calls >= filters.totalCallsRange[0] && stat.total_calls <= filters.totalCallsRange[1]
-      const roiMatch = stat.average_roi >= filters.roiRange[0] && stat.average_roi <= filters.roiRange[1]
-      const searchMatch = !filters.searchTerm || stat.caller.toLowerCase().includes(filters.searchTerm.toLowerCase())
+    // Apply filters if provided
+    if (filters) {
+      return stats.filter((stat) => {
+        const winRateMatch = stat.win_rate >= filters.winRateRange[0] && stat.win_rate <= filters.winRateRange[1]
+        const totalCallsMatch = stat.total_calls >= filters.totalCallsRange[0] && stat.total_calls <= filters.totalCallsRange[1]
+        const roiMatch = stat.average_roi >= filters.roiRange[0] && stat.average_roi <= filters.roiRange[1]
+        const searchMatch = !filters.searchTerm || stat.caller.toLowerCase().includes(filters.searchTerm.toLowerCase())
 
-      return winRateMatch && totalCallsMatch && roiMatch && searchMatch
-    })
+        return winRateMatch && totalCallsMatch && roiMatch && searchMatch
+      })
+    }
+
+    return stats
   } catch (error) {
     console.error("Error getting trader stats:", error)
     return []
@@ -704,8 +705,20 @@ export async function deleteTrade(caller: string, ca: string, date_called: strin
 
 // Function to check if we're using mock data
 export async function isUsingMockData(): Promise<boolean> {
-  // Since user is using real data, always return false
-  return false
+  try {
+    // Try to get a small sample from DynamoDB to see if it's available
+    const tableName = process.env.DYNAMODB_TRADERS_TABLE || "Trades"
+    const items = await scanTable(tableName, {
+      limit: 1,
+      consistentRead: false, // Use eventually consistent reads for faster response
+    })
+    
+    // If we can get data from DynamoDB, we're not using mock data
+    return items.length === 0
+  } catch (error) {
+    console.log("DynamoDB not available, using mock data")
+    return true
+  }
 }
 
 export async function fetchAllTrades(): Promise<Trade[]> {

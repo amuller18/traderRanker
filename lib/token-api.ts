@@ -74,17 +74,26 @@ export async function getTokenInfo(contractAddress: string): Promise<TokenInfo[]
     })
 
     if (!response.ok) {
-      console.log(`DexScreener failed for ${contractAddress} - likely low market cap or no liquidity`)
-      // Try Jupiter as fallback
-      return await getJupiterTokenInfo(contractAddress)
+      console.log(`DexScreener failed for ${contractAddress} - trying CoinGecko fallback`)
+      return await getCoinGeckoTokenInfo(contractAddress)
     }
 
     const data = await response.json()
     const pairs = data.pairs
 
     if (!pairs || pairs.length === 0) {
-      console.log(`No trading pairs found in DexScreener for ${contractAddress} - likely low market cap or no liquidity`)
-      return await getJupiterTokenInfo(contractAddress)
+      console.log(`No trading pairs found in DexScreener for ${contractAddress} - trying CoinGecko fallback`)
+      return await getCoinGeckoTokenInfo(contractAddress)
+    }
+
+    // Check if we have valid market cap data
+    const hasValidMarketCap = pairs.some((pair: any) => 
+      pair.marketCap && pair.marketCap > 0 || pair.fdv && pair.fdv > 0
+    )
+
+    if (!hasValidMarketCap) {
+      console.log(`No valid market cap data in DexScreener for ${contractAddress} - trying CoinGecko fallback`)
+      return await getCoinGeckoTokenInfo(contractAddress)
     }
 
     // Map the pairs to our TokenInfo format
@@ -137,7 +146,111 @@ export async function getTokenInfo(contractAddress: string): Promise<TokenInfo[]
     return tokenInformation
   } catch (error) {
     console.error(`Error fetching token info: ${error}`)
-    // Try Jupiter as fallback
+    // Try CoinGecko as fallback
+    return await getCoinGeckoTokenInfo(contractAddress)
+  }
+}
+
+/**
+ * Fetches token information from CoinGecko API as fallback
+ */
+async function getCoinGeckoTokenInfo(contractAddress: string): Promise<TokenInfo[] | null> {
+  try {
+    console.log(`🔍 Fetching token info from CoinGecko for: ${contractAddress}`)
+    
+    // Get price from CoinGecko
+    const priceResponse = await fetch(
+      `https://api.coingecko.com/api/v3/simple/token_price/solana?contract_addresses=${contractAddress}&vs_currencies=usd`,
+      {
+        headers: {
+          'accept': 'application/json',
+          'x-cg-demo-api-key': 'CG-8jAASUaSyaz4VEsDjonVgjNr'
+        },
+        cache: 'no-store',
+      }
+    )
+
+    if (!priceResponse.ok) {
+      console.log(`❌ CoinGecko price API failed for ${contractAddress}: ${priceResponse.status}`)
+      return await getJupiterTokenInfo(contractAddress)
+    }
+
+    const priceData = await priceResponse.json()
+    const tokenPrice = priceData[contractAddress]
+    
+    if (!tokenPrice || !tokenPrice.usd) {
+      console.log(`❌ No price data from CoinGecko for ${contractAddress}`)
+      return await getJupiterTokenInfo(contractAddress)
+    }
+
+    const price = tokenPrice.usd
+    console.log(`💰 CoinGecko price for ${contractAddress}: $${price}`)
+
+    // Calculate market cap using supply estimation
+    let marketCap = 0
+    
+    // For major tokens like SOL, use known supply
+    if (contractAddress === "So11111111111111111111111111111111111111112") {
+      // SOL has approximately 580 million circulating supply
+      const solSupply = 580_000_000
+      marketCap = price * solSupply
+      console.log(`💰 Using known SOL supply: ${solSupply.toLocaleString()}`)
+    } else {
+      // Try to get supply from our API
+      try {
+        const supplyResponse = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/token-supply?address=${contractAddress}`,
+          { cache: 'no-store' }
+        )
+        
+        if (supplyResponse.ok) {
+          const supplyData = await supplyResponse.json()
+          const supply = supplyData.circulating_supply || supplyData.total_supply || 1e9
+          marketCap = price * supply
+          console.log(`📊 Supply from API for ${contractAddress}: ${supply.toLocaleString()}`)
+        } else {
+          // Use default supply calculation
+          const defaultSupply = 1e9
+          marketCap = price * defaultSupply
+          console.log(`⚠️ Using default supply for ${contractAddress}: ${defaultSupply.toLocaleString()}`)
+        }
+      } catch (error) {
+        console.log(`⚠️ Could not fetch supply for ${contractAddress}, using default`)
+        const defaultSupply = 1e9
+        marketCap = price * defaultSupply
+      }
+    }
+
+    console.log(`💰 Calculated market cap for ${contractAddress}: $${marketCap.toLocaleString()}`)
+
+    // Create TokenInfo object
+    const tokenInfo: TokenInfo = {
+      baseToken: {
+        address: contractAddress,
+        name: contractAddress === "So11111111111111111111111111111111111111112" ? "Wrapped SOL" : "Unknown",
+        symbol: contractAddress === "So11111111111111111111111111111111111111112" ? "SOL" : "UNKNOWN",
+      },
+      priceUsd: price.toString(),
+      transactions: { buys: 0, sells: 0 },
+      volume: { h24: 0 },
+      priceChange: { h24: 0 },
+      liquidity: { usd: 0 },
+      mintAddress: contractAddress,
+      marketInfo: {
+        marketCap: marketCap,
+        fdv: marketCap,
+        pairCreatedAt: 0,
+      },
+      info: {
+        websites: [],
+        socials: [],
+      },
+    }
+
+    console.log(`✅ CoinGecko fallback completed for ${contractAddress}`)
+    return [tokenInfo]
+  } catch (error) {
+    console.error(`❌ Error in CoinGecko fallback for ${contractAddress}:`, error)
     return await getJupiterTokenInfo(contractAddress)
   }
 }
@@ -145,23 +258,86 @@ export async function getTokenInfo(contractAddress: string): Promise<TokenInfo[]
 /**
  * Fetches token information from Jupiter API as fallback
  */
-async function getJupiterTokenInfo(contractAddress: string): Promise<TokenInfo[] | null> {
+export async function getJupiterTokenInfo(contractAddress: string): Promise<TokenInfo[] | null> {
   try {
-    console.log(`Fetching token info from Jupiter for: ${contractAddress} (likely low market cap token)`)
+    console.log(`🔍 Fetching token info from Jupiter for: ${contractAddress}`)
     
     // Get token list from Jupiter's new API endpoint
-    const response = await fetch("https://token.jup.ag/strict")
-    if (!response.ok) {
-      console.error(`Error fetching Jupiter token list: ${response.status}`)
+    const tokenListResponse = await fetch("https://token.jup.ag/strict", {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'application/json',
+      },
+      cache: 'no-store',
+    })
+    
+    if (!tokenListResponse.ok) {
+      console.error(`❌ Error fetching Jupiter token list: ${tokenListResponse.status}`)
       return null
     }
 
-    const tokens = await response.json()
+    const tokens = await tokenListResponse.json()
     const token = tokens.find((t: any) => t.address === contractAddress)
 
     if (!token) {
-      console.log(`Token not found in Jupiter: ${contractAddress} - may be very new or delisted`)
+      console.log(`❌ Token not found in Jupiter: ${contractAddress}`)
       return null
+    }
+
+    console.log(`✅ Token found in Jupiter: ${token.symbol} (${token.name})`)
+
+    let price = 0
+    let marketCap = 0
+
+    // Try to get price from Jupiter's price API
+    try {
+      console.log(`🔍 Fetching price from Jupiter for: ${contractAddress}`)
+      const priceResponse = await fetch(`https://price.jup.ag/v4/price?ids=${contractAddress}`, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Accept': 'application/json',
+        },
+        cache: 'no-store',
+      })
+      
+      if (priceResponse.ok) {
+        const priceData = await priceResponse.json()
+        console.log(`📊 Jupiter price response:`, priceData)
+        
+        if (priceData.data && priceData.data[contractAddress]) {
+          price = priceData.data[contractAddress].price
+          console.log(`💰 Jupiter price for ${contractAddress}: $${price}`)
+        } else {
+          console.log(`⚠️ No price data found for ${contractAddress} in Jupiter response`)
+        }
+      } else {
+        console.log(`❌ Jupiter price API error: ${priceResponse.status}`)
+      }
+    } catch (error) {
+      console.error(`❌ Error fetching price from Jupiter for ${contractAddress}:`, error)
+    }
+
+    // Try to get supply information to calculate market cap
+    try {
+      console.log(`🔍 Fetching supply for: ${contractAddress}`)
+      const supply = await getTokenSupply(contractAddress)
+      console.log(`📊 Supply for ${contractAddress}: ${supply}`)
+      
+      if (supply > 0 && price > 0) {
+        marketCap = price * supply
+        console.log(`💰 Calculated market cap for ${contractAddress}: $${marketCap.toLocaleString()} (price: $${price}, supply: ${supply.toLocaleString()})`)
+      } else if (price > 0) {
+        // Use default supply of 1 billion for calculation
+        marketCap = price * 1_000_000_000
+        console.log(`💰 Using default supply calculation for ${contractAddress}: $${marketCap.toLocaleString()}`)
+      }
+    } catch (error) {
+      console.error(`❌ Error fetching supply for ${contractAddress}:`, error)
+      // Use default supply of 1 billion for calculation
+      if (price > 0) {
+        marketCap = price * 1_000_000_000
+        console.log(`💰 Using default supply calculation for ${contractAddress}: $${marketCap.toLocaleString()}`)
+      }
     }
 
     // Create a TokenInfo object from Jupiter data
@@ -171,15 +347,15 @@ async function getJupiterTokenInfo(contractAddress: string): Promise<TokenInfo[]
         name: token.name || "Unknown",
         symbol: token.symbol || "UNKNOWN",
       },
-      priceUsd: "0", // Jupiter doesn't provide price directly
+      priceUsd: price.toString(),
       transactions: { buys: 0, sells: 0 },
       volume: { h24: 0 },
       priceChange: { h24: 0 },
       liquidity: { usd: 0 },
       mintAddress: token.address,
       marketInfo: {
-        marketCap: 0, // Explicitly set to 0 for low market cap tokens
-        fdv: 0,
+        marketCap: marketCap,
+        fdv: marketCap, // Use same value for FDV
         pairCreatedAt: 0,
       },
       info: {
@@ -188,22 +364,15 @@ async function getJupiterTokenInfo(contractAddress: string): Promise<TokenInfo[]
       },
     }
 
-    // Try to get price from Jupiter's price API
-    try {
-      const priceResponse = await fetch(`https://price.jup.ag/v4/price?ids=${contractAddress}`)
-      if (priceResponse.ok) {
-        const priceData = await priceResponse.json()
-        if (priceData.data[contractAddress]) {
-          tokenInfo.priceUsd = priceData.data[contractAddress].price.toString()
-        }
-      }
-    } catch (error) {
-      console.log(`Could not fetch price from Jupiter for ${contractAddress}`)
-    }
+    console.log(`✅ Jupiter fallback completed for ${contractAddress}:`, {
+      price: price,
+      marketCap: marketCap,
+      symbol: token.symbol
+    })
 
     return [tokenInfo]
   } catch (error) {
-    console.error(`Error fetching Jupiter token info: ${error}`)
+    console.error(`❌ Error in Jupiter fallback for ${contractAddress}:`, error)
     return null
   }
 }

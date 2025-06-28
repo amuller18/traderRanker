@@ -65,16 +65,49 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Token address is required" }, { status: 400 })
     }
 
-    console.log(`Fetching token info for: ${address}`)
-    const tokenInfo = await getTokenInfo(address)
+    console.log(`🔍 Fetching token info for: ${address}`)
+    const tokenInfoArray = await getTokenInfo(address)
 
-    if (!tokenInfo) {
+    if (!tokenInfoArray || tokenInfoArray.length === 0) {
       return NextResponse.json({ error: "Token info not found" }, { status: 404 })
     }
 
-    return NextResponse.json({ tokenInfo })
+    // Get the first token info (most relevant)
+    const tokenInfo = tokenInfoArray[0]
+    
+    // Check if we have valid market cap data
+    const hasValidMarketCap = tokenInfo.marketInfo && 
+      ((tokenInfo.marketInfo.marketCap && tokenInfo.marketInfo.marketCap > 0) || 
+       (tokenInfo.marketInfo.fdv && tokenInfo.marketInfo.fdv > 0))
+    
+    console.log(`📊 Token info found for ${address}:`, {
+      hasMarketInfo: !!tokenInfo.marketInfo,
+      marketCap: tokenInfo.marketInfo?.marketCap,
+      fdv: tokenInfo.marketInfo?.fdv,
+      hasValidMarketCap,
+      price: tokenInfo.priceUsd
+    })
+
+    // Determine data source based on the response
+    let dataSource = "unknown"
+    if (hasValidMarketCap && tokenInfo.marketInfo) {
+      if (tokenInfo.marketInfo.marketCap && tokenInfo.marketInfo.marketCap > 1000000000) {
+        dataSource = "dexscreener-high-mc"
+      } else {
+        dataSource = "dexscreener-low-mc"
+      }
+    } else if (tokenInfo.priceUsd && parseFloat(tokenInfo.priceUsd) > 0) {
+      dataSource = "coingecko-fallback"
+    } else {
+      dataSource = "jupiter-fallback"
+    }
+
+    return NextResponse.json({ 
+      tokenInfo,
+      dataSource
+    })
   } catch (error) {
-    console.error("Error in token info API:", error)
+    console.error("❌ Error in token info API:", error)
     return NextResponse.json(
       { error: "Failed to fetch token info", details: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 }

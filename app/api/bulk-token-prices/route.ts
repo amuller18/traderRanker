@@ -6,14 +6,14 @@ interface TokenPriceResponse {
   }
 }
 
-interface BulkPriceResult {
+interface TokenPriceResult {
   token: string
   price: number
-  marketCap: number
+  market_cap: number
   error?: string
 }
 
-async function tryBirdeyeFallback(token: string): Promise<BulkPriceResult | null> {
+async function tryBirdeyeFallback(token: string): Promise<TokenPriceResult | null> {
   try {
     console.log(`🔍 Trying Birdeye fallback for: ${token}`)
     
@@ -45,7 +45,7 @@ async function tryBirdeyeFallback(token: string): Promise<BulkPriceResult | null
     let supply = 1e9
     try {
       const supplyResponse = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/token-supply?address=${token}`,
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/token-supply?address=${token}`,
         { cache: 'no-store' }
       )
       
@@ -63,7 +63,7 @@ async function tryBirdeyeFallback(token: string): Promise<BulkPriceResult | null
     return {
       token,
       price,
-      marketCap
+      market_cap: marketCap
     }
 
   } catch (error) {
@@ -72,7 +72,7 @@ async function tryBirdeyeFallback(token: string): Promise<BulkPriceResult | null
   }
 }
 
-async function tryDexScreenerFallback(token: string): Promise<BulkPriceResult | null> {
+async function tryDexScreenerFallback(token: string): Promise<TokenPriceResult | null> {
   try {
     console.log(`🔍 Trying DexScreener fallback for: ${token}`)
     
@@ -118,7 +118,7 @@ async function tryDexScreenerFallback(token: string): Promise<BulkPriceResult | 
         return {
           token,
           price,
-          marketCap
+          market_cap: marketCap
         }
       } else if (fdv && fdv > 0) {
         const price = parseFloat(priceUsd) || 0
@@ -126,7 +126,7 @@ async function tryDexScreenerFallback(token: string): Promise<BulkPriceResult | 
         return {
           token,
           price,
-          marketCap: fdv
+          market_cap: fdv
         }
       }
     }
@@ -150,7 +150,7 @@ export async function POST(request: NextRequest) {
 
     // CoinGecko API has a limit of 100 tokens per request
     const BATCH_SIZE = 100
-    const results: BulkPriceResult[] = []
+    const results: TokenPriceResult[] = []
 
     // Process tokens in batches
     for (let i = 0; i < tokens.length; i += BATCH_SIZE) {
@@ -183,7 +183,7 @@ export async function POST(request: NextRequest) {
             // Get supply information from existing API
             try {
               const supplyResponse = await fetch(
-                `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/token-supply?address=${token}`,
+                `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/token-supply?address=${token}`,
                 { cache: 'no-store' }
               )
               
@@ -198,7 +198,7 @@ export async function POST(request: NextRequest) {
               results.push({
                 token,
                 price: tokenPrice.usd,
-                marketCap
+                market_cap: marketCap
               })
             } catch (supplyError) {
               console.error(`Error fetching supply for ${token}:`, supplyError)
@@ -207,7 +207,7 @@ export async function POST(request: NextRequest) {
               results.push({
                 token,
                 price: tokenPrice.usd,
-                marketCap
+                market_cap: marketCap
               })
             }
           } else {
@@ -226,7 +226,7 @@ export async function POST(request: NextRequest) {
                 results.push({
                   token,
                   price: 0,
-                  marketCap: 0,
+                  market_cap: 0,
                   error: 'Price not available from CoinGecko, DexScreener, or Birdeye'
                 })
               }
@@ -246,18 +246,18 @@ export async function POST(request: NextRequest) {
           results.push({
             token,
             price: 0,
-            marketCap: 0,
+            market_cap: 0,
             error: 'Batch processing failed'
           })
         }
       }
     }
 
-    return NextResponse.json({ results })
+    return NextResponse.json(results)
   } catch (error) {
-    console.error('Bulk price update error:', error)
+    console.error('Bulk token prices error:', error)
     return NextResponse.json(
-      { error: 'Failed to update prices' },
+      { error: 'Failed to fetch token prices' },
       { status: 500 }
     )
   }

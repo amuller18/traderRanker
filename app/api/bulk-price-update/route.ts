@@ -45,7 +45,7 @@ async function tryBirdeyeFallback(token: string): Promise<BulkPriceResult | null
     let supply = 1e9
     try {
       const supplyResponse = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/token-supply?address=${token}`,
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/token-supply?address=${token}`,
         { cache: 'no-store' }
       )
       
@@ -183,7 +183,7 @@ export async function POST(request: NextRequest) {
             // Get supply information from existing API
             try {
               const supplyResponse = await fetch(
-                `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/token-supply?address=${token}`,
+                `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/token-supply?address=${token}`,
                 { cache: 'no-store' }
               )
               

@@ -27,18 +27,20 @@ Back-tester FastAPI micro-service (extended, ladder-TP/SL version)
   untouched.
 """
 
+import math
 import asyncio
 import os
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
-import json
-import logging.handlers
+import logging
 import sys
 from io import BytesIO
 import matplotlib.pyplot as plt
 from fastapi.responses import StreamingResponse
 import itertools
 from matplotlib.dates import DateFormatter
+from dotenv import load_dotenv
+import random
 
 import aiohttp
 import async_timeout
@@ -58,8 +60,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
-        logging.handlers.RotatingFileHandler("logs/api.log", maxBytes=1 << 20, backupCount=5),
-        logging.StreamHandler(sys.stdout),
+        logging.StreamHandler(sys.stdout),  # Only console output to avoid file conflicts
     ],
 )
 logger = logging.getLogger(__name__)
@@ -68,15 +69,110 @@ logger.info("Starting FastAPI server with ladder TP/SL support")
 logger.info("=" * 60)
 
 # ---------------------------------------------------------------------------
+# Load environment variables
+# ---------------------------------------------------------------------------
+load_dotenv()
+
+# ---------------------------------------------------------------------------
 # Constants / config
 # ---------------------------------------------------------------------------
-BIRDEYE_API_KEY = "ebe13bbb49954dc1a7dcee52bbe64b01"
-COINGECKO_API_KEY = "CG-8jAASUaSyaz4VEsDjonVgjNr"
-print(BIRDEYE_API_KEY)
 HTTP_TIMEOUT = 30  # Increased timeout
 RETRIES = 3
-RATE_LIMIT_RPS = 0.5  # Reduced to 1 request per 2 seconds to avoid rate limiting
+RATE_LIMIT_RPS = 1 # Maximum 1 concurrent request to respect rate limits
 sem = asyncio.Semaphore(RATE_LIMIT_RPS)
+
+# Rate limiting configuration
+DEV_MODE = True  # Set to False in production
+REQUEST_DELAY_SECONDS = 2  # Minimum 2 seconds between requests (more conservative)
+RATE_LIMIT_RETRY_DELAY = 5  # Wait 5 seconds after 429 error before retry
+MAX_RETRIES_PER_REQUEST = 3  # Maximum retries per request
+
+# Load API keys from environment variables
+BIRDEYE_API_KEYS_RAW = '0c96b594d358413d939d025b646d466c'#os.getenv("BIRDEYE_API_KEY", "0c96b594d358413d939d025b646d466c")
+COINGECKO_API_KEY = os.getenv("COINGECKO_API_KEY", "CG-8jAASUaSyaz4VEsDjonVgjNr")
+
+# Parse multiple Birdeye API keys if provided
+BIRDEYE_API_KEYS = [key.strip() for key in BIRDEYE_API_KEYS_RAW.split(",")]
+current_birdeye_key_index = 0
+
+def get_next_birdeye_key():
+    """Get the next API key in rotation."""
+    global current_birdeye_key_index
+    key = BIRDEYE_API_KEYS[current_birdeye_key_index]
+    current_birdeye_key_index = (current_birdeye_key_index + 1) % len(BIRDEYE_API_KEYS)
+    return key
+
+def get_random_birdeye_key():
+    """Get a random API key from the pool."""
+    return random.choice(BIRDEYE_API_KEYS)
+
+async def try_all_birdeye_keys(session: aiohttp.ClientSession, url: str, params: dict = None, headers: dict = None, timeout: int = HTTP_TIMEOUT):
+    """
+    Try all API keys in rotation with proper rate limiting and retry logic.
+    Returns (success: bool, response_data: dict, used_key: str)
+    """
+    original_headers = headers.copy() if headers else {}
+    
+    for key_index, api_key in enumerate(BIRDEYE_API_KEYS):
+        logger.info(f"Trying Birdeye API key {key_index + 1}/{len(BIRDEYE_API_KEYS)}: {api_key[:10]}...{api_key[-4:]}")
+        
+        # Update headers with current API key
+        current_headers = original_headers.copy()
+        current_headers["X-API-KEY"] = api_key
+        
+        # Try this API key with retries
+        for retry_attempt in range(MAX_RETRIES_PER_REQUEST):
+            try:
+                # Always wait at least 1 second between requests
+                await asyncio.sleep(REQUEST_DELAY_SECONDS)
+                
+                async with sem:  # Use the global semaphore for rate limiting
+                    async with async_timeout.timeout(timeout):
+                        async with session.get(url, params=params, headers=current_headers) as r:
+                            if r.status == 200:
+                                data = await r.json()
+                                logger.info(f"Success with API key {key_index + 1}: {api_key[:10]}...{api_key[-4:]}")
+                                return True, data, api_key
+                            elif r.status == 401:
+                                logger.warning(f"API key {key_index + 1} unauthorized (401) - trying next key")
+                                break  # Don't retry 401 errors, try next key
+                            elif r.status == 429:
+                                logger.warning(f"API key {key_index + 1} rate limited (429) - attempt {retry_attempt + 1}/{MAX_RETRIES_PER_REQUEST}")
+                                if retry_attempt < MAX_RETRIES_PER_REQUEST - 1:
+                                    logger.info(f"Waiting {RATE_LIMIT_RETRY_DELAY} seconds before retry...")
+                                    await asyncio.sleep(RATE_LIMIT_RETRY_DELAY)
+                                    continue  # Retry with same key
+                                else:
+                                    logger.warning(f"Max retries reached for API key {key_index + 1}, trying next key")
+                                    break  # Try next key
+                            else:
+                                error_text = await r.text()
+                                logger.error(f"API key {key_index + 1} failed with status {r.status}: {error_text}")
+                                break  # Don't retry other errors, try next key
+            except Exception as e:
+                logger.error(f"Error with API key {key_index + 1} (attempt {retry_attempt + 1}): {str(e)}")
+                if retry_attempt < MAX_RETRIES_PER_REQUEST - 1:
+                    await asyncio.sleep(1)  # Wait 1 second before retry
+                    continue
+                else:
+                    break  # Try next key
+    
+    logger.error("All Birdeye API keys failed")
+    return False, None, None
+
+print(f"Loaded {len(BIRDEYE_API_KEYS)} Birdeye API keys")
+for i, key in enumerate(BIRDEYE_API_KEYS):
+    print(f"  Key {i+1}: {key[:10]}...{key[-4:]}")
+print(f"Using COINGECKO_API_KEY: {COINGECKO_API_KEY}")
+
+# Log startup info after API keys are loaded
+logger.info(f"Loaded {len(BIRDEYE_API_KEYS)} Birdeye API keys")
+for i, key in enumerate(BIRDEYE_API_KEYS):
+    logger.info(f"  Key {i+1}: {key[:10]}...{key[-4:]}")
+logger.info(f"CoinGecko API Key: {COINGECKO_API_KEY[:10]}...{COINGECKO_API_KEY[-4:]}")
+logger.info(f"Development Mode: {DEV_MODE}")
+logger.info(f"Request Delay: {REQUEST_DELAY_SECONDS} seconds")
+logger.info("=" * 60)
 
 # Low liquidity fallback settings
 LOW_LIQUIDITY_MC = 20000  # 20k MC fallback
@@ -85,8 +181,8 @@ LOW_LIQUIDITY_PRICE = 0.00001  # Default price for low liquidity coins
 CORS_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "http://localhost:8000",
-    "http://127.0.0.1:8000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
 ]
 
 def generate_low_liquidity_data(mint: str, start_unix: int, end_unix: int, interval_minutes: int = 60) -> List[Dict[str, Any]]:
@@ -312,6 +408,8 @@ _bt_engine = _bt_core if JIT_READY else _bt_core_py
 # ---------------------------------------------------------------------------
 
 # ──────────────── HTTP HELPERS ───────────────────────────────────────────────
+
+
 async def fetch_history_price(
     session: aiohttp.ClientSession,
     mint: str,
@@ -320,16 +418,18 @@ async def fetch_history_price(
     end_unix: Optional[int] = None,
 ) -> Tuple[str, List[Dict[str, Any]]]:
     """Download price data with adaptive timeframes to get everything in ONE request per coin."""
+    logger.info(f"=== FETCHING HISTORY PRICE FOR {mint} ===")
+    
     if end_unix is None:
         end_ts = int(datetime.now().timestamp() // 60 * 60)
     else:
         end_ts = end_unix
     
-    # Allow longer time ranges for single requests (up to 30 days)
-    max_duration = 30 * 24 * 3600  # 30 days max for single requests
+    # Allow longer time ranges for single requests (up to 60 days for better price action)
+    max_duration = 60 * 24 * 3600  # 60 days max for single requests
     if end_ts - start_unix > max_duration:
         start_unix = end_ts - max_duration
-        logger.info(f"Limiting time range for {mint} to 30 days to avoid excessive API calls")
+        logger.info(f"Limiting time range for {mint} to 60 days to avoid excessive API calls")
     
     logger.info(f"Fetching price history for {mint} from {start_unix} to {end_ts}")
 
@@ -338,10 +438,16 @@ async def fetch_history_price(
     
     # Determine the optimal time interval to get <= 1000 points
     # Birdeye API returns max 1000 data points per request
+    # Valid timeframes: 1m, 3m, 5m, 15m, 30m, 1H, 2H, 4H, 6H, 8H, 12H, 1D, 3D, 1W, 1M
+    # For better granularity, prefer smaller intervals when possible
     if total_minutes <= 1000:
         # Use 1-minute intervals for short time ranges
         interval_type = "1m"
         interval_minutes = 1
+    elif total_minutes <= 1000 * 3:  # Up to 3 hours
+        # Use 3-minute intervals
+        interval_type = "3m"
+        interval_minutes = 3
     elif total_minutes <= 1000 * 5:  # Up to 5 hours
         # Use 5-minute intervals
         interval_type = "5m"
@@ -350,227 +456,187 @@ async def fetch_history_price(
         # Use 15-minute intervals
         interval_type = "15m"
         interval_minutes = 15
+    elif total_minutes <= 1000 * 30:  # Up to 30 hours
+        # Use 30-minute intervals
+        interval_type = "30m"
+        interval_minutes = 30
     elif total_minutes <= 1000 * 60:  # Up to 60 hours (2.5 days)
         # Use 1-hour intervals
-        interval_type = "1h"
+        interval_type = "1H"
         interval_minutes = 60
+    elif total_minutes <= 1000 * 120:  # Up to 120 hours (5 days)
+        # Use 2-hour intervals
+        interval_type = "2H"
+        interval_minutes = 120
     elif total_minutes <= 1000 * 240:  # Up to 240 hours (10 days)
         # Use 4-hour intervals
-        interval_type = "4h"
+        interval_type = "4H"
         interval_minutes = 240
+    elif total_minutes <= 1000 * 360:  # Up to 360 hours (15 days)
+        # Use 6-hour intervals
+        interval_type = "6H"
+        interval_minutes = 360
+    elif total_minutes <= 1000 * 480:  # Up to 480 hours (20 days)
+        # Use 8-hour intervals
+        interval_type = "8H"
+        interval_minutes = 480
+    elif total_minutes <= 1000 * 720:  # Up to 720 hours (30 days)
+        # Use 12-hour intervals
+        interval_type = "12H"
+        interval_minutes = 720
     else:
         # Use 1-day intervals for very long ranges
-        interval_type = "1d"
+        interval_type = "1D"
         interval_minutes = 1440
     
     expected_points = total_minutes // interval_minutes
     logger.info(f"Using {interval_type} intervals for {mint}: {expected_points} expected points over {total_minutes} minutes")
     
     # Single API call with the optimal interval
+    # Use the correct endpoint from Birdeye documentation
     url = "https://public-api.birdeye.so/defi/history_price"
     params = {
         "address": mint,
         "address_type": "token",
-        "type": interval_type,
+        "type": interval_type,  # String values: "1m", "5m", "15m", "1h", "4h", "1d"
         "time_from": start_unix,
         "time_to": end_ts,
+        "ui_amount_mode": "raw"
     }   
     headers = {
-        "X-API-KEY": BIRDEYE_API_KEY,
         "x-chain": "solana",
         "accept": "application/json",
     }
-
-    for attempt in range(1, RETRIES + 1):
-        try:
-            async with sem:  # Use the global semaphore for rate limiting
-                async with async_timeout.timeout(HTTP_TIMEOUT):
-                    async with session.get(url, params=params, headers=headers) as r:
-                        if r.status != 200:
-                            error_text = await r.text()
-                            logger.error(f"Failed to fetch price history for {mint}. Status: {r.status}, Response: {error_text}")
-                            if r.status == 429:  # Rate limit
-                                if attempt < RETRIES:
-                                    wait_time = 2 ** attempt
-                                    logger.warning(f"Rate limit hit for {mint}, waiting {wait_time}s before retry")
-                                    await asyncio.sleep(wait_time)
-                                    continue
-                            elif r.status == 404:
-                                logger.warning(f"Token {mint} not found in Birdeye API - likely low liquidity")
-                                return mint, []  # Return empty list for low liquidity coins
-                            raise aiohttp.ClientResponseError(
-                                r.request_info, r.history, status=r.status, message=error_text
-                            )
-                        
-                        js = await r.json()
-                        items = js.get("data", {}).get("items", [])
-                        
-                        if not items:
-                            logger.warning(f"No price data in response for {mint}. Full response: {js}")
-                            return mint, []
-                        
-                        # Validate price data
-                        valid_items = []
-                        for item in items:
-                            if not isinstance(item.get("value"), (int, float)) or not isinstance(item.get("unixTime"), (int, float)):
-                                logger.warning(f"Invalid price data point for {mint}: {item}")
-                                continue
-                            # Convert unixTime to seconds if it's in milliseconds
-                            unix_time = item["unixTime"]
-                            if unix_time > 1e12:  # If timestamp is in milliseconds
-                                unix_time = unix_time // 1000
-                            valid_items.append({
-                                "unixTime": unix_time,
-                                "value": float(item["value"])
-                            })
-                        
-                        if not valid_items:
-                            logger.warning(f"No valid price data points for {mint}")
-                            return mint, []
-                        
-                        # Sort by timestamp and remove duplicates
-                        valid_items.sort(key=lambda x: x["unixTime"])
-                        unique_items = []
-                        seen_timestamps = set()
-                        for item in valid_items:
-                            if item["unixTime"] not in seen_timestamps:
-                                unique_items.append(item)
-                                seen_timestamps.add(item["unixTime"])
-                        
-                        # Log the actual date range of the data
-                        if unique_items:
-                            first_ts = unique_items[0]["unixTime"]
-                            last_ts = unique_items[-1]["unixTime"]
-                            first_date = datetime.fromtimestamp(first_ts).strftime('%Y-%m-%d %H:%M:%S')
-                            last_date = datetime.fromtimestamp(last_ts).strftime('%Y-%m-%d %H:%M:%S')
-                            logger.info(f"Data range for {mint}: {first_date} to {last_date} ({len(unique_items)} points)")
-                            logger.info(f"Requested range: {datetime.fromtimestamp(start_unix).strftime('%Y-%m-%d %H:%M:%S')} to {datetime.fromtimestamp(end_ts).strftime('%Y-%m-%d %H:%M:%S')}")
-                            logger.info(f"Used {interval_type} intervals, got {len(unique_items)} points")
-                            
-                            # Log a few sample data points to debug
-                            logger.info(f"Sample data points for {mint}:")
-                            for i, item in enumerate(unique_items[:3]):
-                                sample_date = datetime.fromtimestamp(item["unixTime"]).strftime('%Y-%m-%d %H:%M:%S')
-                                logger.info(f"  Point {i}: {sample_date} - Price: {item['value']}")
-                            if len(unique_items) > 3:
-                                last_item = unique_items[-1]
-                                last_sample_date = datetime.fromtimestamp(last_item["unixTime"]).strftime('%Y-%m-%d %H:%M:%S')
-                                logger.info(f"  Last point: {last_sample_date} - Price: {last_item['value']}")
-                        else:
-                            logger.warning(f"No valid data points for {mint}")
-                        
-                        logger.info(f"Successfully retrieved {len(unique_items)} valid price points for {mint} in ONE request")
-                        return mint, unique_items
-                        
-        except asyncio.TimeoutError:
-            logger.error(f"Timeout while fetching price history for {mint} after {HTTP_TIMEOUT} seconds")
-            if attempt == RETRIES:
-                break
-        except Exception as exc:
-            logger.error(f"Error fetching price history for {mint}: {str(exc)}", exc_info=True)
-            if attempt == RETRIES:
-                break
-            await asyncio.sleep(2 ** attempt)
     
-    logger.warning(f"Failed to fetch price history for {mint} after {RETRIES} attempts")
-    return mint, []
+    logger.info(f"Making request to: {url}")
+    logger.info(f"Parameters: {params}")
+    
+    # Try all API keys
+    success, js, used_key = await try_all_birdeye_keys(session, url, params, headers)
+    
+    if not success:
+        logger.error(f"All API keys failed for {mint}")
+        return mint, []
+    
+    # Log the API response for debugging
+    logger.info(f"API response for {mint}: {js}")
+    
+    items = js.get("data", {}).get("items", [])
+    
+    if not items:
+        logger.warning(f"No price data in response for {mint}. Full response: {js}")
+        return mint, []
+    
+    # Validate price data
+    valid_items = []
+    for item in items:
+        if not isinstance(item.get("value"), (int, float)) or not isinstance(item.get("unixTime"), (int, float)):
+            logger.warning(f"Invalid price data point for {mint}: {item}")
+            continue
+        # Convert unixTime to seconds if it's in milliseconds
+        unix_time = item["unixTime"]
+        if unix_time > 1e12:  # If timestamp is in milliseconds
+            unix_time = unix_time // 1000
+        valid_items.append({
+            "unixTime": unix_time,
+            "value": float(item["value"])
+        })
+    
+    if not valid_items:
+        logger.warning(f"No valid price data points for {mint}")
+        return mint, []
+    
+    # Check if we have enough data points for meaningful analysis
+    if len(valid_items) < 10:
+        logger.warning(f"Insufficient data points for {mint}: only {len(valid_items)} points (need at least 10)")
+        return mint, []
+    
+    # Sort by timestamp and remove duplicates
+    valid_items.sort(key=lambda x: x["unixTime"])
+    unique_items = []
+    seen_timestamps = set()
+    for item in valid_items:
+        if item["unixTime"] not in seen_timestamps:
+            unique_items.append(item)
+            seen_timestamps.add(item["unixTime"])
+    
+    # Log the actual date range of the data
+    if unique_items:
+        first_ts = unique_items[0]["unixTime"]
+        last_ts = unique_items[-1]["unixTime"]
+        first_date = datetime.fromtimestamp(first_ts).strftime('%Y-%m-%d %H:%M:%S')
+        last_date = datetime.fromtimestamp(last_ts).strftime('%Y-%m-%d %H:%M:%S')
+        logger.info(f"Data range for {mint}: {first_date} to {last_date} ({len(unique_items)} points)")
+        logger.info(f"Requested range: {datetime.fromtimestamp(start_unix).strftime('%Y-%m-%d %H:%M:%S')} to {datetime.fromtimestamp(end_ts).strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"Used {interval_type} intervals, got {len(unique_items)} points")
+        
+        # Log a few sample data points to debug
+        logger.info(f"Sample data points for {mint}:")
+        for i, item in enumerate(unique_items[:3]):
+            sample_date = datetime.fromtimestamp(item["unixTime"]).strftime('%Y-%m-%d %H:%M:%S')
+            logger.info(f"  Point {i}: {sample_date} - Price: {item['value']}")
+        if len(unique_items) > 3:
+            last_item = unique_items[-1]
+            last_sample_date = datetime.fromtimestamp(last_item["unixTime"]).strftime('%Y-%m-%d %H:%M:%S')
+            logger.info(f"  Last point: {last_sample_date} - Price: {last_item['value']}")
+    else:
+        logger.warning(f"No valid data points for {mint}")
+    
+    logger.info(f"Successfully retrieved {len(unique_items)} valid price points for {mint} using key: {used_key[:10]}...{used_key[-4:]}")
+    return mint, unique_items
 
 async def fetch_current_price(session: aiohttp.ClientSession, mint: str) -> Optional[float]:
-    """Fetch current price from Birdeye API using history_price endpoint."""
+    """Fetch current price from Birdeye API using the /defi/price endpoint."""
+    logger.info(f"=== FETCHING CURRENT PRICE FOR {mint} ===")
+
     if session is None:
         logger.error(f"Session is None for {mint}")
         return None
-        
-    url = "https://public-api.birdeye.so/defi/history_price"
-    end_ts = int(datetime.now().timestamp() // 60 * 60)
-    start_ts = end_ts - 60  # Get last minute of data
-    
-    params = {
-        "address": mint,
-        "address_type": "token",
-        "type": "1m",
-        "time_from": start_ts,
-        "time_to": end_ts,
-    }
+
+    url = f"https://public-api.birdeye.so/defi/price?address={mint}&ui_amount_mode=raw"
+
     headers = {
-        "X-API-KEY": BIRDEYE_API_KEY,
         "x-chain": "solana",
         "accept": "application/json",
+        "X-API-KEY": "0c96b594d358413d939d025b646d466c"
     }
 
-    for attempt in range(1, RETRIES + 1):
-        try:
-            async with sem:  # Use the global semaphore
-                async with async_timeout.timeout(HTTP_TIMEOUT):
-                    async with session.get(url, params=params, headers=headers) as r:
-                        response_text = await r.text()
-                        logger.info(f"Birdeye API response for {mint}: Status={r.status}, Response={response_text}")
-                        
-                        if r.status == 429:  # Rate limit hit
-                            if attempt < RETRIES:
-                                wait_time = 2 ** attempt  # Exponential backoff
-                                logger.warning(f"Rate limit hit for {mint}, waiting {wait_time}s before retry")
-                                await asyncio.sleep(wait_time)
-                                continue
-                            else:
-                                logger.error(f"Rate limit exceeded for {mint} after {RETRIES} attempts")
-                                return None
-                                
-                        if r.status == 404:
-                            logger.error(f"Token {mint} not found in Birdeye API. Full response: {response_text}")
-                            return None
-                            
-                        if r.status == 401:
-                            logger.error(f"Unauthorized access to Birdeye API. Please check your API key. Response: {response_text}")
-                            return None
-                            
-                        if r.status != 200:
-                            logger.error(f"Failed to fetch current price for {mint}. Status: {r.status}, Response: {response_text}")
-                            return None
-                        
-                        try:
-                            js = json.loads(response_text)
-                        except json.JSONDecodeError as e:
-                            logger.error(f"Failed to parse JSON response for {mint}: {response_text}")
-                            return None
-                            
-                        if not js.get("success", False):
-                            logger.error(f"Birdeye API returned unsuccessful response for {mint}: {js}")
-                            return None
-                            
-                        items = js.get("data", {}).get("items", [])
-                        if not items:
-                            logger.error(f"No price data in response for {mint}. Full response: {js}")
-                            return None
-                            
-                        # Get the most recent price
-                        latest_item = items[-1]
-                        price = latest_item.get("value")
-                        if price is None:
-                            logger.error(f"No price value in latest item for {mint}. Item: {latest_item}")
-                            return None
-                        
-                        logger.info(f"Current price for {mint}: {price}")
-                        return float(price)
-        except Exception as e:
-            logger.error(f"Error fetching current price for {mint}: {str(e)}", exc_info=True)
-            if attempt == RETRIES:
+    try:
+        async with session.get(url, headers=headers) as response:
+            if response.status != 200:
+                logger.error(f"HTTP {response.status} error for {mint}")
                 return None
-            await asyncio.sleep(2 ** attempt)  # Exponential backoff
 
-    return None
+            js = await response.json()
+
+            if not js.get("success", False):
+                logger.error(f"Birdeye API returned unsuccessful response for {mint}: {js}")
+                return None
+
+            price = js.get("data", {}).get("value")
+            if price is None:
+                logger.error(f"No price in response data for {mint}. Full response: {js}")
+                return None
+
+            logger.info(f"Current price for {mint}: {price}")
+            return float(price)
+
+    except Exception as e:
+        logger.exception(f"Exception while fetching price for {mint}: {e}")
+        return None
 
 # ---------------------------------------------------------------------------
 # OHLC builder (identical to original but factored into a fn)
 # ---------------------------------------------------------------------------
 
 def build_ohlc(items: List[Dict[str, Any]], tf_minutes: int) -> pd.DataFrame:
-    """Convert 1‑min closes list → n‑minute OHLC DataFrame without pandas resampling."""
+    """Convert API data points → OHLC DataFrame. The API already provides data at the requested interval."""
     if not items:
         logger.error("No items provided to build_ohlc")
         return pd.DataFrame()
         
     try:
+        # The API already returns data at the requested interval, so we just need to format it
         df = (
             pd.DataFrame(items)
             .rename(columns={"unixTime": "t", "value": "close"})
@@ -582,30 +648,31 @@ def build_ohlc(items: List[Dict[str, Any]], tf_minutes: int) -> pd.DataFrame:
             logger.error("Empty DataFrame after initial processing")
             return pd.DataFrame()
         
-        # Manually group 1-minute data into the desired timeframe
-        # This preserves all data points while creating proper OHLC bars
-        ohlc_bars = []
-        
-        # Sort by timestamp to ensure proper grouping
+        # Sort by timestamp to ensure proper order
         df = df.sort_index()
         
-        # Group data into tf_minutes intervals
-        for i in range(0, len(df), tf_minutes):
-            chunk = df.iloc[i:i+tf_minutes]
-            if len(chunk) > 0:
-                bar = {
-                    "t": chunk.index[0],  # Use the first timestamp of the group
-                    "open": chunk["close"].iloc[0],
-                    "high": chunk["close"].max(),
-                    "low": chunk["close"].min(),
-                    "close": chunk["close"].iloc[-1],
-                    "volume": np.nan
-                }
-                ohlc_bars.append(bar)
+        # Since the API already provides data at the requested interval,
+        # we need to create proper OHLC format
+        # Use the actual price data from the API without artificial variations
+        ohlc_bars = []
+        for idx, row in df.iterrows():
+            close_price = row["close"]
+            # Use the actual price data - no artificial variations
+            bar = {
+                "t": idx,  # Use the timestamp from the data
+                "open": close_price,   # Use actual close price as open
+                "high": close_price,   # Use actual close price as high
+                "low": close_price,    # Use actual close price as low
+                "close": close_price,  # Use actual close price as close
+                "volume": np.nan
+            }
+            ohlc_bars.append(bar)
         
         result = pd.DataFrame(ohlc_bars)
         
-        logger.info(f"Built OHLC data with shape: {result.shape} (grouped into {tf_minutes}-minute bars)")
+        logger.info(f"Built OHLC data with shape: {result.shape} from {len(items)} API data points")
+        logger.info(f"Time range: {result['t'].min()} to {result['t'].max()}")
+        logger.info(f"Sample prices: {result['close'].head(3).tolist()}")
         return result
         
     except Exception as e:
@@ -654,7 +721,6 @@ def run_simulation(
     roi_pct = (final_value - amount_usd) / amount_usd * 100
 
     return {
-        "entry_price": round(entry_price, 6),
         "current_price": round(current_price, 6),
         "amount_usd": amount_usd,
         "final_usd": round(final_value, 2),
@@ -689,7 +755,7 @@ class SimulationRequest(BaseModel):
     amount_usd: float = Field(1000, gt=0)
     start_unix: Optional[int] = None
     end_unix: Optional[int] = None
-    days_back: int = Field(30, ge=1, le=30)  # Increased max to 30 days for single request
+    days_back: int = Field(30, ge=1, le=60)  # Increased max to 60 days for better price action
     timeframe_minutes: int = Field(15, ge=1, le=1440)  # Default to 15 minutes, max 24 hours
     tp: Optional[List[str]] = Field(None, description="List of 'ratio:sell' strings")
     sl: Optional[List[str]] = Field(None, description="List of 'ratio:sell' strings")
@@ -938,23 +1004,26 @@ def run_simulation_with_ledger(
     equity     = coins * current_price
     unrealized = equity + realized - start_cash_usd
 
-    
-    realized_total = (
-        realized - start_cash_usd
-        if coins == 0
-        else realized - (entry_coins - coins) * entry_price
-    )
+    # record it only if the live price is newer or different
+    if not math.isclose(current_price, df_ohlc["close"].iloc[-1]):
+        ledger.append(
+            PositionPoint(
+                ts=int(datetime.utcnow().timestamp()),
+                value=float(equity),
+                coins_held=float(coins),
+                unrealized=float(unrealized),
+                realized=float(realized),
+            )
+        )
 
-    ledger_out = [
-        pt.dict() if hasattr(pt, "dict") else pt.model_dump()   # v1 / v2
-        for pt in ledger
-    ]
+    # realised P/L = sale proceeds – cost basis of coins sold
+    realised_pl = realized - (entry_coins - coins) * entry_price   # works for both full/partial exits
 
     return {
-        "ledger":            ledger_out,
-        "realized_profit":   round(realized_total, 6),
-        "unrealized_profit": round(ledger[-1].unrealized, 6),
-        "coins_left":        round(coins, 6),
+        "ledger":            [pt.dict() for pt in ledger],
+        "realized_profit":   round(realised_pl, 6),
+        "unrealized_profit": round(unrealized,   6),
+        "coins_left":        round(coins,        6),
         "tps_hit":           [tp_levels[i] for i in sorted(tp_fired)],
         "sls_hit":           [sl_levels[i] for i in sorted(sl_fired)],
     }
@@ -1090,6 +1159,90 @@ async def chart_cumulative(req: SimulationRequest):
 @app.get("/ping")
 async def ping():
     return {"status": "ok"}
+
+@app.get("/api/validate-keys")
+async def validate_api_keys():
+    """Test API keys to see if they're working."""
+    logger.info("=== VALIDATING API KEYS ===")
+    
+    results = {}
+    
+    # Test Birdeye API keys
+    try:
+        logger.info("Testing Birdeye API keys...")
+        url = "https://public-api.birdeye.so/public/token_price?address=So11111111111111111111111111111111111111112"  # SOL token
+        headers = {
+            "accept": "application/json",
+        }
+        
+        async with aiohttp.ClientSession() as session:
+            success, data, used_key = await try_all_birdeye_keys(session, url, headers=headers, timeout=10)
+            
+            if success:
+                results["birdeye"] = {
+                    "status": "valid",
+                    "message": f"API key is working (used key: {used_key[:10]}...{used_key[-4:]})",
+                    "sample_data": data.get("data", {}),
+                    "keys_tested": len(BIRDEYE_API_KEYS)
+                }
+                logger.info(f"Birdeye API key validation successful with key: {used_key[:10]}...{used_key[-4:]}")
+            else:
+                results["birdeye"] = {
+                    "status": "invalid",
+                    "message": "All API keys failed",
+                    "keys_tested": len(BIRDEYE_API_KEYS)
+                }
+                logger.error("All Birdeye API keys failed validation")
+    except Exception as e:
+        results["birdeye"] = {
+            "status": "error",
+            "message": f"Exception occurred: {str(e)}",
+            "keys_tested": len(BIRDEYE_API_KEYS)
+        }
+        logger.error(f"Error testing Birdeye API: {e}")
+    
+    # Test CoinGecko API key
+    try:
+        logger.info("Testing CoinGecko API key...")
+        url = "https://api.coingecko.com/api/v3/ping"
+        headers = {
+            "accept": "application/json",
+            "x-cg-demo-api-key": COINGECKO_API_KEY
+        }
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    results["coingecko"] = {
+                        "status": "valid",
+                        "message": "API key is working",
+                        "sample_data": data
+                    }
+                    logger.info("CoinGecko API key is valid")
+                elif response.status == 401:
+                    results["coingecko"] = {
+                        "status": "invalid",
+                        "message": "API key is invalid or expired",
+                        "status_code": response.status
+                    }
+                    logger.error("CoinGecko API key is invalid")
+                else:
+                    results["coingecko"] = {
+                        "status": "error",
+                        "message": f"Unexpected status code: {response.status}",
+                        "status_code": response.status
+                    }
+                    logger.error(f"CoinGecko API returned status {response.status}")
+    except Exception as e:
+        results["coingecko"] = {
+            "status": "error",
+            "message": f"Exception occurred: {str(e)}"
+        }
+        logger.error(f"Error testing CoinGecko API: {e}")
+    
+    logger.info("=== API KEY VALIDATION COMPLETE ===")
+    return results
     
 @app.post("/api/simulate", response_model=list[SimulationResult])
 async def simulate(req: SimulationRequest) -> list[SimulationResult]:
@@ -1111,7 +1264,7 @@ async def simulate(req: SimulationRequest) -> list[SimulationResult]:
     logger.info(f"Request tp: {req.tp}")
     logger.info(f"Request sl: {req.sl}")
 
-    if not BIRDEYE_API_KEY:
+    if not BIRDEYE_API_KEYS:
         logger.error("BIRDEYE_API_KEY not set")
         raise HTTPException(500, "BIRDEYE_API_KEY not set")
 
@@ -1163,12 +1316,8 @@ async def simulate(req: SimulationRequest) -> list[SimulationResult]:
             for m in req.tokens
         }
 
-        # 2) pull *all* current prices in parallel
-        logger.info("Creating current price fetch tasks...")
-        price_tasks: dict[str, asyncio.Task] = {
-            m: asyncio.create_task(fetch_current_price(session, m))
-            for m in req.tokens
-        }
+        # 2) We'll use the most recent close price from the ledger instead of making current price requests
+        logger.info("Will use most recent close price from ledger data")
 
         # 3) assemble results
         logger.info("Processing results for each token...")
@@ -1197,19 +1346,15 @@ async def simulate(req: SimulationRequest) -> list[SimulationResult]:
                     out.append(SimulationResult(token=mint, error="empty ohlc"))
                     continue
 
-                logger.info(f"Fetching current price for {mint}...")
-                current = await price_tasks[mint]
-                if current is None:
-                    logger.error(f"No current price for {mint}")
-                    out.append(SimulationResult(token=mint, error="no current price"))
-                    continue
-                logger.info(f"Current price for {mint}: ${current}")
+                # Use the most recent close price from the OHLC data
+                most_recent_close = float(df["close"].iloc[-1])
+                logger.info(f"Using most recent close price for {mint}: ${most_recent_close}")
 
                 logger.info(f"Running simulation for {mint}...")
                 sim = run_simulation_with_ledger(
                     df,
                     req.amount_usd,
-                    current,
+                    most_recent_close,
                     tp_r,
                     tp_s,
                     sl_r,
@@ -1229,12 +1374,17 @@ async def simulate(req: SimulationRequest) -> list[SimulationResult]:
         await session.close()
 
     logger.info(f"=== SIMULATION COMPLETE === Returning {len(out)} results")
+    successful_tokens = 0
+    failed_tokens = 0
     for result in out:
         if result.error:
             logger.error(f"Token {result.token}: {result.error}")
+            failed_tokens += 1
         else:
             logger.info(f"Token {result.token}: Success - ledger points: {len(result.ledger) if result.ledger else 0}")
+            successful_tokens += 1
     
+    logger.info(f"Summary: {successful_tokens} successful, {failed_tokens} failed out of {len(req.tokens)} total tokens")
     return out
 
 
@@ -1257,28 +1407,42 @@ class TokenPriceResult(BaseModel):
     market_cap: float
     error: Optional[str] = None
 
+class TokenBreakdown(BaseModel):
+    token: str
+    entry_price: float = 0.0
+    final_price: float = 0.0
+    ath_price: float = 0.0
+    ath_percentage: float = 0.0
+    total_pnl: float = 0.0
+    realized_pnl: float = 0.0
+    unrealized_pnl: float = 0.0
+    coins_left: float = 0.0
+    tps_hit: List[float] = []
+    sls_hit: List[float] = []
+    error: Optional[str] = None
+
 async def try_birdeye_fallback(session: aiohttp.ClientSession, token: str) -> Optional[TokenPriceResult]:
     """
     Try to get token price and market cap from Birdeye as the ultimate fallback.
     """
     try:
         url = f"https://public-api.birdeye.so/public/token_price?address={token}"
-        async with session.get(
-            url,
-            headers={
-                'X-API-KEY': BIRDEYE_API_KEY,
-                'accept': 'application/json',
-            },
-            timeout=aiohttp.ClientTimeout(total=HTTP_TIMEOUT)
-        ) as response:
-            if not response.ok:
-                logger.warning(f"Birdeye API error for {token}: {response.status}")
-                return None
-            data = await response.json()
-            price = data.get('data', {}).get('value', 0)
-            if not price or price == 0:
-                logger.warning(f"No price data from Birdeye for {token}")
-                return None
+        headers = {
+            'accept': 'application/json',
+        }
+        
+        # Try all API keys
+        success, data, used_key = await try_all_birdeye_keys(session, url, headers=headers)
+        
+        if not success:
+            logger.warning(f"All Birdeye API keys failed for {token}")
+            return None
+            
+        price = data.get('data', {}).get('value', 0)
+        if not price or price == 0:
+            logger.warning(f"No price data from Birdeye for {token}")
+            return None
+            
         # Try to get supply for market cap calculation
         supply = 1e9
         try:
@@ -1289,8 +1453,9 @@ async def try_birdeye_fallback(session: aiohttp.ClientSession, token: str) -> Op
                     supply = supply_data.get('circulating_supply') or supply_data.get('total_supply') or 1e9
         except Exception as e:
             logger.warning(f"Could not fetch supply for {token} from API in Birdeye fallback: {e}")
+            
         market_cap = price * supply
-        logger.info(f"Birdeye fallback success for {token}: price=${price}, market_cap=${market_cap}")
+        logger.info(f"Birdeye fallback success for {token}: price=${price}, market_cap=${market_cap} (using key: {used_key[:10]}...{used_key[-4:]})")
         return TokenPriceResult(
             token=token,
             price=price,
@@ -1314,6 +1479,9 @@ async def bulk_token_prices(req: BulkPriceRequest):
         batch = req.tokens[i:i + BATCH_SIZE]
         contract_addresses = ",".join(batch)
         try:
+            # Add rate limiting delay
+            await asyncio.sleep(REQUEST_DELAY_SECONDS)
+            
             url = f"https://api.coingecko.com/api/v3/simple/token_price/solana?contract_addresses={contract_addresses}&vs_currencies=usd"
             async with aiohttp.ClientSession() as session:
                 async with session.get(
@@ -1374,11 +1542,210 @@ async def bulk_token_prices(req: BulkPriceRequest):
                 ))
     return results
 
+@app.post("/api/simulate/breakdown", response_model=List[TokenBreakdown])
+async def simulate_with_breakdown(req: SimulationRequest) -> List[TokenBreakdown]:
+    """
+    Enhanced simulation endpoint that provides detailed token-by-token breakdown
+    including entry price, ATH percentage, and detailed PnL analysis.
+    """
+    
+    logger.info("=== SIMULATION BREAKDOWN REQUEST START ===")
+    logger.info(f"Request tokens: {req.tokens}")
+    logger.info(f"Request amount_usd: {req.amount_usd}")
+    logger.info(f"Request timeframe_minutes: {req.timeframe_minutes}")
+    logger.info(f"Request days_back: {req.days_back}")
+    logger.info(f"Request tp: {req.tp}")
+    logger.info(f"Request sl: {req.sl}")
+
+    if not BIRDEYE_API_KEYS:
+        logger.error("BIRDEYE_API_KEY not set")
+        raise HTTPException(500, "BIRDEYE_API_KEY not set")
+
+    bad = [t for t in req.tokens if not is_valid_solana_address(t)]
+    if bad:
+        logger.error(f"Invalid Solana address(es): {', '.join(bad)}")
+        raise HTTPException(400, f"Invalid Solana address(es): {', '.join(bad)}")
+
+    logger.info("Parsing ladder levels...")
+    tp_r, tp_s = _parse_ladder(req.tp)
+    sl_r, sl_s = _parse_ladder(req.sl)
+    logger.info(f"TP ratios: {tp_r}, TP sizes: {tp_s}")
+    logger.info(f"SL ratios: {sl_r}, SL sizes: {sl_s}")
+
+    now_ts = int(datetime.utcnow().timestamp())
+    if req.start_unix:
+        start_ts = int(req.start_unix)
+        if start_ts >= now_ts:
+            logger.error(f"start_unix {start_ts} must be < now {now_ts}")
+            raise HTTPException(400, "start_unix must be < now")
+    else:
+        start_ts = int((datetime.utcnow() - timedelta(days=req.days_back)).timestamp())
+
+    # Set end timestamp
+    if req.end_unix:
+        end_ts = int(req.end_unix)
+        if end_ts <= start_ts:
+            logger.error(f"end_unix {end_ts} must be > start_unix {start_ts}")
+            raise HTTPException(400, "end_unix must be > start_unix")
+    else:
+        end_ts = now_ts
+
+    logger.info(f"Time range: {start_ts} ({datetime.fromtimestamp(start_ts)}) to {end_ts} ({datetime.fromtimestamp(end_ts)})")
+    logger.info(f"Duration: {(end_ts - start_ts) / 3600:.2f} hours")
+
+    out: list[TokenBreakdown] = []
+
+    # Create session first, then create tasks
+    session = aiohttp.ClientSession()
+    try:
+        # Pull all history in parallel
+        logger.info("Creating history fetch tasks...")
+        hist_tasks: dict[str, asyncio.Task] = {
+            m: asyncio.create_task(
+                _cached_history(session, m, start_ts, req.timeframe_minutes, end_ts)
+            )
+            for m in req.tokens
+        }
+
+        # Process results for each token
+        logger.info("Processing results for each token...")
+        for mint in req.tokens:
+            logger.info(f"=== Processing token: {mint} ===")
+            try:
+                logger.info(f"Fetching history for {mint}...")
+                res_hist = await hist_tasks[mint]
+                if res_hist is None:
+                    logger.error(f"History fetch failed for {mint}")
+                    out.append(TokenBreakdown(token=mint, error="Price data fetch failed"))
+                    continue
+
+                mint, items = res_hist
+                logger.info(f"Got {len(items)} history items for {mint}")
+                if len(items) < 10:
+                    logger.warning(f"Not enough data for {mint}: {len(items)} items (need >= 10)")
+                    out.append(TokenBreakdown(token=mint, error="Insufficient price data (need at least 10 data points)"))
+                    continue
+
+                logger.info(f"Building OHLC for {mint} with timeframe {req.timeframe_minutes} minutes...")
+                try:
+                    df = build_ohlc(items, req.timeframe_minutes)
+                    logger.info(f"OHLC shape for {mint}: {df.shape}")
+                    if df.empty:
+                        logger.error(f"Empty OHLC for {mint}")
+                        out.append(TokenBreakdown(token=mint, error="No OHLC data available"))
+                        continue
+                except Exception as ohlc_exc:
+                    logger.error(f"OHLC building failed for {mint}: {ohlc_exc}")
+                    out.append(TokenBreakdown(token=mint, error=f"OHLC building failed: {str(ohlc_exc)}"))
+                    continue
+
+                # Calculate key metrics using the original price data from API
+                try:
+                    # Get the original price data from the API response
+                    original_prices = [item["value"] for item in items if item.get("value", 0) > 0]
+                    
+                    if not original_prices:
+                        logger.error(f"No valid prices found for {mint}")
+                        out.append(TokenBreakdown(token=mint, error="No valid price data"))
+                        continue
+                    
+                    entry_price = float(original_prices[0])  # First price from API
+                    final_price = float(original_prices[-1])  # Last price from API
+                    ath_price = float(max(original_prices))  # Highest price from API
+                    
+                    # Validate prices
+                    if entry_price <= 0 or final_price <= 0 or ath_price <= 0:
+                        logger.error(f"Invalid prices for {mint}: entry=${entry_price}, final=${final_price}, ath=${ath_price}")
+                        out.append(TokenBreakdown(token=mint, error="Invalid price data"))
+                        continue
+                    
+                    ath_percentage = ((ath_price - entry_price) / entry_price) * 100
+                except Exception as price_exc:
+                    logger.error(f"Price calculation failed for {mint}: {price_exc}")
+                    out.append(TokenBreakdown(token=mint, error=f"Price calculation failed: {str(price_exc)}"))
+                    continue
+                
+                logger.info(f"Price analysis for {mint}: Entry=${entry_price:.6f}, Final=${final_price:.6f}, ATH=${ath_price:.6f} ({ath_percentage:.2f}%)")
+                logger.info(f"Price data points for {mint}: {len(original_prices)} points, range: ${min(original_prices):.6f} - ${max(original_prices):.6f}")
+
+                # Use the actual final price from the API data
+                most_recent_close = final_price  # This is already the final price from API
+                if most_recent_close <= 0:
+                    logger.error(f"Invalid most recent close price for {mint}: ${most_recent_close}")
+                    out.append(TokenBreakdown(token=mint, error="Invalid most recent price"))
+                    continue
+                logger.info(f"Using final price from API for {mint}: ${most_recent_close}")
+
+                logger.info(f"Running simulation for {mint}...")
+                try:
+                    sim = run_simulation_with_ledger(
+                        df,
+                        req.amount_usd,
+                        most_recent_close,
+                        tp_r,
+                        tp_s,
+                        sl_r,
+                        sl_s,
+                    )
+                    
+                    # Validate simulation results
+                    if not sim or not isinstance(sim, dict):
+                        logger.error(f"Invalid simulation result for {mint}: {sim}")
+                        out.append(TokenBreakdown(token=mint, error="Invalid simulation result"))
+                        continue
+                    
+                    # Calculate total PnL
+                    realized_profit = sim.get("realized_profit", 0.0)
+                    unrealized_profit = sim.get("unrealized_profit", 0.0)
+                    total_pnl = realized_profit + unrealized_profit
+                    
+                    breakdown = TokenBreakdown(
+                        token=mint,
+                        entry_price=round(entry_price, 6),
+                        final_price=round(final_price, 6),
+                        ath_price=round(ath_price, 6),
+                        ath_percentage=round(ath_percentage, 2),
+                        total_pnl=round(total_pnl, 2),
+                        realized_pnl=round(realized_profit, 2),
+                        unrealized_pnl=round(unrealized_profit, 2),
+                        coins_left=sim.get("coins_left", 0.0),
+                        tps_hit=sim.get("tps_hit", []),
+                        sls_hit=sim.get("sls_hit", [])
+                    )
+                    
+                    logger.info(f"Breakdown for {mint}: Entry=${entry_price}, Final=${final_price}, ATH=${ath_price} ({ath_percentage:.2f}%), Total PnL=${total_pnl}")
+                    out.append(breakdown)
+                except Exception as sim_exc:
+                    logger.error(f"Simulation failed for {mint}: {sim_exc}")
+                    out.append(TokenBreakdown(token=mint, error=f"Simulation failed: {str(sim_exc)}"))
+
+            except HTTPException:      # propagate 4xx back to caller
+                logger.error(f"HTTPException for {mint}")
+                raise
+            except Exception as exc:   # everything else is logged + returned
+                logger.exception(f"Simulation for {mint} failed")
+                out.append(TokenBreakdown(token=mint, error=str(exc)))
+    finally:
+        # Ensure session is closed
+        await session.close()
+
+    logger.info(f"=== SIMULATION BREAKDOWN COMPLETE === Returning {len(out)} results")
+    for result in out:
+        if result.error:
+            logger.error(f"Token {result.token}: {result.error}")
+        else:
+            logger.info(f"Token {result.token}: Success - Total PnL: ${result.total_pnl}")
+    
+    return out
+
 async def try_dexscreener_fallback(session: aiohttp.ClientSession, token: str) -> Optional[TokenPriceResult]:
     """
     Try to get token price and market cap from DexScreener as fallback.
     """
     try:
+        # Add rate limiting delay
+        await asyncio.sleep(REQUEST_DELAY_SECONDS)
+        
         url = f"https://api.dexscreener.com/latest/dex/tokens/{token}"
         async with session.get(
             url,

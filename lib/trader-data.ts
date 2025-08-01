@@ -555,6 +555,47 @@ export async function getTraderStats(filters?: FilterOptions): Promise<TraderSta
     // Always calculate stats from actual trades for accuracy
     const allTrades = await getAllTrades();
 
+    // Fetch current market cap data for all unique tokens
+    const uniqueTokens = [...new Set(allTrades.map(trade => trade.ca))]
+    const tokenMarketCaps: Record<string, number> = {}
+    
+    try {
+      // Use bulk token prices API to get current market caps
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/bulk-token-prices`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          },
+          body: JSON.stringify({ tokens: uniqueTokens })
+        }
+      )
+
+      if (response.ok) {
+        const results = await response.json()
+        results.forEach((result: any) => {
+          if (!result.error && result.market_cap) {
+            tokenMarketCaps[result.token] = result.market_cap
+          }
+        })
+      }
+    } catch (error) {
+      console.error("Error fetching current market caps:", error)
+    }
+
+    // Calculate ROI function (same logic as token-analysis page)
+    const calculateRoi = (initialMc: number, currentMc: number) => {
+      if (!initialMc || !currentMc) return 0
+      if (currentMc < 10000) {
+        const rawRoi = ((currentMc - initialMc) / initialMc) * 100
+        return Math.min(rawRoi, 1000)
+      }
+      return ((currentMc - initialMc) / initialMc) * 100
+    }
+
     // Group trades by trader
     const tradesByTrader = allTrades.reduce((acc, trade) => {
       if (!acc[trade.caller]) {
@@ -567,10 +608,16 @@ export async function getTraderStats(filters?: FilterOptions): Promise<TraderSta
     // Calculate stats for each trader
     const stats = Object.entries(tradesByTrader).map(([caller, trades]) => {
       const total_calls = trades.length
-      const winning_calls = trades.filter((trade) => trade.is_winner).length
+      
+      // Calculate ROI for each trade using current market cap
+      const tradeRois = trades.map(trade => {
+        const currentMc = tokenMarketCaps[trade.ca] || trade.current_mc
+        return calculateRoi(trade.initial_mc, currentMc)
+      })
+      
+      const winning_calls = tradeRois.filter(roi => roi > 0).length
       const win_rate = total_calls > 0 ? winning_calls / total_calls : 0
-      // Use current ROI instead of roi_at_high for more accurate average ROI
-      const average_roi = total_calls > 0 ? trades.reduce((sum, trade) => sum + trade.roi, 0) / total_calls : 0
+      const average_roi = total_calls > 0 ? tradeRois.reduce((sum, roi) => sum + roi, 0) / total_calls : 0
 
       // Calculate market cap performance
       const microCapTrades = trades.filter(trade => trade.initial_mc < 1_000_000)
@@ -581,9 +628,14 @@ export async function getTraderStats(filters?: FilterOptions): Promise<TraderSta
 
       const calculateCapStats = (capTrades: Trade[]) => {
         if (capTrades.length === 0) return { roi: 0, winrate: 0 }
-        // Use current ROI instead of roi_at_high for more accurate cap ROI
-        const roi = capTrades.reduce((sum, trade) => sum + trade.roi, 0) / capTrades.length
-        const winrate = capTrades.filter(trade => trade.is_winner).length / capTrades.length
+        
+        const capRois = capTrades.map(trade => {
+          const currentMc = tokenMarketCaps[trade.ca] || trade.current_mc
+          return calculateRoi(trade.initial_mc, currentMc)
+        })
+        
+        const roi = capRois.reduce((sum, roi) => sum + roi, 0) / capTrades.length
+        const winrate = capRois.filter(roi => roi > 0).length / capTrades.length
         return { roi, winrate }
       }
 
@@ -703,8 +755,17 @@ export async function deleteTrade(caller: string, ca: string, date_called: strin
   }
 }
 
+// Cache for mock data status
+let mockDataCache: { result: boolean; timestamp: number } | null = null
+const MOCK_DATA_CACHE_DURATION = 5 * 60 * 1000 // 5 minutes
+
 // Function to check if we're using mock data
 export async function isUsingMockData(): Promise<boolean> {
+  // Check cache first
+  if (mockDataCache && (Date.now() - mockDataCache.timestamp) < MOCK_DATA_CACHE_DURATION) {
+    return mockDataCache.result
+  }
+
   try {
     // Try to get a small sample from DynamoDB to see if it's available
     const tableName = process.env.DYNAMODB_TRADERS_TABLE || "Trades"
@@ -714,16 +775,31 @@ export async function isUsingMockData(): Promise<boolean> {
     })
     
     // If we can get data from DynamoDB, we're not using mock data
-    return items.length === 0
+    const result = items.length === 0
+    
+    // Cache the result
+    mockDataCache = {
+      result,
+      timestamp: Date.now()
+    }
+    
+    return result
   } catch (error) {
     console.log("DynamoDB not available, using mock data")
+    
+    // Cache the result
+    mockDataCache = {
+      result: true,
+      timestamp: Date.now()
+    }
+    
     return true
   }
 }
 
 export async function fetchAllTrades(): Promise<Trade[]> {
   try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/trades`)
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/trades`)
     if (!response.ok) {
       throw new Error('Failed to fetch trades')
     }

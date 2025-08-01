@@ -4,7 +4,7 @@ import { ClientPage } from "./client-page"
 import { DataSourceStatus } from "@/app/components/data-source-status"
 
 export const dynamic = "force-dynamic"
-export const revalidate = 0 // Don't cache this page
+export const revalidate = 300 // Cache for 5 minutes
 
 export default async function TradesPage() {
   // Default filters - set very wide ranges to ensure all trades are shown initially

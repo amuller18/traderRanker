@@ -72,9 +72,9 @@ async function tryBirdeyeFallback(token: string): Promise<TokenPriceResult | nul
   }
 }
 
-async function tryDexScreenerFallback(token: string): Promise<TokenPriceResult | null> {
+async function tryDexScreener(token: string): Promise<TokenPriceResult | null> {
   try {
-    console.log(`🔍 Trying DexScreener fallback for: ${token}`)
+    console.log(`🔍 Trying DexScreener for: ${token}`)
     
     const response = await fetch(
       `https://api.dexscreener.com/latest/dex/tokens/${token}`,
@@ -114,7 +114,7 @@ async function tryDexScreenerFallback(token: string): Promise<TokenPriceResult |
       // Use the first valid market cap or FDV
       if (marketCap && marketCap > 0) {
         const price = parseFloat(priceUsd) || 0
-        console.log(`✅ DexScreener fallback success for ${token}: price=$${price}, market_cap=$${marketCap}`)
+        console.log(`✅ DexScreener success for ${token}: price=$${price}, market_cap=$${marketCap}`)
         return {
           token,
           price,
@@ -122,7 +122,7 @@ async function tryDexScreenerFallback(token: string): Promise<TokenPriceResult |
         }
       } else if (fdv && fdv > 0) {
         const price = parseFloat(priceUsd) || 0
-        console.log(`✅ DexScreener fallback success for ${token}: price=$${price}, fdv=$${fdv}`)
+        console.log(`✅ DexScreener success for ${token}: price=$${price}, fdv=$${fdv}`)
         return {
           token,
           price,
@@ -135,7 +135,7 @@ async function tryDexScreenerFallback(token: string): Promise<TokenPriceResult |
     return null
 
   } catch (error) {
-    console.error(`Error in DexScreener fallback for ${token}:`, error)
+    console.error(`Error in DexScreener for ${token}:`, error)
     return null
   }
 }
@@ -148,109 +148,104 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid tokens array' }, { status: 400 })
     }
 
-    // CoinGecko API has a limit of 100 tokens per request
-    const BATCH_SIZE = 100
     const results: TokenPriceResult[] = []
 
-    // Process tokens in batches
-    for (let i = 0; i < tokens.length; i += BATCH_SIZE) {
-      const batch = tokens.slice(i, i + BATCH_SIZE)
-      const contractAddresses = batch.join(',')
-      
+    // Process tokens individually to avoid rate limits and get better coverage
+    for (const token of tokens) {
       try {
-        const response = await fetch(
-          `https://api.coingecko.com/api/v3/simple/token_price/solana?contract_addresses=${contractAddresses}&vs_currencies=usd`,
-          {
-            headers: {
-              'accept': 'application/json',
-              'x-cg-demo-api-key': 'CG-8jAASUaSyaz4VEsDjonVgjNr'
-            },
-            cache: 'no-store'
-          }
-        )
-
-        if (!response.ok) {
-          throw new Error(`CoinGecko API error: ${response.status}`)
+        // Start with DexScreener (best for Solana tokens)
+        console.log(`🔍 Trying DexScreener for: ${token}`)
+        const dexscreenerResult = await tryDexScreener(token)
+        if (dexscreenerResult) {
+          results.push(dexscreenerResult)
+          continue
         }
 
-        const priceData: TokenPriceResponse = await response.json()
+        // Try Birdeye as fallback
+        console.log(`DexScreener no data for ${token}, trying Birdeye...`)
+        const birdeyeResult = await tryBirdeyeFallback(token)
+        if (birdeyeResult) {
+          results.push(birdeyeResult)
+          continue
+        }
 
-        // Process each token in the batch
-        for (const token of batch) {
-          const tokenPrice = priceData[token]
-          
-          if (tokenPrice && tokenPrice.usd) {
-            // Get supply information from existing API
-            try {
-              const supplyResponse = await fetch(
-                `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/token-supply?address=${token}`,
-                { cache: 'no-store' }
-              )
-              
-              let supply = 1e9 // Default supply if API fails
-              if (supplyResponse.ok) {
-                const supplyData = await supplyResponse.json()
-                supply = supplyData.circulating_supply || supplyData.total_supply || 1e9
-              }
-
-              const marketCap = tokenPrice.usd * supply
-              
-              results.push({
-                token,
-                price: tokenPrice.usd,
-                market_cap: marketCap
-              })
-            } catch (supplyError) {
-              console.error(`Error fetching supply for ${token}:`, supplyError)
-              // Use default supply calculation
-              const marketCap = tokenPrice.usd * 1e9
-              results.push({
-                token,
-                price: tokenPrice.usd,
-                market_cap: marketCap
-              })
+        // Try CoinGecko as last resort (only for major tokens)
+        console.log(`Birdeye no data for ${token}, trying CoinGecko...`)
+        try {
+          const response = await fetch(
+            `https://api.coingecko.com/api/v3/simple/token_price/solana?contract_addresses=${token}&vs_currencies=usd`,
+            {
+              headers: {
+                'accept': 'application/json',
+                'x-cg-demo-api-key': 'CG-8jAASUaSyaz4VEsDjonVgjNr'
+              },
+              cache: 'no-store'
             }
-          } else {
-            // Try DexScreener as fallback
-            console.log(`CoinGecko no data for ${token}, trying DexScreener...`)
-            const dexscreenerResult = await tryDexScreenerFallback(token)
-            if (dexscreenerResult) {
-              results.push(dexscreenerResult)
-            } else {
-              // Try Birdeye as ultimate fallback
-              console.log(`DexScreener no data for ${token}, trying Birdeye...`)
-              const birdeyeResult = await tryBirdeyeFallback(token)
-              if (birdeyeResult) {
-                results.push(birdeyeResult)
-              } else {
+          )
+
+          if (response.ok) {
+            const priceData: TokenPriceResponse = await response.json()
+            const tokenPrice = priceData[token]
+            
+            if (tokenPrice && tokenPrice.usd) {
+              // Get supply information from existing API
+              try {
+                const supplyResponse = await fetch(
+                  `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/token-supply?address=${token}`,
+                  { cache: 'no-store' }
+                )
+                
+                let supply = 1e9 // Default supply if API fails
+                if (supplyResponse.ok) {
+                  const supplyData = await supplyResponse.json()
+                  supply = supplyData.circulating_supply || supplyData.total_supply || 1e9
+                }
+
+                const marketCap = tokenPrice.usd * supply
+                
                 results.push({
                   token,
-                  price: 0,
-                  market_cap: 0,
-                  error: 'Price not available from CoinGecko, DexScreener, or Birdeye'
+                  price: tokenPrice.usd,
+                  market_cap: marketCap
                 })
+                continue
+              } catch (supplyError) {
+                console.error(`Error fetching supply for ${token}:`, supplyError)
+                // Use default supply calculation
+                const marketCap = tokenPrice.usd * 1e9
+                results.push({
+                  token,
+                  price: tokenPrice.usd,
+                  market_cap: marketCap
+                })
+                continue
               }
             }
           }
+        } catch (coingeckoError) {
+          console.log(`CoinGecko failed for ${token}:`, coingeckoError)
         }
 
-        // Add delay between batches to respect rate limits
-        if (i + BATCH_SIZE < tokens.length) {
-          await new Promise(resolve => setTimeout(resolve, 1000))
-        }
-      } catch (batchError) {
-        console.error(`Error processing batch ${i}-${i + BATCH_SIZE}:`, batchError)
-        
-        // Add error results for this batch
-        for (const token of batch) {
-          results.push({
-            token,
-            price: 0,
-            market_cap: 0,
-            error: 'Batch processing failed'
-          })
-        }
+        // If all APIs fail, add error result
+        results.push({
+          token,
+          price: 0,
+          market_cap: 0,
+          error: 'Price not available from DexScreener, Birdeye, or CoinGecko'
+        })
+
+      } catch (tokenError) {
+        console.error(`Error processing token ${token}:`, tokenError)
+        results.push({
+          token,
+          price: 0,
+          market_cap: 0,
+          error: 'Token processing failed'
+        })
       }
+
+      // Add small delay between tokens to be respectful to APIs
+      await new Promise(resolve => setTimeout(resolve, 800))
     }
 
     return NextResponse.json(results)

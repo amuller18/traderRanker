@@ -45,10 +45,48 @@ export default async function TokenDetailPage({ params }: TokenDetailPageProps) 
   // Get the first trade for token info
   const tokenTrade = trades[0]
 
-  // Calculate some stats
-  const highestRoi = Math.max(...trades.map((t) => t.roi_at_high))
-  const lowestRoi = Math.min(...trades.map((t) => t.roi_at_low))
-  const averageRoi = trades.reduce((sum, t) => sum + t.roi_at_high, 0) / trades.length
+  // Fetch current market cap data for this token (same as token-analysis page)
+  let currentMc = 0
+  try {
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/bulk-token-prices`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        },
+        body: JSON.stringify({ tokens: [tokenAddress] })
+      }
+    )
+
+    if (response.ok) {
+      const results = await response.json()
+      const tokenResult = results.find((r: any) => r.token === tokenAddress)
+      if (tokenResult && !tokenResult.error) {
+        currentMc = tokenResult.market_cap || 0
+      }
+    }
+  } catch (error) {
+    console.error("Error fetching current market cap:", error)
+  }
+
+  // Calculate ROI function (same logic as token-analysis page)
+  const calculateRoi = (initialMc: number) => {
+    if (!initialMc || !currentMc) return 0
+    if (currentMc < 10000) {
+      const rawRoi = ((currentMc - initialMc) / initialMc) * 100
+      return Math.min(rawRoi, 1000)
+    }
+    return ((currentMc - initialMc) / initialMc) * 100
+  }
+
+  // Calculate stats using current market cap
+  const rois = trades.map(t => calculateRoi(t.initial_mc))
+  const highestRoi = rois.length > 0 ? Math.max(...rois) : 0
+  const lowestRoi = rois.length > 0 ? Math.min(...rois) : 0
+  const averageRoi = rois.length > 0 ? rois.reduce((sum, roi) => sum + roi, 0) / rois.length : 0
   const totalTraders = new Set(trades.map((t) => t.caller)).size
   const firstTradeDate = new Date(Math.min(...trades.map((t) => new Date(t.date_called).getTime())))
   const lastTradeDate = new Date(Math.max(...trades.map((t) => new Date(t.date_called).getTime())))
@@ -101,7 +139,7 @@ export default async function TokenDetailPage({ params }: TokenDetailPageProps) 
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatMarketCap(tokenTrade.current_mc)}</div>
+            <div className="text-2xl font-bold">{formatMarketCap(currentMc)}</div>
             <p className="text-xs text-muted-foreground">Initial: {formatMarketCap(tokenTrade.initial_mc)}</p>
           </CardContent>
         </Card>
@@ -117,7 +155,7 @@ export default async function TokenDetailPage({ params }: TokenDetailPageProps) 
           </CardHeader>
           <CardContent>
             <div className={`text-2xl font-bold ${getPerformanceClass(averageRoi)}`}>
-              {(averageRoi * 100).toFixed(1)}%
+              {averageRoi.toFixed(1)}%
             </div>
             <p className="text-xs text-muted-foreground">
               Across {trades.length} trades by {totalTraders} traders
@@ -132,9 +170,9 @@ export default async function TokenDetailPage({ params }: TokenDetailPageProps) 
           </CardHeader>
           <CardContent>
             <div className={`text-2xl font-bold ${getPerformanceClass(highestRoi)}`}>
-              {(highestRoi * 100).toFixed(1)}%
+              {highestRoi.toFixed(1)}%
             </div>
-            <p className="text-xs text-muted-foreground">Lowest: {(lowestRoi * 100).toFixed(1)}%</p>
+            <p className="text-xs text-muted-foreground">Lowest: {lowestRoi.toFixed(1)}%</p>
           </CardContent>
         </Card>
 
@@ -175,7 +213,7 @@ export default async function TokenDetailPage({ params }: TokenDetailPageProps) 
             <div className="space-y-4">
               {Array.from(new Set(trades.map((t) => t.caller))).map((trader) => {
                 const traderTrades = trades.filter((t) => t.caller === trader)
-                const avgRoi = traderTrades.reduce((sum, t) => sum + t.roi_at_high, 0) / traderTrades.length
+                const avgRoi = traderTrades.reduce((sum, t) => sum + calculateRoi(t.initial_mc), 0) / traderTrades.length
 
                 return (
                   <div key={trader} className="flex items-center justify-between">
@@ -187,7 +225,7 @@ export default async function TokenDetailPage({ params }: TokenDetailPageProps) 
                     </div>
                     <div className="flex items-center gap-4">
                       <span className="text-sm text-muted-foreground">{traderTrades.length} calls</span>
-                      <span className={getPerformanceClass(avgRoi)}>{(avgRoi * 100).toFixed(1)}%</span>
+                      <span className={getPerformanceClass(avgRoi)}>{avgRoi.toFixed(1)}%</span>
                     </div>
                   </div>
                 )
@@ -219,34 +257,33 @@ export default async function TokenDetailPage({ params }: TokenDetailPageProps) 
                 </tr>
               </thead>
               <tbody>
-                {trades.map((trade, i) => (
-                  <tr key={i} className="border-b">
-                    <td className="p-3">{format(new Date(trade.date_called), "MMM d, yyyy")}</td>
-                    <td className="p-3">
-                      <Link
-                        href={`/rankings/${encodeURIComponent(trade.caller)}`}
-                        className="hover:underline text-primary"
-                      >
-                        {trade.caller}
-                      </Link>
-                    </td>
-                    <td className="p-3">{formatMarketCap(trade.initial_mc)}</td>
-                    <td className="p-3">{formatMarketCap(trade.current_mc)}</td>
-                    <td className={`p-3 ${getPerformanceClass(trade.roi)}`}>{(trade.roi * 100).toFixed(1)}%</td>
-                    <td className={`p-3 ${getPerformanceClass(trade.roi_at_high)}`}>
-                      {(trade.roi_at_high * 100).toFixed(1)}%
-                    </td>
-                    <td className={`p-3 ${getPerformanceClass(trade.roi_at_low)}`}>
-                      {(trade.roi_at_low * 100).toFixed(1)}%
-                    </td>
-                    <td className={`p-3 ${getPerformanceClass(trade.profit_at_high)}`}>
-                      {formatMarketCap(trade.profit_at_high)}
-                    </td>
-                    <td className={`p-3 ${getPerformanceClass(trade.profit_at_low)}`}>
-                      {formatMarketCap(trade.profit_at_low)}
-                    </td>
-                  </tr>
-                ))}
+                {trades.map((trade, i) => {
+                  const roi = calculateRoi(trade.initial_mc)
+                  return (
+                    <tr key={i} className="border-b">
+                      <td className="p-3">{format(new Date(trade.date_called), "MMM d, yyyy")}</td>
+                      <td className="p-3">
+                        <Link
+                          href={`/rankings/${encodeURIComponent(trade.caller)}`}
+                          className="hover:underline text-primary"
+                        >
+                          {trade.caller}
+                        </Link>
+                      </td>
+                      <td className="p-3">{formatMarketCap(trade.initial_mc)}</td>
+                      <td className="p-3">{formatMarketCap(currentMc)}</td>
+                      <td className={`p-3 ${getPerformanceClass(roi)}`}>{roi.toFixed(1)}%</td>
+                      <td className={`p-3 ${getPerformanceClass(trade.roi_at_high * 100)}`}>
+                        {(trade.roi_at_high * 100).toFixed(1)}%
+                      </td>
+                      <td className={`p-3 ${getPerformanceClass(trade.roi_at_low * 100)}`}>
+                        {(trade.roi_at_low * 100).toFixed(1)}%
+                      </td>
+                      <td className="p-3">{formatMarketCap(trade.high_mc - trade.initial_mc)}</td>
+                      <td className="p-3">{formatMarketCap(trade.low_mc - trade.initial_mc)}</td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>

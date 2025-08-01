@@ -1,10 +1,10 @@
 "use client"
 
-import { useState, useMemo } from "react"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Button } from "@/components/ui/button"
-import { ArrowUpDown, ChevronDown, ChevronUp, ExternalLink, Loader2 } from "lucide-react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { formatDistanceToNow } from "date-fns"
+import { ChevronUp, ChevronDown, ArrowUpDown, ExternalLink, Loader2, RefreshCw } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import type { Trade } from "@/lib/trader-data"
@@ -22,7 +22,25 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc")
   const [pageSize] = useState<number>(10) // Fixed at 10
   const [currentPage, setCurrentPage] = useState<number>(1)
+  const [tokenInfos, setTokenInfos] = useState<Record<string, { currentMc: number }>>({})
+  const [loadingStates, setLoadingStates] = useState<Record<string, boolean>>({})
+  const [errorStates, setErrorStates] = useState<Record<string, boolean>>({})
+  const [retryCount, setRetryCount] = useState(0)
+  const [isUpdating, setIsUpdating] = useState(false)
+  const fetchedTokensRef = useRef<Set<string>>(new Set())
   const router = useRouter()
+
+
+
+  // Calculate ROI for a trade (same logic as token-analysis page)
+  const calculateRoi = (trade: Trade) => {
+    const currentMc = tokenInfos[trade.ca]?.currentMc || 0
+    const initialMc = trade.initial_mc
+    
+    if (initialMc === 0) return 0
+    
+    return ((currentMc - initialMc) / initialMc) * 100
+  }
 
   // Memoize sorted trades to prevent infinite re-renders
   const sortedTrades = useMemo(() => {
@@ -34,10 +52,8 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
       } else if (sortField === "caller") {
         return sortDirection === "asc" ? a.caller.localeCompare(b.caller) : b.caller.localeCompare(a.caller)
       } else if (sortField === "roi") {
-        // Temporarily disable ROI sorting to prevent infinite loop
-        // Use the original ROI from the trade data instead
-        const aRoi = a.roi || 0
-        const bRoi = b.roi || 0
+        const aRoi = calculateRoi(a)
+        const bRoi = calculateRoi(b)
         return sortDirection === "asc" ? aRoi - bRoi : bRoi - aRoi
       } else {
         const aValue = a[sortField]
@@ -45,7 +61,7 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
         return sortDirection === "asc" ? aValue - bValue : bValue - aValue
       }
     })
-  }, [trades, sortField, sortDirection]) // Removed tokenInfos dependency
+  }, [trades, sortField, sortDirection, tokenInfos])
 
   // Memoize paginated trades
   const { paginatedTrades, totalPages } = useMemo(() => {
@@ -55,6 +71,114 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
     const paginatedTrades = sortedTrades.slice(startIndex, endIndex)
     return { paginatedTrades, totalPages }
   }, [sortedTrades, currentPage, pageSize])
+
+  // Update ROI for all trades
+  useEffect(() => {
+    // Only fetch data for tokens on the current page that haven't been fetched yet
+    const currentPageTokens = paginatedTrades.filter(trade => {
+      return !tokenInfos[trade.ca] && 
+             !loadingStates[trade.ca] && 
+             !fetchedTokensRef.current.has(trade.ca) &&
+             !errorStates[trade.ca] // Don't retry failed tokens automatically
+    })
+
+    // Remove duplicates by token address
+    const uniqueTokens = currentPageTokens.filter((trade, index, self) => 
+      index === self.findIndex(t => t.ca === trade.ca)
+    )
+
+    const processUpdates = async () => {
+      if (isUpdating || uniqueTokens.length === 0) return // Prevent multiple simultaneous updates
+      
+      setIsUpdating(true)
+      try {
+        // Use bulk API call for all tokens at once (much faster)
+        const tokenAddresses = uniqueTokens.map(trade => trade.ca)
+        
+        // Mark all tokens as loading
+        const loadingStatesUpdate: Record<string, boolean> = {}
+        tokenAddresses.forEach(ca => {
+          loadingStatesUpdate[ca] = true
+        })
+        setLoadingStates(prev => ({ ...prev, ...loadingStatesUpdate }))
+
+        // Single bulk API call
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/bulk-token-prices`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Cache-Control': 'no-cache',
+              'Pragma': 'no-cache'
+            },
+            body: JSON.stringify({ tokens: tokenAddresses })
+          }
+        )
+
+        if (!response.ok) {
+          throw new Error(`API error: ${response.status}`)
+        }
+
+        const data = await response.json()
+        
+        // Process all results at once
+        const tokenInfosUpdate: Record<string, { currentMc: number }> = {}
+        const errorStatesUpdate: Record<string, boolean> = {}
+        
+        uniqueTokens.forEach(trade => {
+          const tokenResult = data.find((result: any) => result.token === trade.ca)
+          
+          if (tokenResult && tokenResult.market_cap > 0) {
+            tokenInfosUpdate[trade.ca] = {
+              currentMc: tokenResult.market_cap,
+            }
+            fetchedTokensRef.current.add(trade.ca)
+          } else {
+            // Fallback to stored current_mc if API doesn't have data
+            tokenInfosUpdate[trade.ca] = {
+              currentMc: trade.current_mc,
+            }
+            fetchedTokensRef.current.add(trade.ca)
+          }
+        })
+
+        // Update all states at once
+        setTokenInfos(prev => ({ ...prev, ...tokenInfosUpdate }))
+        setErrorStates(prev => ({ ...prev, ...errorStatesUpdate }))
+        
+      } catch (error) {
+        console.error('Error updating ROI for tokens:', error)
+        
+        // Fallback to stored data for all tokens on error
+        const tokenInfosUpdate: Record<string, { currentMc: number }> = {}
+        const errorStatesUpdate: Record<string, boolean> = {}
+        
+        uniqueTokens.forEach(trade => {
+          tokenInfosUpdate[trade.ca] = {
+            currentMc: trade.current_mc,
+          }
+          fetchedTokensRef.current.add(trade.ca)
+          errorStatesUpdate[trade.ca] = true
+        })
+        
+        setTokenInfos(prev => ({ ...prev, ...tokenInfosUpdate }))
+        setErrorStates(prev => ({ ...prev, ...errorStatesUpdate }))
+      } finally {
+        // Clear loading states for all tokens
+        const loadingStatesUpdate: Record<string, boolean> = {}
+        uniqueTokens.forEach(trade => {
+          loadingStatesUpdate[trade.ca] = false
+        })
+        setLoadingStates(prev => ({ ...prev, ...loadingStatesUpdate }))
+        setIsUpdating(false)
+      }
+    }
+
+    if (uniqueTokens.length > 0) {
+      processUpdates()
+    }
+  }, [currentPage, retryCount]) // Only run when page changes or retry is triggered
 
   const handleSort = (field: SortField) => {
     if (field === sortField) {
@@ -91,6 +215,21 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
     router.push(`/token-analysis/${encodeURIComponent(ca)}`)
   }
 
+  // Handle retry for all failed tokens
+  const handleRetry = () => {
+    setRetryCount(prev => prev + 1)
+    setErrorStates({})
+    fetchedTokensRef.current.clear()
+  }
+
+  // Handle retry for a specific token
+  const handleRetryToken = (token: string) => {
+    setErrorStates(prev => ({ ...prev, [token]: false }))
+    fetchedTokensRef.current.delete(token)
+    // Trigger a re-fetch by incrementing retry count
+    setRetryCount(prev => prev + 1)
+  }
+
   if (loading) {
     return (
       <div className="rounded-md border p-8 flex justify-center items-center">
@@ -107,6 +246,12 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground">Showing {paginatedTrades.length} trades</span>
+          {isUpdating && (
+            <div className="flex items-center gap-1 text-sm text-blue-600">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              <span>Updating prices...</span>
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -220,8 +365,9 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
               </TableRow>
             ) : (
               paginatedTrades.map((trade) => {
-                // Use the original ROI from trade data instead of calculating from current MC
-                const roi = trade.roi || 0
+                const roi = calculateRoi(trade)
+                const isLoading = loadingStates[trade.ca]
+                const hasError = errorStates[trade.ca]
 
                 return (
                   <TableRow key={`${trade.caller}-${trade.ca}-${trade.date_called}`}>
@@ -242,7 +388,27 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
                     </TableCell>
                     <TableCell>{formatMarketCap(trade.initial_mc)}</TableCell>
                     <TableCell className={getPerformanceClass(roi)}>
-                      {`${roi.toFixed(1)}%`}
+                      {isLoading ? (
+                        <span className="animate-pulse text-muted-foreground">•••%</span>
+                      ) : hasError ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground">Failed to load price data</span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setErrorStates(prev => ({ ...prev, [trade.ca]: false }))
+                              fetchedTokensRef.current.delete(trade.ca)
+                              setRetryCount(prev => prev + 1)
+                            }}
+                            className="h-6 w-6 p-0"
+                          >
+                            <RefreshCw className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ) : (
+                        `${roi.toFixed(1)}%`
+                      )}
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-1">
@@ -260,6 +426,20 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
           </TableBody>
         </Table>
       </div>
+
+      {Object.values(errorStates).some(Boolean) && (
+        <div className="flex justify-center">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRetry}
+            className="flex items-center gap-2"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Retry Failed Requests
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

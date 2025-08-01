@@ -50,7 +50,7 @@ export function TraderTrades({ trades, currentPage, totalPages, totalTrades, tra
     try {
       // Use the new CoinGecko bulk price endpoint
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/bulk-token-prices`,
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/bulk-token-prices`,
         {
           method: 'POST',
           headers: {

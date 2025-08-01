@@ -1,10 +1,11 @@
 import { fetchAllTrades } from "@/app/actions/trader-actions"
 import { isUsingMockData } from "@/lib/trader-data"
-import { BacktestClientPage } from "./client-page"
+import BacktestClientPage from "./client-page"
 import { PageHeader } from "@/app/page-header"
 import type { Trade } from "@/lib/trader-data"
 
 export const dynamic = "force-dynamic"
+export const revalidate = 300 // Cache for 5 minutes
 
 export default async function BacktestPage() {
   let trades: Trade[] = []

@@ -87,13 +87,65 @@ export default async function TokenDetailPage({
   }
 
   // Fetch token data
-  const response = await fetch(
-    `https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`,
-    { next: { revalidate: 0 } }
-  )
+  let response
+  let retryCount = 0
+  const maxRetries = 3
+  
+  while (retryCount < maxRetries) {
+    try {
+      response = await fetch(
+        `https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`,
+        { 
+          next: { revalidate: 0 },
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
+            'Referer': 'https://dexscreener.com/',
+            'Accept': 'application/json',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Origin': 'https://dexscreener.com',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
+          }
+        }
+      )
+      
+      if (response.ok) {
+        break // Success, exit retry loop
+      }
+      
+      if (response.status === 429) {
+        // Rate limited, wait and retry
+        console.log(`Rate limited by DexScreener, retrying in ${(retryCount + 1) * 1000}ms...`)
+        await new Promise(resolve => setTimeout(resolve, (retryCount + 1) * 1000))
+        retryCount++
+        continue
+      }
+      
+      // Other error, don't retry
+      break
+      
+    } catch (error) {
+      console.error(`Error fetching token data (attempt ${retryCount + 1}):`, error)
+      retryCount++
+      if (retryCount < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, 1000))
+      }
+    }
+  }
 
-  if (!response.ok) {
-    throw new Error(`Failed to fetch token data: ${response.statusText}`)
+  if (!response || !response.ok) {
+    return (
+      <div className="container mx-auto p-4">
+        <h1 className="text-2xl font-bold mb-4">Token Data Unavailable</h1>
+        <p>The requested token data could not be fetched. This might be due to:</p>
+        <ul className="list-disc list-inside mt-2">
+          <li>Rate limiting from the data provider</li>
+          <li>Token not found in the database</li>
+          <li>Temporary service outage</li>
+        </ul>
+        <p className="mt-4">Please try again in a few moments.</p>
+      </div>
+    )
   }
 
   const data = await response.json()

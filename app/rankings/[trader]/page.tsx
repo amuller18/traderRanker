@@ -48,7 +48,7 @@ export default async function TraderDetailPage({ params, searchParams }: TraderD
   const tokenInfos = await Promise.all(
     allTrades.map(async (trade) => {
       try {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/token-info?address=${trade.ca}`)
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/token-info?address=${trade.ca}`)
         if (response.ok) {
           const data = await response.json()
           return {

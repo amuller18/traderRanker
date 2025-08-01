@@ -54,7 +54,7 @@ export function TokenAuthorityInfo({ tokenAddress }: TokenAuthorityInfoProps) {
         }, 30000) // 30 second timeout
 
         const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/token-authorities?address=${encodeURIComponent(tokenAddress)}`,
+          `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/token-authorities?address=${encodeURIComponent(tokenAddress)}`,
           { 
             signal,
             headers: {

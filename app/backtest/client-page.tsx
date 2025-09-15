@@ -48,6 +48,20 @@ import {
 const DEFAULT_DAYS_BACK = 30; // Increased to 30 days to show more price action
 const DEFAULT_TIMEFRAME = 15; // sends `timeframe_minutes: 15`
 
+// Timeframe options for manual selection
+const TIMEFRAME_OPTIONS = [
+  { value: "auto", label: "Auto (Recommended)" },
+  { value: "1", label: "1 Minute" },
+  { value: "3", label: "3 Minutes" },
+  { value: "5", label: "5 Minutes" },
+  { value: "15", label: "15 Minutes" },
+  { value: "30", label: "30 Minutes" },
+  { value: "60", label: "1 Hour" },
+  { value: "240", label: "4 Hours" },
+  { value: "480", label: "8 Hours" },
+  { value: "1440", label: "1 Day" },
+];
+
 /* ---------------------------------------------------------------------
  * TYPES
  * -------------------------------------------------------------------*/
@@ -90,6 +104,8 @@ interface SimulationResult {
 
 interface TokenBreakdown {
   token: string;
+  trade_id: string;
+  time_called: string;
   entry_price: number;
   final_price: number;
   ath_price: number;
@@ -98,6 +114,8 @@ interface TokenBreakdown {
   realized_pnl: number;
   unrealized_pnl: number;
   coins_left: number;
+  max_drawdown: number;
+  roi_to_date: number;
   tps_hit: number[];
   sls_hit: number[];
   error?: string;
@@ -122,6 +140,19 @@ const fmt = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2
 });
 const formatLargeNumber = (n: number) => fmt.format(n);
+
+// Format large numbers for coins left (human readable)
+const formatCoinsLeft = (coins: number) => {
+  if (coins === 0) return "0";
+  if (coins < 0.000001) return coins.toExponential(2);
+  if (coins < 0.001) return coins.toFixed(8);
+  if (coins < 1) return coins.toFixed(6);
+  if (coins < 1000) return coins.toFixed(2);
+  if (coins < 1000000) return `${(coins / 1000).toFixed(1)}K`;
+  if (coins < 1000000000) return `${(coins / 1000000).toFixed(1)}M`;
+  return `${(coins / 1000000000).toFixed(1)}B`;
+};
+
 const formatDate = (unix: number) =>
   new Date(unix * 1000).toLocaleString("en-US", {
     month: "short",
@@ -163,7 +194,12 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
     value: 1  // Changed default to 1% per trade
   });
   const [maxBacktests, setMaxBacktests] = useState(100); // New parameter for max backtests
+  const [timeframe, setTimeframe] = useState<string>("auto");
+  const [useAutoTimeframe, setUseAutoTimeframe] = useState<boolean>(true);
   const [selectedCaller, setSelectedCaller] = useState("all");
+  const [visibleTokens, setVisibleTokens] = useState<Set<string>>(new Set());
+  const [legendSearch, setLegendSearch] = useState<string>("");
+  const [legendPage, setLegendPage] = useState<number>(0);
   const [chartData, setChartData] = useState<any[]>([]);
   const [cumChartData, setCumChartData] = useState<any[]>([]);
   const [summary, setSummary] = useState<SummaryStats | null>(null);
@@ -229,6 +265,28 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
     });
   };
 
+  const handleLegendClick = (entry: any) => {
+    setVisibleTokens(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(entry.dataKey)) {
+        newSet.delete(entry.dataKey);
+      } else {
+        newSet.add(entry.dataKey);
+      }
+      return newSet;
+    });
+  };
+
+  const formatChartDate = (timestamp: number) => {
+    const date = new Date(timestamp * 1000);
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
   /* ─────────────────────── actions ───────────────────── */
   const runBacktest = async () => {
     if (apiStatus !== "connected" || filteredTrades.length === 0) return;
@@ -243,7 +301,21 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
       ? (initialCapital * positionSizing.value) / 100
       : positionSizing.value;
 
-    const payload = {
+    // Create trade-based payload with individual dates
+    const tradesPayload = {
+      trades: filteredTrades.map(trade => ({
+        token: trade.ca,
+        date_called: trade.date_called
+      })),
+      amount_usd: positionSizePerTrade, // Use position size per trade, not total capital
+      timeframe_minutes: timeframe === "auto" ? DEFAULT_TIMEFRAME : parseInt(timeframe),
+      use_auto_timeframe: timeframe === "auto",
+      tp: ladderToString(takeProfits),
+      sl: ladderToString(stopLosses)
+    } as const;
+
+    // Keep the old payload for the chart simulation
+    const chartPayload = {
       tokens: uniqueTokens,
       amount_usd: positionSizePerTrade, // Use position size per trade, not total capital
       start_unix: 0,
@@ -255,11 +327,11 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
     } as const;
 
     try {
-      // First get the detailed breakdown
-      const breakdownRes = await fetch(`${pythonApiUrl}/api/simulate/breakdown`, {
+      // First get the detailed breakdown using trade-based endpoint
+      const breakdownRes = await fetch(`${pythonApiUrl}/api/simulate/breakdown/trades`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(tradesPayload)
       });
       if (!breakdownRes.ok) throw new Error(`Breakdown API ${breakdownRes.status}`);
       const breakdowns: TokenBreakdown[] = await breakdownRes.json();
@@ -279,22 +351,38 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
       
       setTokenBreakdown(breakdowns);
 
-      // Then get the simulation data for charts
-      const res = await fetch(`${pythonApiUrl}/api/simulate`, {
+      // Calculate summary stats from breakdown data (more accurate)
+      let totalProfit = 0;
+      let winningTrades = 0;
+      
+      breakdowns.forEach((breakdown) => {
+        if (!breakdown.error) {
+          const tokenProfit = breakdown.total_pnl;
+          totalProfit += tokenProfit;
+          if (tokenProfit > 0) winningTrades++;
+          console.log(`Token ${breakdown.token}: Profit = $${tokenProfit.toFixed(2)}`);
+        }
+      });
+
+      // Then get the simulation data for charts using trade-based endpoint
+      const res = await fetch(`${pythonApiUrl}/api/simulate/trades`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(tradesPayload)
       });
       if (!res.ok) throw new Error(`API ${res.status}`);
       const sims: SimulationResult[] = await res.json();
 
       /* ─ compute charts & stats ─*/
       const rows: any[] = [];
-      let totalProfit = 0;
-      let winningTrades = 0;
 
-      // Process each simulation result
+      // Process each simulation result and create individual token charts
       console.log(`Processing ${sims.length} simulation results`);
+      const allTimestamps = new Set<number>();
+      
+      // Create a mapping of unique identifiers for each trade
+      const tradeIdentifiers: string[] = [];
+      
       sims.forEach((sim, simIndex) => {
         console.log(`Processing simulation ${simIndex + 1}/${sims.length}: ${sim.token}`);
         if (!sim.ledger?.length) {
@@ -304,47 +392,71 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
         
         console.log(`Token ${sim.token}: ${sim.ledger.length} ledger points`);
         
-        // Add each ledger point to the chart data
-        sim.ledger.forEach((pt, idx) => {
-          if (!rows[idx]) rows[idx] = { ts: pt.ts };
-          // Store the total equity (value + realized) for this token at this timestamp
-          rows[idx][sim.token] = pt.value + pt.realized;
+        // Create unique identifier for this trade
+        const tradeId = `${sim.token}_${simIndex}`;
+        tradeIdentifiers.push(tradeId);
+        
+        // Collect all timestamps from all trades
+        sim.ledger.forEach((pt) => {
+          allTimestamps.add(pt.ts);
         });
-
-        // Calculate profit for this token
-        const tokenProfit = (sim.realized_profit || 0) + (sim.unrealized_profit || 0);
-        totalProfit += tokenProfit;
-        if (tokenProfit > 0) winningTrades++;
-        console.log(`Token ${sim.token}: Profit = $${tokenProfit.toFixed(2)}`);
       });
 
-      // Add dates to rows
-      rows.forEach((r) => (r.date = formatDate(r.ts)));
+      // Sort timestamps and create chart rows
+      const sortedTimestamps = Array.from(allTimestamps).sort((a, b) => a - b);
+      
+      sortedTimestamps.forEach((ts) => {
+        const row: any = { ts, date: formatDate(ts) };
+        
+        // Add each token's value at this timestamp using unique identifiers
+        sims.forEach((sim, simIndex) => {
+          if (sim.ledger) {
+            // Find the closest ledger point to this timestamp
+            const closestPoint = sim.ledger.reduce((closest, current) => {
+              return Math.abs(current.ts - ts) < Math.abs(closest.ts - ts) ? current : closest;
+            });
+            
+            // Only add if the point is within a reasonable time range (e.g., 1 hour)
+            if (Math.abs(closestPoint.ts - ts) <= 3600) {
+              const tradeId = tradeIdentifiers[simIndex];
+              row[tradeId] = closestPoint.value + closestPoint.realized;
+            }
+          }
+        });
+        
+        rows.push(row);
+      });
 
-      // Calculate cumulative portfolio value
+      // Calculate cumulative portfolio value (including cash not in positions)
       const cumulative: any[] = [];
       let runningPortfolio = initialCapital;
       
       rows.forEach((row) => {
-        // Get all token keys (excluding ts and date)
-        const tokenKeys = Object.keys(row).filter(
-          (k) => k !== 'ts' && k !== 'date' && k.length > 30
+        // Get all trade keys (excluding ts and date)
+        const tradeKeys = Object.keys(row).filter(
+          (k) => k !== 'ts' && k !== 'date' && k.includes('_')
         );
         
         // Calculate the total value of all positions at this timestamp
         let totalValue = 0;
-        tokenKeys.forEach(tokenKey => {
-          totalValue += row[tokenKey] || 0;
+        tradeKeys.forEach(tradeKey => {
+          totalValue += row[tradeKey] || 0;
         });
         
-        // Update running portfolio
-        runningPortfolio = totalValue;
+        // Calculate cash not in positions (initial capital minus what's invested)
+        const cashNotInPositions = initialCapital - (positionSizing.type === "percentage" ? 
+          (initialCapital * positionSizing.value / 100) * filteredTrades.length : 
+          positionSizing.value * filteredTrades.length);
+        
+        // The running portfolio should be the current total value of all positions
+        // plus any cash that hasn't been invested yet
+        runningPortfolio = totalValue + cashNotInPositions;
         cumulative.push({ ...row, cumulative: runningPortfolio });
       });
 
       console.log(`Chart data rows: ${rows.length}`);
       console.log(`Sample row keys: ${Object.keys(rows[0] || {}).join(', ')}`);
-      console.log(`Token keys in chart data: ${Object.keys(rows[0] || {}).filter(k => k !== 'ts' && k !== 'date' && k.length > 30).join(', ')}`);
+      console.log(`Trade keys in chart data: ${Object.keys(rows[0] || {}).filter(k => k !== 'ts' && k !== 'date' && k.includes('_')).join(', ')}`);
       
       setChartData(rows);
       setCumChartData(cumulative);
@@ -397,6 +509,14 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
         <span className="text-muted-foreground">
           • Position size: ${positionSizing.type === "percentage" ? ((initialCapital * positionSizing.value) / 100).toFixed(2) : positionSizing.value.toFixed(2)} per trade
         </span>
+        <span className="text-muted-foreground">
+          • Timeframe: {timeframe === "auto" ? "Auto" : TIMEFRAME_OPTIONS.find(opt => opt.value === timeframe)?.label || timeframe}
+        </span>
+        {summary && (
+          <span className="text-muted-foreground">
+            • ROI: {((summary.totalProfit / initialCapital) * 100).toFixed(1)}%
+          </span>
+        )}
         <Button
           className="ml-auto flex items-center gap-2"
           onClick={runBacktest}
@@ -485,6 +605,31 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                   </p>
                 </div>
 
+                {/* Timeframe */}
+                <div className="space-y-2">
+                  <Label htmlFor="timeframe">Timeframe</Label>
+                  <Select
+                    value={timeframe}
+                    onValueChange={setTimeframe}
+                  >
+                    <SelectTrigger id="timeframe">
+                      <SelectValue placeholder="Select timeframe" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TIMEFRAME_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    {timeframe === "auto" 
+                      ? "Auto-selects optimal timeframe based on trade duration" 
+                      : "Manual timeframe selection"}
+                  </p>
+                </div>
+
                 {/* Position sizing */}
                 <div className="space-y-2">
                   <Label>Position sizing per trade</Label>
@@ -527,7 +672,19 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
               <Accordion type="multiple" className="w-full">
                 {/* TP accordion */}
                 <AccordionItem value="tp">
-                  <AccordionTrigger>Take‑profit ladder</AccordionTrigger>
+                  <div className="flex items-center justify-between border-b px-4 py-2">
+                    <AccordionTrigger className="flex-1 text-left">
+                      Take‑profit ladder
+                    </AccordionTrigger>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setTakeProfits([])}
+                      className="text-xs text-muted-foreground hover:text-destructive"
+                    >
+                      Clear all
+                    </Button>
+                  </div>
                   <AccordionContent className="space-y-4">
                     {takeProfits.map((lvl, idx) => (
                       <div
@@ -584,7 +741,19 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
 
                 {/* SL accordion */}
                 <AccordionItem value="sl">
-                  <AccordionTrigger>Stop‑loss ladder</AccordionTrigger>
+                  <div className="flex items-center justify-between border-b px-4 py-2">
+                    <AccordionTrigger className="flex-1 text-left">
+                      Stop‑loss ladder
+                    </AccordionTrigger>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setStopLosses([])}
+                      className="text-xs text-muted-foreground hover:text-destructive"
+                    >
+                      Clear all
+                    </Button>
+                  </div>
                   <AccordionContent className="space-y-4">
                     {stopLosses.map((lvl, idx) => (
                       <div
@@ -651,34 +820,183 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                 <CardTitle>Individual positions</CardTitle>
                 <CardDescription>Equity curve per token</CardDescription>
               </CardHeader>
-              <CardContent className="h-[360px]">
+              <CardContent className="h-[400px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" opacity={0.1} />
+                    <CartesianGrid 
+                      strokeDasharray="3 3" 
+                      opacity={0.15} 
+                      stroke="#374151"
+                    />
                     <XAxis
                       dataKey="date"
-                      height={60}
+                      height={80}
                       angle={-45}
-                      dy={10}
+                      dy={15}
                       interval="preserveStartEnd"
+                      tick={{ fontSize: 11, fill: '#9CA3AF' }}
+                      axisLine={{ stroke: '#374151' }}
+                      tickLine={{ stroke: '#374151' }}
                     />
-                    <YAxis tickFormatter={(v) => `$${formatLargeNumber(v)}`} />
-                    <Tooltip formatter={(v: number) => `$${formatLargeNumber(v)}`} />
-                    <Legend height={36} />
-                    {Object.keys(chartData[0])
-                      .filter((k) => k !== 'ts' && k !== 'date' && k.length > 30)
-                      .map((token, idx) => (
-                        <Line
-                          key={token}
-                          type="monotone"
-                          dataKey={token}
-                          stroke={`hsl(${idx * 57},70%,60%)`}
-                          dot={false}
-                          strokeWidth={2}
-                        />
-                      ))}
+                    <YAxis 
+                      tickFormatter={(v) => `$${formatLargeNumber(v)}`}
+                      tick={{ fontSize: 11, fill: '#9CA3AF' }}
+                      axisLine={{ stroke: '#374151' }}
+                      tickLine={{ stroke: '#374151' }}
+                    />
+                    <Tooltip 
+                      formatter={(v: number) => [`$${formatLargeNumber(v)}`, 'Value']}
+                      labelFormatter={(label) => formatChartDate(label)}
+                      contentStyle={{
+                        backgroundColor: '#1F2937',
+                        border: '1px solid #374151',
+                        borderRadius: '8px',
+                        color: '#F9FAFB'
+                      }}
+                    />
+
+                    {Object.keys(chartData[0] || {})
+                      .filter((k) => k !== 'ts' && k !== 'date' && k.includes('_'))
+                      .map((tradeId, idx) => {
+                        // Extract token address and trade number for display
+                        const [token, tradeNum] = tradeId.split('_');
+                        const displayName = `${token.slice(0, 8)}... (Trade ${parseInt(tradeNum) + 1})`;
+                        const isVisible = visibleTokens.size === 0 || visibleTokens.has(tradeId);
+                        
+                        return (
+                          <Line
+                            key={tradeId}
+                            type="monotone"
+                            dataKey={tradeId}
+                            name={displayName}
+                            stroke={`hsl(${idx * 57},70%,60%)`}
+                            strokeOpacity={isVisible ? 1 : 0.3}
+                            dot={false}
+                            strokeWidth={isVisible ? 2 : 1}
+                            activeDot={{ r: 4, strokeWidth: 2 }}
+                          />
+                        );
+                      })}
                   </LineChart>
                 </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Advanced Legend */}
+          {chartData.length > 0 && (
+            <Card className="mb-8">
+              <CardHeader>
+                <CardTitle>Token Legend</CardTitle>
+                <CardDescription>Click to show/hide tokens on the chart</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {/* Search and Pagination Controls */}
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="flex-1">
+                    <Input
+                      placeholder="Search tokens..."
+                      value={legendSearch}
+                      onChange={(e) => {
+                        setLegendSearch(e.target.value);
+                        setLegendPage(0);
+                      }}
+                      className="max-w-xs"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <span>
+                      {Math.min(legendPage * 5 + 1, Object.keys(chartData[0] || {}).filter(k => k !== 'ts' && k !== 'date' && k.includes('_')).length)} - {Math.min((legendPage + 1) * 5, Object.keys(chartData[0] || {}).filter(k => k !== 'ts' && k !== 'date' && k.includes('_')).length)} of {Object.keys(chartData[0] || {}).filter(k => k !== 'ts' && k !== 'date' && k.includes('_')).length}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setLegendPage(Math.max(0, legendPage - 1))}
+                      disabled={legendPage === 0}
+                    >
+                      ←
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setLegendPage(legendPage + 1)}
+                      disabled={(legendPage + 1) * 5 >= Object.keys(chartData[0] || {}).filter(k => k !== 'ts' && k !== 'date' && k.includes('_')).length}
+                    >
+                      →
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Legend Items */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                  {Object.keys(chartData[0] || {})
+                    .filter((k) => k !== 'ts' && k !== 'date' && k.includes('_'))
+                    .filter((tradeId) => {
+                      if (!legendSearch) return true;
+                      const [token] = tradeId.split('_');
+                      return token.toLowerCase().includes(legendSearch.toLowerCase());
+                    })
+                    .slice(legendPage * 5, (legendPage + 1) * 5)
+                    .map((tradeId, idx) => {
+                      const [token, tradeNum] = tradeId.split('_');
+                      const displayName = `${token.slice(0, 8)}... (Trade ${parseInt(tradeNum) + 1})`;
+                      const isVisible = visibleTokens.size === 0 || visibleTokens.has(tradeId);
+                      const color = `hsl(${(legendPage * 5 + idx) * 57},70%,60%)`;
+                      
+                      return (
+                        <div
+                          key={tradeId}
+                          className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all hover:bg-gray-50 dark:hover:bg-gray-800 ${
+                            isVisible ? 'border-gray-300 dark:border-gray-600' : 'border-gray-200 dark:border-gray-700 opacity-50'
+                          }`}
+                          onClick={() => handleLegendClick({ dataKey: tradeId })}
+                        >
+                          <div
+                            className="w-4 h-4 rounded-full border-2"
+                            style={{
+                              backgroundColor: isVisible ? color : 'transparent',
+                              borderColor: color
+                            }}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium truncate">{displayName}</div>
+                            <div className="text-xs text-muted-foreground truncate">{token}</div>
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {isVisible ? '✓' : '○'}
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+
+                {/* Quick Actions */}
+                <div className="flex gap-2 mt-4 pt-4 border-t">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setVisibleTokens(new Set())}
+                  >
+                    Show All
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setVisibleTokens(new Set(Object.keys(chartData[0] || {}).filter(k => k !== 'ts' && k !== 'date' && k.includes('_'))))}
+                  >
+                    Hide All
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const allTokens = Object.keys(chartData[0] || {}).filter(k => k !== 'ts' && k !== 'date' && k.includes('_'));
+                      setVisibleTokens(new Set(allTokens.slice(0, 5)));
+                    }}
+                  >
+                    Show Top 5
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           )}
@@ -689,25 +1007,47 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                 <CardTitle>Cumulative portfolio</CardTitle>
                 <CardDescription>Total account value</CardDescription>
               </CardHeader>
-              <CardContent className="h-[300px]">
+              <CardContent className="h-[350px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={cumChartData}>
-                    <CartesianGrid strokeDasharray="3 3" opacity={0.1} />
+                    <CartesianGrid 
+                      strokeDasharray="3 3" 
+                      opacity={0.15} 
+                      stroke="#374151"
+                    />
                     <XAxis
                       dataKey="date"
-                      height={60}
+                      height={80}
                       angle={-45}
-                      dy={10}
+                      dy={15}
                       interval="preserveStartEnd"
+                      tick={{ fontSize: 11, fill: '#9CA3AF' }}
+                      axisLine={{ stroke: '#374151' }}
+                      tickLine={{ stroke: '#374151' }}
                     />
-                    <YAxis tickFormatter={(v) => `$${formatLargeNumber(v)}`} />
-                    <Tooltip formatter={(v: number) => `$${formatLargeNumber(v)}`} />
+                    <YAxis 
+                      tickFormatter={(v) => `$${formatLargeNumber(v)}`}
+                      tick={{ fontSize: 11, fill: '#9CA3AF' }}
+                      axisLine={{ stroke: '#374151' }}
+                      tickLine={{ stroke: '#374151' }}
+                    />
+                    <Tooltip 
+                      formatter={(v: number) => [`$${formatLargeNumber(v)}`, 'Portfolio Value']}
+                      labelFormatter={(label) => formatChartDate(label)}
+                      contentStyle={{
+                        backgroundColor: '#1F2937',
+                        border: '1px solid #374151',
+                        borderRadius: '8px',
+                        color: '#F9FAFB'
+                      }}
+                    />
                     <Line
                       type="monotone"
                       dataKey="cumulative"
                       stroke="#14b8a6"
-                      dot={false}
                       strokeWidth={3}
+                      dot={false}
+                      activeDot={{ r: 6, strokeWidth: 2, stroke: '#14b8a6' }}
                     />
                   </LineChart>
                 </ResponsiveContainer>
@@ -771,6 +1111,7 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                     <thead>
                       <tr className="border-b">
                         <th className="text-left py-2">Token</th>
+                        <th className="text-right py-2">Time Called</th>
                         <th className="text-right py-2">Entry Price</th>
                         <th className="text-right py-2">Final Price</th>
                         <th className="text-right py-2">ATH Price</th>
@@ -778,13 +1119,33 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                         <th className="text-right py-2">Total PnL</th>
                         <th className="text-right py-2">Realized</th>
                         <th className="text-right py-2">Unrealized</th>
-                        <th className="text-right py-2">Coins Left</th>
+                        <th className="text-right py-2">Remaining USD</th>
+                        <th className="text-right py-2">Max Drawdown</th>
+                        <th className="text-right py-2">ROI to Date</th>
                       </tr>
                     </thead>
                     <tbody>
                       {tokenBreakdown.map((token) => (
-                        <tr key={token.token} className="border-b hover:bg-muted/50">
-                          <td className="py-2 font-mono text-xs">{token.token.slice(0, 8)}...</td>
+                        <tr key={token.trade_id} className="border-b hover:bg-muted/50">
+                          <td className="py-2">
+                            <a 
+                              href={`/token-analysis/${token.token}`}
+                              className="font-mono text-xs text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              {token.token.slice(0, 8)}...
+                            </a>
+                          </td>
+                          <td className="text-right py-2 text-xs">
+                            {new Date(token.time_called).toLocaleString("en-US", {
+                              month: "short",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              hour12: false
+                            })}
+                          </td>
                           <td className="text-right py-2">${token.entry_price.toFixed(6)}</td>
                           <td className="text-right py-2">${token.final_price.toFixed(6)}</td>
                           <td className="text-right py-2">${token.ath_price.toFixed(6)}</td>
@@ -800,7 +1161,13 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                           <td className={`text-right py-2 ${token.unrealized_pnl > 0 ? 'text-green-600' : 'text-red-600'}`}>
                             ${token.unrealized_pnl.toFixed(2)}
                           </td>
-                          <td className="text-right py-2">{token.coins_left.toFixed(6)}</td>
+                          <td className="text-right py-2 font-mono text-xs">${(token.coins_left * token.final_price).toFixed(2)}</td>
+                          <td className={`text-right py-2 ${token.max_drawdown > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                            {token.max_drawdown.toFixed(2)}%
+                          </td>
+                          <td className={`text-right py-2 font-semibold ${token.roi_to_date > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {token.roi_to_date > 0 ? '+' : ''}{token.roi_to_date.toFixed(2)}%
+                          </td>
                         </tr>
                       ))}
                     </tbody>

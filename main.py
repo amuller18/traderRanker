@@ -185,39 +185,8 @@ CORS_ORIGINS = [
     "http://127.0.0.1:3001",
 ]
 
-def generate_low_liquidity_data(mint: str, start_unix: int, end_unix: int, interval_minutes: int = 60) -> List[Dict[str, Any]]:
-    """Generate mock price data for low liquidity coins using 20k MC fallback."""
-    logger.info(f"Generating low liquidity data for {mint} with 20k MC fallback")
-    
-    # Calculate number of data points needed
-    total_minutes = (end_unix - start_unix) // 60
-    num_points = total_minutes // interval_minutes
-    
-    if num_points <= 0:
-        num_points = 1
-    
-    # Generate mock data with slight price variations
-    import random
-    base_price = LOW_LIQUIDITY_PRICE
-    data = []
-    
-    for i in range(num_points):
-        # Add some realistic price variation (±10%)
-        variation = random.uniform(-0.1, 0.1)
-        price = base_price * (1 + variation)
-        
-        # Ensure price stays positive
-        price = max(price, base_price * 0.5)
-        
-        timestamp = start_unix + (i * interval_minutes * 60)
-        
-        data.append({
-            "unixTime": timestamp,
-            "value": price
-        })
-    
-    logger.info(f"Generated {len(data)} mock data points for {mint} with 20k MC fallback")
-    return data
+def generate_low_liquidity_data(mint: str, start_unix: int, end_unix: int, interval_minutes: int = 60):
+    return None
 
 # ---------------------------------------------------------------------------
 # Utility – Solana address validation (unchanged)
@@ -750,6 +719,10 @@ class SimulationResult(BaseModel):
     sls_hit: List[float] | None = None
     error: str | None = None
 
+class TradeInfo(BaseModel):
+    token: str
+    date_called: str  # ISO string format
+
 class SimulationRequest(BaseModel):
     tokens: List[str]
     amount_usd: float = Field(1000, gt=0)
@@ -757,6 +730,14 @@ class SimulationRequest(BaseModel):
     end_unix: Optional[int] = None
     days_back: int = Field(30, ge=1, le=60)  # Increased max to 60 days for better price action
     timeframe_minutes: int = Field(15, ge=1, le=1440)  # Default to 15 minutes, max 24 hours
+    tp: Optional[List[str]] = Field(None, description="List of 'ratio:sell' strings")
+    sl: Optional[List[str]] = Field(None, description="List of 'ratio:sell' strings")
+
+class TradeBasedSimulationRequest(BaseModel):
+    trades: List[TradeInfo]
+    amount_usd: float = Field(1000, gt=0)
+    timeframe_minutes: int = Field(15, ge=1, le=1440)  # Default to 15 minutes, max 24 hours
+    use_auto_timeframe: bool = Field(True, description="Whether to automatically calculate optimal timeframe")
     tp: Optional[List[str]] = Field(None, description="List of 'ratio:sell' strings")
     sl: Optional[List[str]] = Field(None, description="List of 'ratio:sell' strings")
 
@@ -886,6 +867,28 @@ def _build_value_pngs(sim_results: list[SimulationResult]) -> tuple[BytesIO, Byt
 
     return per_png, cum_png
 
+
+def calculate_optimal_timeframe(start_ts: int, end_ts: int, max_data_points: int = 716) -> int:
+    """
+    Calculate the optimal timeframe in minutes based on the duration and max data points.
+    Returns timeframe in minutes that will fit within the max_data_points limit.
+    """
+    duration_hours = (end_ts - start_ts) / 3600
+    duration_days = duration_hours / 24
+    
+    # Available timeframes in minutes
+    timeframes = [1, 3, 5, 15, 30, 60, 240, 480, 1440]  # 1m, 3m, 5m, 15m, 30m, 1h, 4h, 8h, 1d
+    
+    for tf in timeframes:
+        # Calculate how many data points this timeframe would produce
+        tf_hours = tf / 60
+        estimated_points = duration_hours / tf_hours
+        
+        if estimated_points <= max_data_points:
+            return tf
+    
+    # If no timeframe fits, return daily (1440 minutes)
+    return 1440
 
 def _parse_ladder(raw: List[str]) -> Tuple[List[float], List[float]]:
     ratios, sells = [], []
@@ -1409,6 +1412,8 @@ class TokenPriceResult(BaseModel):
 
 class TokenBreakdown(BaseModel):
     token: str
+    trade_id: str = ""  # Unique identifier for this specific trade
+    time_called: str = ""  # ISO string of when the trade was called
     entry_price: float = 0.0
     final_price: float = 0.0
     ath_price: float = 0.0
@@ -1417,6 +1422,8 @@ class TokenBreakdown(BaseModel):
     realized_pnl: float = 0.0
     unrealized_pnl: float = 0.0
     coins_left: float = 0.0
+    max_drawdown: float = 0.0
+    roi_to_date: float = 0.0
     tps_hit: List[float] = []
     sls_hit: List[float] = []
     error: Optional[str] = None
@@ -1735,6 +1742,387 @@ async def simulate_with_breakdown(req: SimulationRequest) -> List[TokenBreakdown
             logger.error(f"Token {result.token}: {result.error}")
         else:
             logger.info(f"Token {result.token}: Success - Total PnL: ${result.total_pnl}")
+    
+    return out
+
+@app.post("/api/simulate/breakdown/trades", response_model=List[TokenBreakdown])
+async def simulate_with_breakdown_trades(req: TradeBasedSimulationRequest) -> List[TokenBreakdown]:
+    """
+    Enhanced simulation endpoint that uses individual trade dates for each token.
+    Each trade starts at its specific date_called and runs until today.
+    """
+    
+    logger.info("=== TRADE-BASED SIMULATION BREAKDOWN REQUEST START ===")
+    logger.info(f"Request trades: {len(req.trades)}")
+    logger.info(f"Request amount_usd: {req.amount_usd}")
+    logger.info(f"Request timeframe_minutes: {req.timeframe_minutes}")
+    logger.info(f"Request tp: {req.tp}")
+    logger.info(f"Request sl: {req.sl}")
+
+    if not BIRDEYE_API_KEYS:
+        logger.error("BIRDEYE_API_KEY not set")
+        raise HTTPException(500, "BIRDEYE_API_KEY not set")
+
+    # Validate all tokens
+    bad = [t.token for t in req.trades if not is_valid_solana_address(t.token)]
+    if bad:
+        logger.error(f"Invalid Solana address(es): {', '.join(bad)}")
+        raise HTTPException(400, f"Invalid Solana address(es): {', '.join(bad)}")
+
+    logger.info("Parsing ladder levels...")
+    tp_r, tp_s = _parse_ladder(req.tp)
+    sl_r, sl_s = _parse_ladder(req.sl)
+    logger.info(f"TP ratios: {tp_r}, TP sizes: {tp_s}")
+    logger.info(f"SL ratios: {sl_r}, SL sizes: {sl_s}")
+
+    now_ts = int(datetime.utcnow().timestamp())
+    out: list[TokenBreakdown] = []
+
+    # Create session first, then create tasks
+    session = aiohttp.ClientSession()
+    try:
+        # Process each trade individually with its own start date
+        logger.info("Processing each trade with individual start dates...")
+        for trade in req.trades:
+            mint = trade.token
+            logger.info(f"=== Processing trade: {mint} ===")
+            
+            try:
+                # Parse the date_called string to get start timestamp
+                try:
+                    # Try parsing as ISO format first
+                    start_dt = datetime.fromisoformat(trade.date_called.replace('Z', '+00:00'))
+                    start_ts = int(start_dt.timestamp())
+                except ValueError:
+                    # Fallback to other common formats
+                    for fmt in ['%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S', '%Y-%m-%d']:
+                        try:
+                            start_dt = datetime.strptime(trade.date_called, fmt)
+                            start_ts = int(start_dt.timestamp())
+                            break
+                        except ValueError:
+                            continue
+                    else:
+                        logger.error(f"Could not parse date_called for {mint}: {trade.date_called}")
+                        out.append(TokenBreakdown(token=mint, error=f"Invalid date format: {trade.date_called}"))
+                        continue
+
+                if start_ts >= now_ts:
+                    logger.error(f"start_ts {start_ts} must be < now {now_ts} for {mint}")
+                    out.append(TokenBreakdown(token=mint, error="Trade date must be in the past"))
+                    continue
+
+                logger.info(f"Trade {mint}: Start time {start_ts} ({datetime.fromtimestamp(start_ts)}) to {now_ts} ({datetime.fromtimestamp(now_ts)})")
+                logger.info(f"Duration: {(now_ts - start_ts) / 3600:.2f} hours")
+
+                # Calculate optimal timeframe for this trade duration
+                if req.use_auto_timeframe:
+                    optimal_timeframe = calculate_optimal_timeframe(start_ts, now_ts)
+                    logger.info(f"Using auto-calculated optimal timeframe: {optimal_timeframe} minutes for {mint}")
+                else:
+                    optimal_timeframe = req.timeframe_minutes
+                    logger.info(f"Using manual timeframe: {optimal_timeframe} minutes for {mint}")
+
+                # Fetch history for this specific trade with optimal timeframe
+                logger.info(f"Fetching history for {mint} from {start_ts} to {now_ts} with {optimal_timeframe}m timeframe...")
+                res_hist = await _cached_history(session, mint, start_ts, optimal_timeframe, now_ts)
+                if res_hist is None:
+                    logger.error(f"History fetch failed for {mint}")
+                    out.append(TokenBreakdown(token=mint, error="Price data fetch failed"))
+                    continue
+
+                mint, items = res_hist
+                logger.info(f"Got {len(items)} history items for {mint}")
+                if len(items) < 10:
+                    logger.warning(f"Not enough data for {mint}: {len(items)} items (need >= 10)")
+                    out.append(TokenBreakdown(token=mint, error="Insufficient price data (need at least 10 data points)"))
+                    continue
+
+                logger.info(f"Building OHLC for {mint} with timeframe {optimal_timeframe} minutes...")
+                try:
+                    df = build_ohlc(items, optimal_timeframe)
+                    logger.info(f"OHLC shape for {mint}: {df.shape}")
+                    if df.empty:
+                        logger.error(f"Empty OHLC for {mint}")
+                        out.append(TokenBreakdown(token=mint, error="No OHLC data available"))
+                        continue
+                except Exception as ohlc_exc:
+                    logger.error(f"OHLC building failed for {mint}: {ohlc_exc}")
+                    out.append(TokenBreakdown(token=mint, error=f"OHLC building failed: {str(ohlc_exc)}"))
+                    continue
+
+                # Calculate key metrics using the original price data from API
+                try:
+                    # Get the original price data from the API response
+                    original_prices = [item['value'] for item in items if 'value' in item and item['value'] > 0]
+                    if not original_prices:
+                        logger.error(f"No valid prices in API response for {mint}")
+                        out.append(TokenBreakdown(token=mint, error="No valid price data in API response"))
+                        continue
+
+                    entry_price = original_prices[0]  # First price in the series
+                    final_price = original_prices[-1]  # Last price in the series
+                    ath_price = max(original_prices)  # Highest price reached
+                    ath_percentage = ((ath_price - entry_price) / entry_price) * 100 if entry_price > 0 else 0
+
+                    # Run simulation
+                    logger.info(f"Running simulation for {mint}...")
+                    sim = run_simulation_with_ledger(
+                        df, req.amount_usd, final_price, tp_r, tp_s, sl_r, sl_s
+                    )
+
+                    # Extract results
+                    realized_pnl = sim.get("realized_profit", 0.0)
+                    unrealized_pnl = sim.get("unrealized_profit", 0.0)
+                    total_pnl = realized_pnl + unrealized_pnl
+                    coins_left = sim.get("coins_left", 0.0)
+                    
+                    # Calculate max drawdown and ROI
+                    ledger = sim.get("ledger", [])
+                    max_drawdown = 0.0
+                    roi_to_date = 0.0
+                    
+                    if ledger:
+                        # Calculate max drawdown from ledger
+                        peak_value = req.amount_usd  # Start with initial investment
+                        max_drawdown = 0.0
+                        
+                        for entry in ledger:
+                            current_value = entry.get("value", 0.0) + entry.get("realized", 0.0)
+                            if current_value > peak_value:
+                                peak_value = current_value
+                            else:
+                                drawdown = (peak_value - current_value) / peak_value if peak_value > 0 else 0
+                                max_drawdown = max(max_drawdown, drawdown)
+                        
+                        # Calculate ROI to date
+                        final_value = ledger[-1].get("value", 0.0) + ledger[-1].get("realized", 0.0)
+                        roi_to_date = ((final_value - req.amount_usd) / req.amount_usd) * 100 if req.amount_usd > 0 else 0
+
+                    # Validate prices are positive
+                    if entry_price <= 0 or final_price <= 0 or ath_price <= 0:
+                        logger.error(f"Invalid prices for {mint}: entry={entry_price}, final={final_price}, ath={ath_price}")
+                        out.append(TokenBreakdown(token=mint, error="Invalid price data (non-positive values)"))
+                        continue
+
+                    # Create unique trade ID
+                    trade_id = f"{mint}_{int(datetime.fromisoformat(trade.date_called.replace('Z', '+00:00')).timestamp())}"
+                    
+                    breakdown = TokenBreakdown(
+                        token=mint,
+                        trade_id=trade_id,
+                        time_called=trade.date_called,
+                        entry_price=entry_price,
+                        final_price=final_price,
+                        ath_price=ath_price,
+                        ath_percentage=ath_percentage,
+                        total_pnl=total_pnl,
+                        realized_pnl=realized_pnl,
+                        unrealized_pnl=unrealized_pnl,
+                        coins_left=coins_left,
+                        max_drawdown=max_drawdown * 100,  # Convert to percentage
+                        roi_to_date=roi_to_date,
+                        tps_hit=sim.get("tps_hit", []),
+                        sls_hit=sim.get("sls_hit", [])
+                    )
+                    
+                    logger.info(f"Breakdown for {mint}: Entry=${entry_price}, Final=${final_price}, ATH=${ath_price} ({ath_percentage:.2f}%), Total PnL=${total_pnl}")
+                    out.append(breakdown)
+                except Exception as sim_exc:
+                    logger.error(f"Simulation failed for {mint}: {sim_exc}")
+                    out.append(TokenBreakdown(token=mint, error=f"Simulation failed: {str(sim_exc)}"))
+
+            except HTTPException:      # propagate 4xx back to caller
+                logger.error(f"HTTPException for {mint}")
+                raise
+            except Exception as exc:   # everything else is logged + returned
+                logger.exception(f"Simulation for {mint} failed")
+                out.append(TokenBreakdown(token=mint, error=str(exc)))
+    finally:
+        # Ensure session is closed
+        await session.close()
+
+    logger.info(f"=== TRADE-BASED SIMULATION BREAKDOWN COMPLETE === Returning {len(out)} results")
+    for result in out:
+        if result.error:
+            logger.error(f"Token {result.token}: {result.error}")
+        else:
+            logger.info(f"Token {result.token}: Success - Total PnL: ${result.total_pnl}")
+    
+    return out
+
+@app.post("/api/simulate/trades", response_model=list[SimulationResult])
+async def simulate_trades(req: TradeBasedSimulationRequest) -> list[SimulationResult]:
+    """
+    Trade-based simulation endpoint that uses individual trade dates for each token.
+    Each trade starts at its specific date_called and runs until today.
+    Returns simulation results with ledgers for charting.
+    """
+    
+    logger.info("=== TRADE-BASED SIMULATION REQUEST START ===")
+    logger.info(f"Request trades: {len(req.trades)}")
+    logger.info(f"Request amount_usd: {req.amount_usd}")
+    logger.info(f"Request timeframe_minutes: {req.timeframe_minutes}")
+    logger.info(f"Request tp: {req.tp}")
+    logger.info(f"Request sl: {req.sl}")
+
+    if not BIRDEYE_API_KEYS:
+        logger.error("BIRDEYE_API_KEY not set")
+        raise HTTPException(500, "BIRDEYE_API_KEY not set")
+
+    # Validate all tokens
+    bad = [t.token for t in req.trades if not is_valid_solana_address(t.token)]
+    if bad:
+        logger.error(f"Invalid Solana address(es): {', '.join(bad)}")
+        raise HTTPException(400, f"Invalid Solana address(es): {', '.join(bad)}")
+
+    logger.info("Parsing ladder levels...")
+    tp_r, tp_s = _parse_ladder(req.tp)
+    sl_r, sl_s = _parse_ladder(req.sl)
+    logger.info(f"TP ratios: {tp_r}, TP sizes: {tp_s}")
+    logger.info(f"SL ratios: {sl_r}, SL sizes: {sl_s}")
+
+    now_ts = int(datetime.utcnow().timestamp())
+    out: list[SimulationResult] = []
+
+    # Create session first, then create tasks
+    session = aiohttp.ClientSession()
+    try:
+        # Process each trade individually with its own start date
+        logger.info("Processing each trade with individual start dates...")
+        for trade in req.trades:
+            mint = trade.token
+            logger.info(f"=== Processing trade: {mint} ===")
+            
+            try:
+                # Parse the date_called string to get start timestamp
+                try:
+                    # Try parsing as ISO format first
+                    start_dt = datetime.fromisoformat(trade.date_called.replace('Z', '+00:00'))
+                    start_ts = int(start_dt.timestamp())
+                except ValueError:
+                    # Fallback to other common formats
+                    for fmt in ['%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S', '%Y-%m-%d']:
+                        try:
+                            start_dt = datetime.strptime(trade.date_called, fmt)
+                            start_ts = int(start_dt.timestamp())
+                            break
+                        except ValueError:
+                            continue
+                    else:
+                        logger.error(f"Could not parse date_called for {mint}: {trade.date_called}")
+                        out.append(SimulationResult(token=mint, error=f"Invalid date format: {trade.date_called}"))
+                        continue
+
+                if start_ts >= now_ts:
+                    logger.error(f"start_ts {start_ts} must be < now {now_ts} for {mint}")
+                    out.append(SimulationResult(token=mint, error="Trade date must be in the past"))
+                    continue
+
+                logger.info(f"Trade {mint}: Start time {start_ts} ({datetime.fromtimestamp(start_ts)}) to {now_ts} ({datetime.fromtimestamp(now_ts)})")
+                logger.info(f"Duration: {(now_ts - start_ts) / 3600:.2f} hours")
+
+                # Calculate optimal timeframe for this trade duration
+                if req.use_auto_timeframe:
+                    optimal_timeframe = calculate_optimal_timeframe(start_ts, now_ts)
+                    logger.info(f"Using auto-calculated optimal timeframe: {optimal_timeframe} minutes for {mint}")
+                else:
+                    optimal_timeframe = req.timeframe_minutes
+                    logger.info(f"Using manual timeframe: {optimal_timeframe} minutes for {mint}")
+
+                # Fetch history for this specific trade with optimal timeframe
+                logger.info(f"Fetching history for {mint} from {start_ts} to {now_ts} with {optimal_timeframe}m timeframe...")
+                res_hist = await _cached_history(session, mint, start_ts, optimal_timeframe, now_ts)
+                if res_hist is None:
+                    logger.error(f"History fetch failed for {mint}")
+                    out.append(SimulationResult(token=mint, error="Price data fetch failed"))
+                    continue
+
+                mint, items = res_hist
+                logger.info(f"Got {len(items)} history items for {mint}")
+                if len(items) < 10:
+                    logger.warning(f"Not enough data for {mint}: {len(items)} items (need >= 10)")
+                    out.append(SimulationResult(token=mint, error="Insufficient price data (need at least 10 data points)"))
+                    continue
+
+                logger.info(f"Building OHLC for {mint} with timeframe {optimal_timeframe} minutes...")
+                try:
+                    df = build_ohlc(items, optimal_timeframe)
+                    logger.info(f"OHLC shape for {mint}: {df.shape}")
+                    if df.empty:
+                        logger.error(f"Empty OHLC for {mint}")
+                        out.append(SimulationResult(token=mint, error="No OHLC data available"))
+                        continue
+                except Exception as ohlc_exc:
+                    logger.error(f"OHLC building failed for {mint}: {ohlc_exc}")
+                    out.append(SimulationResult(token=mint, error=f"OHLC building failed: {str(ohlc_exc)}"))
+                    continue
+
+                # Get entry price (first price in the data) and current price for mark-to-market
+                entry_price = items[0]['value'] if items else 0.0
+                current_price = items[-1]['value'] if items else 0.0
+
+                # Run simulation with ledger
+                logger.info(f"Running simulation for {mint}...")
+                logger.info(f"Entry price: ${entry_price}, Final price: ${current_price}")
+                logger.info(f"TP levels: {[entry_price * (1 + r) for r in tp_r]}")
+                logger.info(f"SL levels: {[entry_price * (1 - r) for r in sl_r]}")
+                
+                sim = run_simulation_with_ledger(
+                    df, req.amount_usd, current_price, tp_r, tp_s, sl_r, sl_s
+                )
+
+                # Extract results
+                realized_pnl = sim.get("realized_pnl", 0.0)
+                unrealized_pnl = sim.get("unrealized_pnl", 0.0)
+                coins_left = sim.get("coins_left", 0.0)
+                ledger = sim.get("ledger", [])
+                tps_hit = sim.get("tps_hit", [])
+                sls_hit = sim.get("sls_hit", [])
+                
+                logger.info(f"TPs hit: {tps_hit}, SLs hit: {sls_hit}")
+                logger.info(f"Realized: ${realized_pnl}, Unrealized: ${unrealized_pnl}, Coins left: {coins_left}")
+
+                # Convert ledger to PositionPoint objects
+                position_points = []
+                for pt in ledger:
+                    position_points.append(PositionPoint(
+                        ts=pt["ts"],
+                        value=pt["value"],
+                        coins_held=pt["coins_held"],
+                        unrealized=pt["unrealized"],
+                        realized=pt["realized"]
+                    ))
+
+                result = SimulationResult(
+                    token=mint,
+                    ledger=position_points,
+                    realized_profit=realized_pnl,
+                    unrealized_profit=unrealized_pnl,
+                    coins_left=coins_left,
+                    tps_hit=sim.get("tps_hit", []),
+                    sls_hit=sim.get("sls_hit", [])
+                )
+                
+                logger.info(f"Simulation for {mint}: Realized=${realized_pnl}, Unrealized=${unrealized_pnl}, Coins left={coins_left}")
+                out.append(result)
+
+            except HTTPException:      # propagate 4xx back to caller
+                logger.error(f"HTTPException for {mint}")
+                raise
+            except Exception as exc:   # everything else is logged + returned
+                logger.exception(f"Simulation for {mint} failed")
+                out.append(SimulationResult(token=mint, error=str(exc)))
+    finally:
+        # Ensure session is closed
+        await session.close()
+
+    logger.info(f"=== TRADE-BASED SIMULATION COMPLETE === Returning {len(out)} results")
+    for result in out:
+        if result.error:
+            logger.error(f"Token {result.token}: {result.error}")
+        else:
+            logger.info(f"Token {result.token}: Success - Realized: ${result.realized_profit}, Unrealized: ${result.unrealized_profit}")
     
     return out
 

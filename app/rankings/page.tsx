@@ -9,16 +9,18 @@ export const metadata = {
 
 export default function RankingsPage() {
   return (
-    <div className="container mx-auto py-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2">Trader Rankings</h1>
-        <p className="text-muted-foreground">
-          View the top traders and their performance metrics
-        </p>
+    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-background">
+      <div className="container mx-auto py-8">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold mb-2">Trader Rankings</h1>
+          <p className="text-muted-foreground">
+            View the top traders and their performance metrics
+          </p>
+        </div>
+        <Suspense fallback={<TraderRankingsSkeleton />}>
+          <TraderRankings />
+        </Suspense>
       </div>
-      <Suspense fallback={<TraderRankingsSkeleton />}>
-        <TraderRankings />
-      </Suspense>
     </div>
   )
 }

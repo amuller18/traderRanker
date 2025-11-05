@@ -41,8 +41,9 @@ export default async function TradesPage() {
   }
 
   return (
-    <div className="container py-8">
-      <DataSourceStatus usingMockData={usingMockData} />
+    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-background">
+      <div className="container py-8">
+        <DataSourceStatus usingMockData={usingMockData} />
 
       <div className="flex flex-col gap-2 mb-8">
         <h1 className="text-3xl font-bold tracking-tight">All Trades</h1>
@@ -51,7 +52,8 @@ export default async function TradesPage() {
         </p>
       </div>
 
-      <ClientPage initialTrades={trades} defaultFilters={defaultFilters} />
+        <ClientPage initialTrades={trades} defaultFilters={defaultFilters} />
+      </div>
     </div>
   )
 }

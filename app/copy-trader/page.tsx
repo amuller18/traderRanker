@@ -1,23 +1,20 @@
 import Link from "next/link"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, Copy, Bell, Calendar, CheckCircle, Shield, Sparkles, Target, TrendingUp, Users, Zap, Star, DollarSign, ArrowRight } from "lucide-react"
+import { ArrowLeft, Copy, Bell, Calendar, CheckCircle, Shield, Sparkles, Target, TrendingUp, Users, Zap, Star, DollarSign, ArrowRight, BarChart3, Activity } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { PageHeader } from "../page-header"
 
 export default function CopyTraderPage() {
   return (
     <div className="flex flex-col min-h-[100dvh]">
-      <PageHeader />
-
       <main className="flex-1">
         {/* Hero Section */}
-        <section className="w-full py-12 md:py-24 lg:py-32 bg-gradient-to-br from-primary/5 via-blue-500/10 to-background relative overflow-hidden">
+        <section className="w-full py-12 md:py-24 lg:py-32 xl:py-40 bg-gradient-to-br from-primary/5 via-primary/10 to-background relative overflow-hidden">
           {/* Background decorative elements */}
           <div className="absolute inset-0 bg-grid-white/10 bg-[size:20px_20px] [mask-image:radial-gradient(white,transparent_70%)]" />
-          <div className="absolute top-0 right-0 -translate-y-12 translate-x-12 w-96 h-96 bg-blue-500/20 rounded-full blur-3xl" />
-          <div className="absolute bottom-0 left-0 translate-y-12 -translate-x-12 w-96 h-96 bg-primary/20 rounded-full blur-3xl" />
+          <div className="absolute top-0 right-0 -translate-y-12 translate-x-12 w-96 h-96 bg-primary/20 rounded-full blur-3xl" />
+          <div className="absolute bottom-0 left-0 translate-y-12 -translate-x-12 w-96 h-96 bg-blue-500/20 rounded-full blur-3xl" />
 
           <div className="container px-4 md:px-6 relative">
             <div className="flex justify-start mb-8">
@@ -72,19 +69,79 @@ export default function CopyTraderPage() {
               </div>
             </div>
 
-            {/* Hero Image */}
+            {/* Hero Visual */}
             <div className="flex justify-center">
               <div className="relative w-full max-w-4xl">
-                <div className="relative rounded-2xl overflow-hidden shadow-2xl border-2 border-primary/20">
-                  <Image
-                    src="/copy-trading-dashboard.jpg"
-                    alt="Copy Trading Dashboard"
-                    width={1000}
-                    height={500}
-                    className="rounded-2xl object-cover w-full"
-                  />
+                <div className="relative rounded-2xl overflow-hidden shadow-2xl border-2 border-primary/20 bg-gradient-to-br from-primary/5 via-blue-500/10 to-background p-8 md:p-12">
+                  {/* Mock Dashboard Preview */}
+                  <div className="space-y-6">
+                    {/* Top Stats Row */}
+                    <div className="grid grid-cols-3 gap-4">
+                      <Card className="border-2 border-green-500/30 bg-background/80 backdrop-blur-sm">
+                        <CardContent className="pt-6">
+                          <div className="flex items-center justify-between mb-2">
+                            <TrendingUp className="h-5 w-5 text-green-500" />
+                            <span className="text-xs text-muted-foreground">30D</span>
+                          </div>
+                          <div className="text-2xl font-bold text-green-500">+156%</div>
+                          <div className="text-xs text-muted-foreground">Total Return</div>
+                        </CardContent>
+                      </Card>
+                      <Card className="border-2 border-blue-500/30 bg-background/80 backdrop-blur-sm">
+                        <CardContent className="pt-6">
+                          <div className="flex items-center justify-between mb-2">
+                            <BarChart3 className="h-5 w-5 text-blue-500" />
+                            <span className="text-xs text-muted-foreground">Live</span>
+                          </div>
+                          <div className="text-2xl font-bold">8</div>
+                          <div className="text-xs text-muted-foreground">Active Traders</div>
+                        </CardContent>
+                      </Card>
+                      <Card className="border-2 border-purple-500/30 bg-background/80 backdrop-blur-sm">
+                        <CardContent className="pt-6">
+                          <div className="flex items-center justify-between mb-2">
+                            <Activity className="h-5 w-5 text-purple-500" />
+                            <span className="text-xs text-muted-foreground">Today</span>
+                          </div>
+                          <div className="text-2xl font-bold">24</div>
+                          <div className="text-xs text-muted-foreground">Trades Copied</div>
+                        </CardContent>
+                      </Card>
+                    </div>
+
+                    {/* Feature Cards */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <Card className="border bg-background/60 backdrop-blur-sm">
+                        <CardContent className="pt-4">
+                          <div className="flex items-center gap-3 mb-2">
+                            <div className="p-2 bg-primary/10 rounded-lg">
+                              <Copy className="h-4 w-4 text-primary" />
+                            </div>
+                            <span className="font-semibold text-sm">Auto-Copy</span>
+                          </div>
+                          <div className="h-2 bg-primary/20 rounded-full overflow-hidden">
+                            <div className="h-full w-3/4 bg-primary rounded-full" />
+                          </div>
+                        </CardContent>
+                      </Card>
+                      <Card className="border bg-background/60 backdrop-blur-sm">
+                        <CardContent className="pt-4">
+                          <div className="flex items-center gap-3 mb-2">
+                            <div className="p-2 bg-green-500/10 rounded-lg">
+                              <Shield className="h-4 w-4 text-green-500" />
+                            </div>
+                            <span className="font-semibold text-sm">Risk Protected</span>
+                          </div>
+                          <div className="h-2 bg-green-500/20 rounded-full overflow-hidden">
+                            <div className="h-full w-4/5 bg-green-500 rounded-full" />
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </div>
+                  </div>
+
                   {/* Coming Soon Overlay */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent flex items-center justify-center">
+                  <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-background/50 to-transparent flex items-center justify-center">
                     <div className="bg-background/95 backdrop-blur-md p-8 rounded-2xl shadow-2xl text-center max-w-md border-2 border-primary/20">
                       <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-4">
                         <Sparkles className="h-8 w-8 text-primary" />
@@ -382,7 +439,7 @@ export default function CopyTraderPage() {
         </section>
 
         {/* Final CTA */}
-        <section className="w-full py-16 md:py-24 bg-gradient-to-r from-primary to-blue-600">
+        <section className="w-full py-16 md:py-24 bg-gradient-to-r from-primary to-primary/80">
           <div className="container px-4 md:px-6">
             <div className="flex flex-col items-center text-center space-y-6 max-w-3xl mx-auto">
               <h2 className="text-3xl font-extrabold tracking-tight md:text-4xl xl:text-5xl text-primary-foreground">

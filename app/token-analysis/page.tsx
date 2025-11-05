@@ -17,8 +17,9 @@ export default async function TokenAnalysisPage() {
   }
 
   return (
-    <div className="container py-8">
-      <DataSourceStatus usingMockData={usingMockData} />
+    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-background">
+      <div className="container py-8">
+        <DataSourceStatus usingMockData={usingMockData} />
 
       <div className="flex flex-col gap-2 mb-8">
         <h1 className="text-3xl font-bold tracking-tight">Token Analysis</h1>
@@ -37,6 +38,7 @@ export default async function TokenAnalysisPage() {
             metrics.
           </p>
         </div>
+      </div>
       </div>
     </div>
   )

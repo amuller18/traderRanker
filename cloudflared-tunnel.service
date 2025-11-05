@@ -1,0 +1,17 @@
+[Unit]
+Description=Cloudflare Tunnel
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+ExecStart=/usr/local/bin/cloudflared tunnel --config /home/pi/traderRanker/cloudflare-tunnel-config.yml run
+Restart=always
+RestartSec=10
+
+# Logging
+StandardOutput=append:/var/log/cloudflared.log
+StandardError=append:/var/log/cloudflared-error.log
+
+[Install]
+WantedBy=multi-user.target

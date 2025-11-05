@@ -1,0 +1,10 @@
+tunnel: YOUR_TUNNEL_ID
+credentials-file: /home/pi/.cloudflared/YOUR_TUNNEL_ID.json
+
+ingress:
+  # Route to your Python FastAPI backend
+  - hostname: api.yourdomain.com
+    service: http://localhost:8000
+
+  # Catch-all rule (required)
+  - service: http_status:404

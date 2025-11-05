@@ -10,29 +10,29 @@ export default function CopyTraderPage() {
     <div className="flex flex-col min-h-[100dvh]">
       <main className="flex-1">
         {/* Hero Section */}
-        <section className="w-full py-12 md:py-24 lg:py-32 xl:py-40 bg-gradient-to-br from-primary/5 via-primary/10 to-background relative overflow-hidden">
+        <section className="w-full py-12 md:py-24 lg:py-32 xl:py-40 gradient-background relative overflow-hidden">
           {/* Background decorative elements */}
-          <div className="absolute inset-0 bg-grid-white/10 bg-[size:20px_20px] [mask-image:radial-gradient(white,transparent_70%)]" />
-          <div className="absolute top-0 right-0 -translate-y-12 translate-x-12 w-96 h-96 bg-primary/20 rounded-full blur-3xl" />
-          <div className="absolute bottom-0 left-0 translate-y-12 -translate-x-12 w-96 h-96 bg-blue-500/20 rounded-full blur-3xl" />
+          <div className="absolute inset-0 bg-grid-white/[0.02] bg-[size:40px_40px] [mask-image:radial-gradient(white,transparent_85%)]" />
+          <div className="absolute top-0 right-0 -translate-y-12 translate-x-12 w-[600px] h-[600px] bg-primary/10 rounded-full blur-3xl animate-pulse" style={{ animationDuration: "4s" }} />
+          <div className="absolute bottom-0 left-0 translate-y-12 -translate-x-12 w-[500px] h-[500px] bg-chart-1/10 rounded-full blur-3xl animate-pulse" style={{ animationDuration: "5s" }} />
 
           <div className="container px-4 md:px-6 relative">
-            <div className="flex justify-start mb-8">
+            <div className="flex justify-start mb-8 animate-fade-in">
               <Link href="/">
-                <Button variant="ghost" className="gap-2 hover:bg-background/80">
+                <Button variant="ghost" className="gap-2 hover-lift glass">
                   <ArrowLeft className="h-4 w-4" />
                   Back to Home
                 </Button>
               </Link>
             </div>
 
-            <div className="text-center mb-12 max-w-3xl mx-auto">
-              <div className="inline-flex items-center rounded-full border bg-background/80 backdrop-blur-sm px-4 py-2 text-sm mb-6 mx-auto">
+            <div className="text-center mb-12 max-w-3xl mx-auto animate-fade-in">
+              <div className="inline-flex items-center rounded-full border glass px-5 py-2 text-sm mb-6 mx-auto shadow-elevated">
                 <Calendar className="h-4 w-4 mr-2 text-primary" />
-                <span className="font-medium">Launching Soon - Join the Waitlist</span>
+                <span className="font-semibold">Launching Soon - Join the Waitlist</span>
               </div>
 
-              <h1 className="text-4xl font-extrabold tracking-tight sm:text-5xl md:text-6xl mb-6 bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
+              <h1 className="text-4xl font-extrabold tracking-tight sm:text-5xl md:text-6xl mb-6 text-gradient">
                 Copy Trading Made Simple
               </h1>
               <p className="text-muted-foreground text-lg md:text-xl leading-relaxed mb-8">
@@ -44,9 +44,9 @@ export default function CopyTraderPage() {
                   <Input
                     type="email"
                     placeholder="Enter your email"
-                    className="flex-1 h-12 text-base border-2"
+                    className="flex-1 h-12 text-base border-2 shadow-elevated"
                   />
-                  <Button size="lg" className="h-12 px-6 font-semibold">
+                  <Button size="lg" className="h-12 px-6 font-semibold shadow-elevated-lg hover:shadow-elevated-xl hover-lift">
                     Join Waitlist
                   </Button>
                 </div>
@@ -171,9 +171,9 @@ export default function CopyTraderPage() {
             </div>
 
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              <Card className="border-2 hover:border-primary/50 transition-all hover:shadow-lg">
+              <Card className="border shadow-elevated hover:shadow-elevated-lg hover-lift transition-all group">
                 <CardHeader>
-                  <div className="p-3 bg-primary/10 rounded-lg w-fit mb-3">
+                  <div className="p-3 bg-primary/10 rounded-xl w-fit mb-3 group-hover:scale-110 transition-transform">
                     <Copy className="h-7 w-7 text-primary" />
                   </div>
                   <CardTitle className="text-xl">Automated Trading</CardTitle>
@@ -186,10 +186,10 @@ export default function CopyTraderPage() {
                 </CardContent>
               </Card>
 
-              <Card className="border-2 hover:border-primary/50 transition-all hover:shadow-lg">
+              <Card className="border shadow-elevated hover:shadow-elevated-lg hover-lift transition-all group">
                 <CardHeader>
-                  <div className="p-3 bg-blue-500/10 rounded-lg w-fit mb-3">
-                    <Shield className="h-7 w-7 text-blue-500" />
+                  <div className="p-3 bg-chart-1/10 rounded-xl w-fit mb-3 group-hover:scale-110 transition-transform">
+                    <Shield className="h-7 w-7 text-chart-1" />
                   </div>
                   <CardTitle className="text-xl">Risk Management</CardTitle>
                   <CardDescription>Trade with confidence</CardDescription>
@@ -201,10 +201,10 @@ export default function CopyTraderPage() {
                 </CardContent>
               </Card>
 
-              <Card className="border-2 hover:border-primary/50 transition-all hover:shadow-lg">
+              <Card className="border shadow-elevated hover:shadow-elevated-lg hover-lift transition-all group">
                 <CardHeader>
-                  <div className="p-3 bg-green-500/10 rounded-lg w-fit mb-3">
-                    <Bell className="h-7 w-7 text-green-500" />
+                  <div className="p-3 bg-success/10 rounded-xl w-fit mb-3 group-hover:scale-110 transition-transform">
+                    <Bell className="h-7 w-7 text-success" />
                   </div>
                   <CardTitle className="text-xl">Real-time Alerts</CardTitle>
                   <CardDescription>Stay informed instantly</CardDescription>
@@ -216,10 +216,10 @@ export default function CopyTraderPage() {
                 </CardContent>
               </Card>
 
-              <Card className="border-2 hover:border-primary/50 transition-all hover:shadow-lg">
+              <Card className="border shadow-elevated hover:shadow-elevated-lg hover-lift transition-all group">
                 <CardHeader>
-                  <div className="p-3 bg-purple-500/10 rounded-lg w-fit mb-3">
-                    <Target className="h-7 w-7 text-purple-500" />
+                  <div className="p-3 bg-chart-4/10 rounded-xl w-fit mb-3 group-hover:scale-110 transition-transform">
+                    <Target className="h-7 w-7 text-chart-4" />
                   </div>
                   <CardTitle className="text-xl">Precision Copying</CardTitle>
                   <CardDescription>Mirror trades accurately</CardDescription>
@@ -231,10 +231,10 @@ export default function CopyTraderPage() {
                 </CardContent>
               </Card>
 
-              <Card className="border-2 hover:border-primary/50 transition-all hover:shadow-lg">
+              <Card className="border shadow-elevated hover:shadow-elevated-lg hover-lift transition-all group">
                 <CardHeader>
-                  <div className="p-3 bg-orange-500/10 rounded-lg w-fit mb-3">
-                    <Users className="h-7 w-7 text-orange-500" />
+                  <div className="p-3 bg-warning/10 rounded-xl w-fit mb-3 group-hover:scale-110 transition-transform">
+                    <Users className="h-7 w-7 text-warning" />
                   </div>
                   <CardTitle className="text-xl">Verified Traders</CardTitle>
                   <CardDescription>Copy the best performers</CardDescription>
@@ -246,10 +246,10 @@ export default function CopyTraderPage() {
                 </CardContent>
               </Card>
 
-              <Card className="border-2 hover:border-primary/50 transition-all hover:shadow-lg">
+              <Card className="border shadow-elevated hover:shadow-elevated-lg hover-lift transition-all group">
                 <CardHeader>
-                  <div className="p-3 bg-pink-500/10 rounded-lg w-fit mb-3">
-                    <Zap className="h-7 w-7 text-pink-500" />
+                  <div className="p-3 bg-chart-5/10 rounded-xl w-fit mb-3 group-hover:scale-110 transition-transform">
+                    <Zap className="h-7 w-7 text-chart-5" />
                   </div>
                   <CardTitle className="text-xl">Lightning Fast</CardTitle>
                   <CardDescription>Execute at optimal speed</CardDescription>
@@ -264,7 +264,7 @@ export default function CopyTraderPage() {
 
             <div className="text-center mt-12">
               <Link href="/rankings">
-                <Button size="lg" variant="outline" className="text-base font-semibold border-2">
+                <Button size="lg" variant="outline" className="text-base font-semibold border-2 hover-lift shadow-elevated">
                   View Top Traders <ArrowRight className="ml-2 h-5 w-5" />
                 </Button>
               </Link>
@@ -439,8 +439,9 @@ export default function CopyTraderPage() {
         </section>
 
         {/* Final CTA */}
-        <section className="w-full py-16 md:py-24 bg-gradient-to-r from-primary to-primary/80">
-          <div className="container px-4 md:px-6">
+        <section className="w-full py-16 md:py-24 gradient-primary relative overflow-hidden">
+          <div className="absolute inset-0 bg-grid-white/[0.05] bg-[size:30px_30px]" />
+          <div className="container px-4 md:px-6 relative">
             <div className="flex flex-col items-center text-center space-y-6 max-w-3xl mx-auto">
               <h2 className="text-3xl font-extrabold tracking-tight md:text-4xl xl:text-5xl text-primary-foreground">
                 Ready to Copy the Best?
@@ -449,11 +450,11 @@ export default function CopyTraderPage() {
                 Join our waitlist today and be among the first to access automated copy trading on Solana.
               </p>
               <div className="flex flex-col sm:flex-row gap-4 pt-4">
-                <Button size="lg" variant="secondary" className="px-10 text-base font-semibold shadow-xl hover:shadow-2xl">
+                <Button size="lg" variant="secondary" className="px-10 text-base font-semibold shadow-elevated-xl hover-lift">
                   Join Waitlist Now <ArrowRight className="ml-2 h-5 w-5" />
                 </Button>
                 <Link href="/rankings">
-                  <Button size="lg" variant="outline" className="px-10 text-base font-semibold border-2 border-primary-foreground text-primary-foreground hover:bg-primary-foreground hover:text-primary">
+                  <Button size="lg" variant="outline" className="px-10 text-base font-semibold border-2 border-primary-foreground text-primary-foreground hover:bg-primary-foreground hover:text-primary hover-lift">
                     Explore Top Traders
                   </Button>
                 </Link>
@@ -463,10 +464,10 @@ export default function CopyTraderPage() {
         </section>
       </main>
 
-      <footer className="flex flex-col gap-4 sm:flex-row py-8 w-full shrink-0 items-center px-4 md:px-6 border-t bg-muted/30">
+      <footer className="flex flex-col gap-4 sm:flex-row py-10 w-full shrink-0 items-center px-4 md:px-6 border-t bg-muted/30 backdrop-blur-sm">
         <div className="flex items-center gap-2">
           <div className="p-2 bg-primary/10 rounded-lg">
-            <Copy className="h-5 w-5 text-primary" />
+            <TrendingUp className="h-5 w-5 text-primary" />
           </div>
           <span className="font-bold text-lg">TraderRanker</span>
         </div>

@@ -41,14 +41,14 @@ export default async function TradesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-background">
-      <div className="container py-8">
+    <div className="min-h-screen gradient-background">
+      <div className="container py-10 px-4">
         <DataSourceStatus usingMockData={usingMockData} />
 
-      <div className="flex flex-col gap-2 mb-8">
-        <h1 className="text-3xl font-bold tracking-tight">All Trades</h1>
-        <p className="text-muted-foreground">
-          View and analyze all trading activity across all traders on the platform.
+      <div className="flex flex-col gap-3 mb-10 animate-fade-in">
+        <h1 className="text-4xl font-bold tracking-tight text-gradient">All Trades</h1>
+        <p className="text-muted-foreground text-lg">
+          View and analyze all trading activity across all traders on the platform with advanced filtering and search capabilities.
         </p>
       </div>
 

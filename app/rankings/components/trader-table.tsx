@@ -41,10 +41,10 @@ export function TraderTable({ traders }: TraderTableProps) {
   })
 
   const getPerformanceClass = (roi: number) => {
-    if (roi >= 1) return "text-green-500 font-medium"
-    if (roi >= 0) return "text-green-400"
-    if (roi >= -0.5) return "text-orange-400"
-    return "text-red-500"
+    if (roi >= 1) return "text-success font-semibold"
+    if (roi >= 0) return "text-success font-medium"
+    if (roi >= -0.5) return "text-warning font-medium"
+    return "text-destructive font-medium"
   }
 
   const handleRowClick = (trader: string) => {
@@ -52,12 +52,12 @@ export function TraderTable({ traders }: TraderTableProps) {
   }
 
   return (
-    <div className="rounded-md border">
+    <div className="rounded-xl border shadow-elevated glass-card overflow-hidden">
       <Table>
         <TableHeader>
-          <TableRow>
-            <TableHead className="w-12">Rank</TableHead>
-            <TableHead>Trader</TableHead>
+          <TableRow className="border-b bg-muted/30 hover:bg-muted/30">
+            <TableHead className="w-12 font-semibold">Rank</TableHead>
+            <TableHead className="font-semibold">Trader</TableHead>
             <TableHead className="w-[120px]">
               <Button
                 variant="ghost"
@@ -144,31 +144,31 @@ export function TraderTable({ traders }: TraderTableProps) {
             sortedTraders.map((trader, index) => (
               <TableRow
                 key={trader.caller}
-                className="cursor-pointer hover:bg-muted/50"
+                className="cursor-pointer hover:bg-muted/50 transition-colors"
                 onClick={() => handleRowClick(trader.caller)}
               >
-                <TableCell className="font-medium">
-                  <div className="flex items-center gap-1">
+                <TableCell className="font-semibold">
+                  <div className="flex items-center gap-2">
                     {index < 3 && (
                       <Trophy
-                        className={`h-4 w-4 ${index === 0 ? "text-yellow-500" : index === 1 ? "text-gray-400" : "text-amber-600"}`}
+                        className={`h-4 w-4 ${index === 0 ? "text-warning" : index === 1 ? "text-muted-foreground" : "text-chart-3"}`}
                       />
                     )}
-                    {index + 1}
+                    <span className={index < 3 ? "text-primary" : ""}>{index + 1}</span>
                   </div>
                 </TableCell>
                 <TableCell>
-                  <div className="font-medium">{trader.caller}</div>
+                  <div className="font-semibold text-foreground">{trader.caller}</div>
                 </TableCell>
-                <TableCell>{(trader.win_rate * 100).toFixed(1)}%</TableCell>
-                <TableCell>{trader.total_calls}</TableCell>
-                <TableCell>{trader.winning_calls}</TableCell>
+                <TableCell className="font-medium">{(trader.win_rate * 100).toFixed(1)}%</TableCell>
+                <TableCell className="font-medium">{trader.total_calls}</TableCell>
+                <TableCell className="font-medium">{trader.winning_calls}</TableCell>
                 <TableCell className={getPerformanceClass(trader.average_roi)}>
-                  {(trader.average_roi * 100).toFixed(1)}%
+                  {trader.average_roi >= 0 ? "+" : ""}{(trader.average_roi * 100).toFixed(1)}%
                 </TableCell>
                 <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                   <Link href={`/rankings/${encodeURIComponent(trader.caller)}`}>
-                    <Button variant="outline" size="sm">
+                    <Button variant="outline" size="sm" className="hover-lift">
                       View
                     </Button>
                   </Link>

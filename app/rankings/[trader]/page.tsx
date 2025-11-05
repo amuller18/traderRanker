@@ -146,38 +146,57 @@ export default async function TraderDetailPage({ params, searchParams }: TraderD
   const paginatedTrades = allTrades.slice(startIndex, endIndex)
 
   return (
-    <div className="container py-8">
-      <div className="mb-8">
-        <Link href="/rankings">
-          <Button variant="ghost" className="gap-2 pl-0">
-            <ArrowLeft className="h-4 w-4" />
-            Back to Rankings
-          </Button>
-        </Link>
-      </div>
+    <div className="min-h-screen gradient-background">
+      <div className="container py-10 px-4">
+        <div className="mb-8 animate-fade-in">
+          <Link href="/rankings">
+            <Button variant="ghost" className="gap-2 pl-0 hover-lift mb-4">
+              <ArrowLeft className="h-4 w-4" />
+              Back to Rankings
+            </Button>
+          </Link>
+          <h1 className="text-4xl font-bold mb-2 text-gradient">{traderId}</h1>
+          <p className="text-muted-foreground text-lg">
+            Comprehensive performance analysis and trading history
+          </p>
+        </div>
 
-      <DataSourceStatus usingMockData={usingMockData} />
+        <DataSourceStatus usingMockData={usingMockData} />
 
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold tracking-tight">Trade History</h2>
-            <p className="text-muted-foreground">Recent trading activity and performance</p>
+        <div className="space-y-8">
+          {/* Performance Metrics */}
+          <div className="animate-fade-in" style={{ animationDelay: "0.1s" }}>
+            <PerformanceMetrics trader={trader} />
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">
-              Showing {startIndex + 1}-{Math.min(endIndex, totalTrades)} of {totalTrades} trades
-            </span>
-            <BulkPriceUpdateButton traderId={traderId} totalTrades={totalTrades} />
+
+          {/* Market Cap Performance */}
+          <div className="animate-fade-in" style={{ animationDelay: "0.2s" }}>
+            <MarketCapPerformance trader={trader} />
+          </div>
+
+          {/* Trade History */}
+          <div className="space-y-4 animate-fade-in" style={{ animationDelay: "0.3s" }}>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <h2 className="text-2xl font-bold tracking-tight">Trade History</h2>
+                <p className="text-muted-foreground">Recent trading activity and performance</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-muted-foreground font-medium">
+                  Showing {startIndex + 1}-{Math.min(endIndex, totalTrades)} of {totalTrades} trades
+                </span>
+                <BulkPriceUpdateButton traderId={traderId} totalTrades={totalTrades} />
+              </div>
+            </div>
+            <TraderTrades
+              trades={paginatedTrades}
+              currentPage={page}
+              totalPages={totalPages}
+              totalTrades={totalTrades}
+              traderName={traderId}
+            />
           </div>
         </div>
-        <TraderTrades 
-          trades={paginatedTrades} 
-          currentPage={page}
-          totalPages={totalPages}
-          totalTrades={totalTrades}
-          traderName={traderId}
-        />
       </div>
     </div>
   )

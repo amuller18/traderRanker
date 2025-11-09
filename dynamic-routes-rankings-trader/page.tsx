@@ -11,7 +11,13 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 import type { Trade } from "@/lib/trader-data"
 
-export const dynamic = "force-dynamic"
+// Disable dynamic params for static export
+export const dynamicParams = false
+
+// Return empty array to not pre-generate any pages
+export function generateStaticParams(): { trader: string }[] {
+  return []
+}
 
 interface TraderDetailPageProps {
   params: {

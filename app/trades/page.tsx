@@ -3,9 +3,6 @@ import type { TradeFilterOptions } from "@/lib/trader-data"
 import { ClientPage } from "./client-page"
 import { DataSourceStatus } from "@/app/components/data-source-status"
 
-export const dynamic = "force-dynamic"
-export const revalidate = 300 // Cache for 5 minutes
-
 export default async function TradesPage() {
   // Default filters - set very wide ranges to ensure all trades are shown initially
   const defaultFilters: TradeFilterOptions = {

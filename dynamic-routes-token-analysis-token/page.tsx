@@ -37,8 +37,13 @@ import { JupiterSwap } from "@/app/components/jupiter-swap"
 import Big from 'big.js'
 import { formatPrice, formatNumber, formatPercentage, formatDate } from "./utils/formatting"
 
-export const dynamic = "force-dynamic"
-export const revalidate = 0 // Don't cache this page
+// Disable dynamic params for static export
+export const dynamicParams = false
+
+// Return empty array to not pre-generate any pages
+export function generateStaticParams(): { token: string }[] {
+  return []
+}
 
 const getPriceChangeClass = (change: number | undefined): string => {
   if (!change) return 'text-muted-foreground';

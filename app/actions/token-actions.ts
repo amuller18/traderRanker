@@ -1,5 +1,3 @@
-"use server"
-
 import { getTokenInfo, getTokenSupply, type TokenInfo } from "@/lib/token-api"
 
 export interface TokenData {

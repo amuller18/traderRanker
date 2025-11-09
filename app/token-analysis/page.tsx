@@ -2,9 +2,6 @@ import { isUsingMockData } from "@/lib/trader-data"
 import { DataSourceStatus } from "@/app/components/data-source-status"
 import { TokenSearch } from "@/app/components/token-search"
 
-export const dynamic = "force-dynamic"
-export const revalidate = 0 // Don't cache this page
-
 export default async function TokenAnalysisPage() {
   let usingMockData = true
 

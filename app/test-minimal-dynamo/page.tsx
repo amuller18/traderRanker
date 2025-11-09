@@ -4,9 +4,6 @@ import { Button } from "@/components/ui/button"
 import { AlertTriangle, CheckCircle, XCircle } from "lucide-react"
 import { mockTraderStats } from "@/lib/mock-data"
 
-export const dynamic = "force-dynamic"
-export const revalidate = 0
-
 export default async function TestMinimalDynamoPage() {
   let errorMessage = null
   let traders = []

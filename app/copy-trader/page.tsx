@@ -29,7 +29,7 @@ export default function CopyTraderPage() {
             <div className="text-center mb-12 max-w-3xl mx-auto animate-fade-in">
               <div className="inline-flex items-center rounded-full border glass px-5 py-2 text-sm mb-6 mx-auto shadow-elevated">
                 <Calendar className="h-4 w-4 mr-2 text-primary" />
-                <span className="font-semibold">Launching Soon - Join the Waitlist</span>
+                <span className="font-semibold">Dashboard MVP Now Available</span>
               </div>
 
               <h1 className="text-4xl font-extrabold tracking-tight sm:text-5xl md:text-6xl mb-6 text-gradient">
@@ -40,13 +40,19 @@ export default function CopyTraderPage() {
               </p>
 
               <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
+                <Link href="/copy-trader/dashboard">
+                  <Button size="lg" className="h-14 px-8 font-bold text-lg shadow-elevated-lg hover:shadow-elevated-xl hover-lift">
+                    <BarChart3 className="h-5 w-5 mr-2" />
+                    Launch Dashboard
+                  </Button>
+                </Link>
                 <div className="flex max-w-md gap-2 flex-1 sm:flex-none">
                   <Input
                     type="email"
                     placeholder="Enter your email"
                     className="flex-1 h-12 text-base border-2 shadow-elevated"
                   />
-                  <Button size="lg" className="h-12 px-6 font-semibold shadow-elevated-lg hover:shadow-elevated-xl hover-lift">
+                  <Button size="lg" variant="outline" className="h-12 px-6 font-semibold shadow-elevated-lg hover:shadow-elevated-xl hover-lift">
                     Join Waitlist
                   </Button>
                 </div>

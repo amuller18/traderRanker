@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Combobox } from '@/components/ui/combobox';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useDeployStrategyStore } from '../store/deployStrategyStore';
 import { TokenChain } from '../types';
 import { Filter, Clock } from 'lucide-react';
@@ -188,7 +188,7 @@ export function FiltersSection() {
             {/* Timezone */}
             <div className="space-y-2">
               <Label htmlFor="timezone">Timezone</Label>
-              <Combobox
+              <SearchableSelect
                 id="timezone"
                 options={TIMEZONES.map((tz) => ({
                   value: tz,
@@ -196,8 +196,7 @@ export function FiltersSection() {
                 }))}
                 value={activeHours.timezone}
                 onValueChange={setActiveHoursTimezone}
-                placeholder="Select timezone..."
-                searchPlaceholder="Search timezones..."
+                placeholder="Search timezones..."
                 emptyText="No timezone found."
               />
             </div>

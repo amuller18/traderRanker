@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Combobox } from '@/components/ui/combobox';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useDeployStrategyStore } from '../store/deployStrategyStore';
 import { mockCallerOptions } from '../data/mock';
 import { Plus, Trash2, Rocket, Loader2, Save, Sparkles, AlertCircle } from 'lucide-react';
@@ -227,13 +227,12 @@ export function DeployStrategyForm() {
                 <Label htmlFor="caller-input">
                   Trader <span className="text-destructive">*</span>
                 </Label>
-                <Combobox
+                <SearchableSelect
                   id="caller-input"
                   options={mockCallerOptions}
                   value={callerInput}
                   onValueChange={setCallerInput}
-                  placeholder="Select a trader..."
-                  searchPlaceholder="Search traders..."
+                  placeholder="Search traders..."
                   emptyText="No trader found."
                   className={errors.callerInput ? 'border-destructive' : ''}
                 />
@@ -258,7 +257,7 @@ export function DeployStrategyForm() {
                 <Label htmlFor="profit-strategy">
                   Strategy Type <span className="text-destructive">*</span>
                 </Label>
-                <Combobox
+                <SearchableSelect
                   id="profit-strategy"
                   options={[
                     { value: 'default', label: 'Default Strategy' },
@@ -266,8 +265,7 @@ export function DeployStrategyForm() {
                   ]}
                   value={profitStrategy}
                   onValueChange={(value) => setProfitStrategy(value as 'default' | 'custom')}
-                  placeholder="Select strategy type..."
-                  searchPlaceholder="Search strategies..."
+                  placeholder="Search strategy type..."
                   emptyText="No strategy found."
                 />
               </div>
@@ -300,15 +298,14 @@ export function DeployStrategyForm() {
                         {tpslRows.map((row) => (
                           <TableRow key={row.id}>
                             <TableCell>
-                              <Combobox
+                              <SearchableSelect
                                 options={[
                                   { value: 'TP', label: 'Take Profit' },
                                   { value: 'SL', label: 'Stop Loss' },
                                 ]}
                                 value={row.conditionType}
                                 onValueChange={(value) => updateTPSLRow(row.id, 'conditionType', value)}
-                                placeholder="Select type..."
-                                searchPlaceholder="Search..."
+                                placeholder="Search..."
                                 emptyText="No type found."
                                 className="h-9"
                               />

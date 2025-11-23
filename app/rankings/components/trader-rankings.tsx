@@ -1,11 +1,12 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
-import { ChevronDown, ChevronUp } from "lucide-react"
+import { ChevronDown, ChevronUp, RefreshCw } from "lucide-react"
 import { formatROI } from "@/lib/utils"
 import { fetchTraderStats } from "@/app/actions/trader-actions"
+import { TraderRankingsSkeleton } from "./trader-rankings-skeleton"
 import Link from "next/link"
 
 interface Trader {
@@ -19,23 +20,37 @@ interface Trader {
 export function TraderRankings() {
   const [traders, setTraders] = useState<Trader[]>([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [sortField, setSortField] = useState<keyof Trader>("win_rate")
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc")
 
-  useEffect(() => {
-    const fetchTraders = async () => {
-      try {
-        const data = await fetchTraderStats()
-        setTraders(data)
-      } catch (error) {
-        console.error('Error fetching traders:', error)
-      } finally {
-        setLoading(false)
-      }
+  const fetchTraders = useCallback(async (isRefresh = false) => {
+    if (isRefresh) {
+      setRefreshing(true)
+    } else {
+      setLoading(true)
     }
 
-    fetchTraders()
+    try {
+      const data = await fetchTraderStats()
+      setTraders(data)
+      setLastUpdated(new Date())
+    } catch (error) {
+      console.error('Error fetching traders:', error)
+    } finally {
+      setLoading(false)
+      setRefreshing(false)
+    }
   }, [])
+
+  useEffect(() => {
+    fetchTraders()
+  }, [fetchTraders])
+
+  const handleRefresh = () => {
+    fetchTraders(true)
+  }
 
   const handleSort = (field: keyof Trader) => {
     if (field === sortField) {
@@ -59,12 +74,34 @@ export function TraderRankings() {
   })
 
   if (loading) {
-    return <div>Loading traders...</div>
+    return <TraderRankingsSkeleton />
   }
 
   return (
-    <div className="rounded-md border">
-      <Table>
+    <div className="space-y-4">
+      {/* Header with refresh button */}
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-muted-foreground">
+          {lastUpdated && (
+            <>
+              Last updated: {lastUpdated.toLocaleTimeString()}
+            </>
+          )}
+        </div>
+        <Button
+          onClick={handleRefresh}
+          disabled={refreshing}
+          variant="outline"
+          size="sm"
+          className="gap-2"
+        >
+          <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+          {refreshing ? 'Refreshing...' : 'Refresh'}
+        </Button>
+      </div>
+
+      <div className="rounded-md border">
+        <Table>
         <TableHeader>
           <TableRow>
             <TableHead>Trader</TableHead>
@@ -117,6 +154,7 @@ export function TraderRankings() {
           ))}
         </TableBody>
       </Table>
+      </div>
     </div>
   )
 } 

@@ -3,7 +3,7 @@ import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft, Copy, Bell, Calendar, CheckCircle, Shield, Sparkles, Target, TrendingUp, Users, Zap, Star, DollarSign, ArrowRight, BarChart3, Activity } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
+import { WaitlistForm } from "./components/waitlist-form"
 
 export default function CopyTraderPage() {
   return (
@@ -46,16 +46,7 @@ export default function CopyTraderPage() {
                     Launch Dashboard
                   </Button>
                 </Link>
-                <div className="flex max-w-md gap-2 flex-1 sm:flex-none">
-                  <Input
-                    type="email"
-                    placeholder="Enter your email"
-                    className="flex-1 h-12 text-base border-2 shadow-elevated"
-                  />
-                  <Button size="lg" variant="outline" className="h-12 px-6 font-semibold shadow-elevated-lg hover:shadow-elevated-xl hover-lift">
-                    Join Waitlist
-                  </Button>
-                </div>
+                <WaitlistForm variant="hero" />
               </div>
 
               {/* Stats */}
@@ -415,21 +406,7 @@ export default function CopyTraderPage() {
                         </p>
                       </div>
 
-                      <div className="space-y-4">
-                        <Input
-                          type="text"
-                          placeholder="Your name"
-                          className="h-12 border-2"
-                        />
-                        <Input
-                          type="email"
-                          placeholder="Your email"
-                          className="h-12 border-2"
-                        />
-                        <Button size="lg" className="w-full h-12 font-semibold text-base">
-                          Get Early Access <ArrowRight className="ml-2 h-5 w-5" />
-                        </Button>
-                      </div>
+                      <WaitlistForm variant="sidebar" />
 
                       <div className="pt-4 border-t">
                         <p className="text-xs text-muted-foreground text-center">

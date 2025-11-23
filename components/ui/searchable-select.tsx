@@ -7,7 +7,6 @@ import {
   Command,
   CommandEmpty,
   CommandGroup,
-  CommandInput,
   CommandItem,
   CommandList,
 } from '@/components/ui/command';
@@ -27,7 +26,6 @@ interface SearchableSelectProps {
   value?: string;
   onValueChange: (value: string) => void;
   placeholder?: string;
-  searchPlaceholder?: string;
   emptyText?: string;
   className?: string;
   disabled?: boolean;
@@ -68,9 +66,18 @@ export function SearchableSelect({
   // Handle clear
   const handleClear = (e: React.MouseEvent) => {
     e.stopPropagation();
+    e.preventDefault();
     onValueChange('');
     setSearch('');
     inputRef.current?.focus();
+  };
+
+  // Handle input click - open dropdown
+  const handleInputClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!open) {
+      setOpen(true);
+    }
   };
 
   // Display value in input
@@ -78,43 +85,51 @@ export function SearchableSelect({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <div className="relative w-full">
-          <input
-            ref={inputRef}
-            id={id}
-            type="text"
-            disabled={disabled}
-            placeholder={placeholder}
-            value={open ? search : displayValue}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              if (!open) setOpen(true);
-            }}
-            onFocus={() => setOpen(true)}
-            className={cn(
-              'flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
-              className
-            )}
-            aria-label={placeholder}
-            autoComplete="off"
-          />
-          <div className="absolute right-2 top-2.5 flex items-center gap-1">
-            {value && !disabled && (
-              <button
-                type="button"
-                onClick={handleClear}
-                className="h-5 w-5 rounded-sm opacity-50 hover:opacity-100 transition-opacity"
-                aria-label="Clear selection"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
-            <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
-          </div>
+      <div className="relative w-full">
+        <input
+          ref={inputRef}
+          id={id}
+          type="text"
+          disabled={disabled}
+          placeholder={placeholder}
+          value={open ? search : displayValue}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            if (!open) setOpen(true);
+          }}
+          onClick={handleInputClick}
+          onFocus={() => setOpen(true)}
+          className={cn(
+            'flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 pr-16',
+            className
+          )}
+          aria-label={placeholder}
+          autoComplete="off"
+        />
+        <div className="absolute right-2 top-2.5 flex items-center gap-1 pointer-events-none">
+          {value && !disabled && (
+            <button
+              type="button"
+              onClick={handleClear}
+              className="h-5 w-5 rounded-sm opacity-50 hover:opacity-100 transition-opacity pointer-events-auto"
+              aria-label="Clear selection"
+              tabIndex={-1}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+          <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
         </div>
-      </PopoverTrigger>
-      <PopoverContent className="w-full p-0" align="start" style={{ width: 'var(--radix-popover-trigger-width)' }}>
+        <PopoverTrigger asChild>
+          <div className="absolute inset-0 cursor-text" aria-hidden="true" />
+        </PopoverTrigger>
+      </div>
+      <PopoverContent
+        className="w-full p-0"
+        align="start"
+        style={{ width: 'var(--radix-popover-trigger-width)' }}
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
         <Command shouldFilter={false}>
           <CommandList>
             {filteredOptions.length === 0 ? (

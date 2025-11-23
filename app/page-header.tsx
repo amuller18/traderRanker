@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { ThemeToggle } from "@/components/theme-toggle"
-import { TrendingUp, Menu, User, LogOut } from "lucide-react"
+import { TrendingUp, Menu, LogOut, Wallet, Link2, Unlink } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Sheet,
@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { useAuth } from "@/lib/auth-context"
+import { useWallet } from "@/lib/wallet-context"
 import { useState } from "react"
 import { toast } from "sonner"
 
@@ -34,17 +35,53 @@ const navItems = [
 export function PageHeader() {
   const pathname = usePathname()
   const router = useRouter()
-  const { user, isAuthenticated, logout } = useAuth()
+  const { user, isAuthenticated, logout, linkWallet, unlinkWallet } = useAuth()
+  const { publicKey, connected, connecting, connectWallet, disconnectWallet } = useWallet()
   const [open, setOpen] = useState(false)
 
-  const handleLogout = () => {
-    logout()
+  const handleLogout = async () => {
+    await logout()
     toast.success("Successfully logged out")
     router.push("/")
   }
 
+  const handleConnectWallet = async () => {
+    try {
+      await connectWallet()
+      toast.success("Wallet connected successfully!")
+
+      // If user is logged in, link the wallet to their profile
+      if (isAuthenticated && publicKey) {
+        await linkWallet(publicKey)
+        toast.success("Wallet linked to your account!")
+      }
+    } catch (error) {
+      toast.error("Failed to connect wallet")
+      console.error(error)
+    }
+  }
+
+  const handleDisconnectWallet = async () => {
+    try {
+      await disconnectWallet()
+      toast.success("Wallet disconnected")
+
+      // If user is logged in, unlink the wallet from their profile
+      if (isAuthenticated) {
+        await unlinkWallet()
+      }
+    } catch (error) {
+      toast.error("Failed to disconnect wallet")
+      console.error(error)
+    }
+  }
+
   const getUserInitials = (username: string) => {
     return username.slice(0, 2).toUpperCase()
+  }
+
+  const truncateAddress = (address: string) => {
+    return `${address.slice(0, 4)}...${address.slice(-4)}`
   }
 
   return (
@@ -84,6 +121,31 @@ export function PageHeader() {
 
         {/* Right side actions */}
         <div className="flex flex-1 items-center justify-end space-x-2">
+          {/* Wallet Connection Button */}
+          {connected ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleDisconnectWallet}
+              className="hidden md:flex gap-2"
+            >
+              <Wallet className="h-4 w-4" />
+              {truncateAddress(publicKey || '')}
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleConnectWallet}
+              disabled={connecting}
+              className="hidden md:flex gap-2"
+            >
+              <Wallet className="h-4 w-4" />
+              {connecting ? 'Connecting...' : 'Connect Wallet'}
+            </Button>
+          )}
+
+          {/* User Account */}
           {isAuthenticated ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -102,9 +164,30 @@ export function PageHeader() {
                     <p className="text-xs leading-none text-muted-foreground">
                       {user?.email}
                     </p>
+                    {user?.wallet_address && (
+                      <p className="text-xs leading-none text-muted-foreground mt-1">
+                        <Wallet className="h-3 w-3 inline mr-1" />
+                        {truncateAddress(user.wallet_address)}
+                      </p>
+                    )}
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
+                {connected && !user?.wallet_address && (
+                  <DropdownMenuItem onClick={() => linkWallet(publicKey!)}>
+                    <Link2 className="mr-2 h-4 w-4" />
+                    <span>Link Wallet</span>
+                  </DropdownMenuItem>
+                )}
+                {user?.wallet_address && (
+                  <DropdownMenuItem onClick={unlinkWallet}>
+                    <Unlink className="mr-2 h-4 w-4" />
+                    <span>Unlink Wallet</span>
+                  </DropdownMenuItem>
+                )}
+                {(connected && !user?.wallet_address || user?.wallet_address) && (
+                  <DropdownMenuSeparator />
+                )}
                 <DropdownMenuItem onClick={handleLogout}>
                   <LogOut className="mr-2 h-4 w-4" />
                   <span>Log out</span>
@@ -138,6 +221,12 @@ export function PageHeader() {
                     <div className="flex flex-col">
                       <p className="text-sm font-medium">{user.username}</p>
                       <p className="text-xs text-muted-foreground">{user.email}</p>
+                      {user?.wallet_address && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          <Wallet className="h-3 w-3 inline mr-1" />
+                          {truncateAddress(user.wallet_address)}
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -160,7 +249,36 @@ export function PageHeader() {
                     </Link>
                   )
                 })}
-                <div className="pt-4 border-t">
+                <div className="pt-4 border-t space-y-2">
+                  {/* Wallet Connection (Mobile) */}
+                  {connected ? (
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start gap-2"
+                      onClick={() => {
+                        handleDisconnectWallet()
+                        setOpen(false)
+                      }}
+                    >
+                      <Wallet className="h-4 w-4" />
+                      {truncateAddress(publicKey || '')}
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start gap-2"
+                      onClick={() => {
+                        handleConnectWallet()
+                        setOpen(false)
+                      }}
+                      disabled={connecting}
+                    >
+                      <Wallet className="h-4 w-4" />
+                      {connecting ? 'Connecting...' : 'Connect Wallet'}
+                    </Button>
+                  )}
+
+                  {/* Auth Actions (Mobile) */}
                   {isAuthenticated ? (
                     <Button
                       variant="ghost"

@@ -12,27 +12,41 @@ interface TokenSearchProps {
   className?: string
 }
 
+// Solana addresses are base58 encoded and typically 32-44 characters
+const SOLANA_ADDRESS_REGEX = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/
+
 export function TokenSearch({ className = "" }: TokenSearchProps) {
   const [tokenAddress, setTokenAddress] = useState("")
   const [isInvalid, setIsInvalid] = useState(false)
+  const [errorMessage, setErrorMessage] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
 
-    // Basic validation - check if the address is at least 32 characters
-    if (tokenAddress.trim().length < 32) {
+    const trimmedAddress = tokenAddress.trim()
+
+    // Validate Solana address format
+    if (!trimmedAddress) {
       setIsInvalid(true)
+      setErrorMessage("Please enter a token address")
+      return
+    }
+
+    if (!SOLANA_ADDRESS_REGEX.test(trimmedAddress)) {
+      setIsInvalid(true)
+      setErrorMessage("Invalid Solana address format (must be 32-44 base58 characters)")
       return
     }
 
     // Reset validation state
     setIsInvalid(false)
+    setErrorMessage("")
     setIsLoading(true)
 
     // Navigate to the token detail page
-    router.push(`/token-analysis/${encodeURIComponent(tokenAddress.trim())}`)
+    router.push(`/token-analysis/${encodeURIComponent(trimmedAddress)}`)
   }
 
   return (
@@ -48,11 +62,12 @@ export function TokenSearch({ className = "" }: TokenSearchProps) {
             onChange={(e) => {
               setTokenAddress(e.target.value)
               setIsInvalid(false)
+              setErrorMessage("")
             }}
             disabled={isLoading}
           />
         </div>
-        {isInvalid && <p className="text-sm text-red-500">Please enter a valid Solana token address</p>}
+        {isInvalid && <p className="text-sm text-red-500">{errorMessage}</p>}
         <Button type="submit" className="w-full" disabled={isLoading}>
           {isLoading ? "Searching..." : "Search Token"}
         </Button>

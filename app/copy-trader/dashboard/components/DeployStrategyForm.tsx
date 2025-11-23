@@ -8,10 +8,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useDeployStrategyStore } from '../store/deployStrategyStore';
 import { mockCallerOptions } from '../data/mock';
-import { Plus, Trash2, Rocket } from 'lucide-react';
+import { Plus, Trash2, Rocket, Loader2, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useState } from 'react';
 
 export function DeployStrategyForm() {
+  const [isDeploying, setIsDeploying] = useState(false);
   const {
     callerInput,
     profitStrategy,
@@ -21,9 +23,19 @@ export function DeployStrategyForm() {
     addTPSLRow,
     removeTPSLRow,
     updateTPSLRow,
+    resetToDefault,
   } = useDeployStrategyStore();
 
   const handleDeploy = async () => {
+    if (!callerInput) {
+      toast.error('Please select a trader', {
+        description: 'You must select a trader before deploying a strategy',
+      });
+      return;
+    }
+
+    setIsDeploying(true);
+
     // TODO connect backend later
     const config = {
       callerInput,
@@ -33,14 +45,25 @@ export function DeployStrategyForm() {
 
     console.log('Deploy Strategy Config:', config);
 
+    // Simulate API call
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
     // Show success toast
-    toast.success('Strategy Deployed!', {
-      description: `Successfully deployed ${profitStrategy} strategy for ${callerInput || 'selected trader'}`,
+    const selectedTrader = mockCallerOptions.find(opt => opt.value === callerInput);
+    toast.success('Strategy Deployed Successfully!', {
+      description: `${profitStrategy === 'default' ? 'Default' : 'Custom'} strategy deployed for ${selectedTrader?.label || 'selected trader'}`,
+      duration: 5000,
     });
+
+    // Reset form after successful deployment
+    setTimeout(() => {
+      resetToDefault();
+      setIsDeploying(false);
+    }, 500);
   };
 
   const isDefaultStrategy = profitStrategy === 'default';
-  const canDeploy = callerInput !== '';
+  const canDeploy = callerInput !== '' && !isDeploying;
 
   return (
     <div className="space-y-6">
@@ -197,8 +220,17 @@ export function DeployStrategyForm() {
         onClick={handleDeploy}
         disabled={!canDeploy}
       >
-        <Rocket className="h-5 w-5 mr-2" />
-        Deploy Strategy
+        {isDeploying ? (
+          <>
+            <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+            Deploying Strategy...
+          </>
+        ) : (
+          <>
+            <Rocket className="h-5 w-5 mr-2" />
+            Deploy Strategy
+          </>
+        )}
       </Button>
     </div>
   );

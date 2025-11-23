@@ -1,7 +1,7 @@
 import Link from "next/link"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, Copy, Bell, Calendar, CheckCircle, Shield, Sparkles, Target, TrendingUp, Users, Zap, Star, DollarSign, ArrowRight, BarChart3, Activity } from "lucide-react"
+import { Copy, Bell, Calendar, CheckCircle, Shield, Sparkles, Target, TrendingUp, Users, Zap, Star, DollarSign, ArrowRight, BarChart3, Activity } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { WaitlistForm } from "./components/waitlist-form"
 
@@ -16,15 +16,6 @@ export default function CopyTraderPage() {
           <div className="absolute bottom-0 left-0 translate-y-12 -translate-x-12 w-[500px] h-[500px] bg-chart-1/10 rounded-full blur-3xl animate-pulse" style={{ animationDuration: "5s" }} />
 
           <div className="container px-4 md:px-6 relative">
-            <div className="flex justify-start mb-8 animate-fade-in">
-              <Link href="/">
-                <Button variant="ghost" className="gap-2 hover-lift glass">
-                  <ArrowLeft className="h-4 w-4" />
-                  Back to Home
-                </Button>
-              </Link>
-            </div>
-
             <div className="text-center mb-12 max-w-3xl mx-auto animate-fade-in">
               <div className="inline-flex items-center rounded-full border glass px-5 py-2 text-sm mb-6 mx-auto shadow-elevated">
                 <Calendar className="h-4 w-4 mr-2 text-primary" />

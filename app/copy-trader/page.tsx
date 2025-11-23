@@ -7,10 +7,9 @@ import { WaitlistForm } from "./components/waitlist-form"
 
 export default function CopyTraderPage() {
   return (
-    <div className="flex flex-col min-h-[100dvh]">
-      <main className="flex-1">
-        {/* Hero Section */}
-        <section className="w-full py-12 md:py-24 lg:py-32 xl:py-40 gradient-background relative overflow-hidden">
+    <>
+      {/* Hero Section */}
+      <section className="w-full py-12 md:py-24 lg:py-32 xl:py-40 gradient-background relative overflow-hidden">
           {/* Background decorative elements */}
           <div className="absolute inset-0 bg-grid-white/[0.02] bg-[size:40px_40px] [mask-image:radial-gradient(white,transparent_85%)]" />
           <div className="absolute top-0 right-0 -translate-y-12 translate-x-12 w-[600px] h-[600px] bg-primary/10 rounded-full blur-3xl animate-pulse" style={{ animationDuration: "4s" }} />
@@ -445,7 +444,6 @@ export default function CopyTraderPage() {
             </div>
           </div>
         </section>
-      </main>
 
       <footer className="flex flex-col gap-4 sm:flex-row py-10 w-full shrink-0 items-center px-4 md:px-6 border-t bg-muted/30 backdrop-blur-sm">
         <div className="flex items-center gap-2">
@@ -469,7 +467,7 @@ export default function CopyTraderPage() {
           </Link>
         </nav>
       </footer>
-    </div>
+    </>
   )
 }
 

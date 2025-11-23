@@ -1,19 +1,7 @@
-import { fetchAllTrades } from "@/app/actions/trader-actions"
-import { isUsingMockData } from "@/lib/trader-data"
 import BacktestClientPage from "./client-page"
 import { PageHeader } from "@/app/page-header"
-import type { Trade } from "@/lib/trader-data"
 
-export default async function BacktestPage() {
-  let trades: Trade[] = []
-
-  try {
-    trades = await fetchAllTrades()
-  } catch (error) {
-    console.error("Error fetching trades:", error)
-    // Continue with empty trades array
-  }
-
+export default function BacktestPage() {
   return (
     <div>
       <PageHeader />
@@ -26,7 +14,7 @@ export default async function BacktestPage() {
             </p>
           </div>
 
-          <BacktestClientPage initialTrades={trades} />
+          <BacktestClientPage initialTrades={[]} />
         </div>
       </div>
     </div>

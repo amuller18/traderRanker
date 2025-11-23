@@ -1,11 +1,24 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createClient } from '@/lib/supabase/client';
+import type { User as SupabaseUser } from '@supabase/supabase-js';
+
+interface UserProfile {
+  id: string;
+  username: string;
+  full_name?: string;
+  avatar_url?: string;
+  wallet_address?: string;
+}
 
 interface User {
   id: string;
   email: string;
   username: string;
+  wallet_address?: string;
+  full_name?: string;
+  avatar_url?: string;
 }
 
 interface AuthContextType {
@@ -14,7 +27,10 @@ interface AuthContextType {
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, username: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
+  linkWallet: (walletAddress: string) => Promise<void>;
+  unlinkWallet: () => Promise<void>;
+  updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -22,47 +38,88 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const supabase = createClient();
 
-  // Load user from localStorage on mount
-  useEffect(() => {
-    const storedUser = localStorage.getItem('auth_user');
-    if (storedUser) {
-      try {
-        setUser(JSON.parse(storedUser));
-      } catch (error) {
-        console.error('Failed to parse stored user:', error);
-        localStorage.removeItem('auth_user');
+  // Fetch user profile from Supabase
+  const fetchUserProfile = async (authUser: SupabaseUser): Promise<User | null> => {
+    try {
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', authUser.id)
+        .single();
+
+      if (error) {
+        console.error('Error fetching profile:', error);
+        return null;
       }
+
+      return {
+        id: authUser.id,
+        email: authUser.email || '',
+        username: profile?.username || '',
+        wallet_address: profile?.wallet_address,
+        full_name: profile?.full_name,
+        avatar_url: profile?.avatar_url,
+      };
+    } catch (error) {
+      console.error('Error in fetchUserProfile:', error);
+      return null;
     }
-    setIsLoading(false);
+  };
+
+  // Initialize auth state
+  useEffect(() => {
+    const initializeAuth = async () => {
+      try {
+        // Get current session
+        const { data: { session } } = await supabase.auth.getSession();
+
+        if (session?.user) {
+          const userProfile = await fetchUserProfile(session.user);
+          setUser(userProfile);
+        }
+      } catch (error) {
+        console.error('Error initializing auth:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    initializeAuth();
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (_event, session) => {
+        if (session?.user) {
+          const userProfile = await fetchUserProfile(session.user);
+          setUser(userProfile);
+        } else {
+          setUser(null);
+        }
+        setIsLoading(false);
+      }
+    );
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   const login = async (email: string, password: string): Promise<void> => {
-    // Simulate API call
-    // In production, this would call your authentication API
-    return new Promise((resolve, reject) => {
-      setTimeout(() => {
-        const storedUsers = localStorage.getItem('registered_users');
-        const users = storedUsers ? JSON.parse(storedUsers) : [];
-
-        const foundUser = users.find(
-          (u: any) => u.email === email && u.password === password
-        );
-
-        if (foundUser) {
-          const userData: User = {
-            id: foundUser.id,
-            email: foundUser.email,
-            username: foundUser.username,
-          };
-          setUser(userData);
-          localStorage.setItem('auth_user', JSON.stringify(userData));
-          resolve();
-        } else {
-          reject(new Error('Invalid email or password'));
-        }
-      }, 500);
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
     });
+
+    if (error) {
+      throw error;
+    }
+
+    if (data.user) {
+      const userProfile = await fetchUserProfile(data.user);
+      setUser(userProfile);
+    }
   };
 
   const register = async (
@@ -70,45 +127,94 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     username: string,
     password: string
   ): Promise<void> => {
-    // Simulate API call
-    // In production, this would call your registration API
-    return new Promise((resolve, reject) => {
-      setTimeout(() => {
-        const storedUsers = localStorage.getItem('registered_users');
-        const users = storedUsers ? JSON.parse(storedUsers) : [];
+    // First check if username is already taken
+    const { data: existingProfile } = await supabase
+      .from('profiles')
+      .select('username')
+      .eq('username', username)
+      .single();
 
-        // Check if user already exists
-        const existingUser = users.find((u: any) => u.email === email);
-        if (existingUser) {
-          reject(new Error('User with this email already exists'));
-          return;
-        }
+    if (existingProfile) {
+      throw new Error('Username is already taken');
+    }
 
-        const newUser = {
-          id: `user_${Date.now()}`,
-          email,
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
           username,
-          password, // In production, this should be hashed on the backend
-        };
-
-        users.push(newUser);
-        localStorage.setItem('registered_users', JSON.stringify(users));
-
-        const userData: User = {
-          id: newUser.id,
-          email: newUser.email,
-          username: newUser.username,
-        };
-        setUser(userData);
-        localStorage.setItem('auth_user', JSON.stringify(userData));
-        resolve();
-      }, 500);
+        },
+      },
     });
+
+    if (error) {
+      throw error;
+    }
+
+    if (data.user) {
+      const userProfile = await fetchUserProfile(data.user);
+      setUser(userProfile);
+    }
   };
 
-  const logout = () => {
+  const logout = async (): Promise<void> => {
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      throw error;
+    }
     setUser(null);
-    localStorage.removeItem('auth_user');
+  };
+
+  const linkWallet = async (walletAddress: string): Promise<void> => {
+    if (!user) {
+      throw new Error('User must be logged in to link wallet');
+    }
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({ wallet_address: walletAddress })
+      .eq('id', user.id);
+
+    if (error) {
+      throw error;
+    }
+
+    setUser({ ...user, wallet_address: walletAddress });
+  };
+
+  const unlinkWallet = async (): Promise<void> => {
+    if (!user) {
+      throw new Error('User must be logged in to unlink wallet');
+    }
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({ wallet_address: null })
+      .eq('id', user.id);
+
+    if (error) {
+      throw error;
+    }
+
+    setUser({ ...user, wallet_address: undefined });
+  };
+
+  const updateProfile = async (updates: Partial<UserProfile>): Promise<void> => {
+    if (!user) {
+      throw new Error('User must be logged in to update profile');
+    }
+
+    const { error } = await supabase
+      .from('profiles')
+      .update(updates)
+      .eq('id', user.id);
+
+    if (error) {
+      throw error;
+    }
+
+    setUser({ ...user, ...updates });
   };
 
   const value: AuthContextType = {
@@ -118,6 +224,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     login,
     register,
     logout,
+    linkWallet,
+    unlinkWallet,
+    updateProfile,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

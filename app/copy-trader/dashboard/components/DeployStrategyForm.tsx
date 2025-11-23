@@ -6,41 +6,124 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
 import { useDeployStrategyStore } from '../store/deployStrategyStore';
 import { mockCallerOptions } from '../data/mock';
-import { Plus, Trash2, Rocket, Loader2, CheckCircle2 } from 'lucide-react';
+import { Plus, Trash2, Rocket, Loader2, Save, Sparkles, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { useState } from 'react';
+import { PositionSizingSection } from './PositionSizingSection';
+import { EntrySettingsSection } from './EntrySettingsSection';
+import { SafetyControlsSection } from './SafetyControlsSection';
+import { FiltersSection } from './FiltersSection';
+import { OperationalSettingsSection } from './OperationalSettingsSection';
+import { basicStrategySchema, deployStrategySchema } from '../validation/schema';
+import { DeployTabType } from '../types';
 
 export function DeployStrategyForm() {
   const [isDeploying, setIsDeploying] = useState(false);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const [currentTab, setCurrentTab] = useState<DeployTabType>('basic');
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
   const {
     callerInput,
     profitStrategy,
     tpslRows,
+    positionSizing,
+    entrySettings,
+    safetyControls,
+    tokenFilters,
+    activeHours,
+    operationalSettings,
+    hasCustomizedAdvanced,
     setCallerInput,
     setProfitStrategy,
     addTPSLRow,
     removeTPSLRow,
     updateTPSLRow,
+    setIsDraft,
     resetToDefault,
   } = useDeployStrategyStore();
 
-  const handleDeploy = async () => {
-    if (!callerInput) {
-      toast.error('Please select a trader', {
-        description: 'You must select a trader before deploying a strategy',
+  const validateBasicTab = (): boolean => {
+    try {
+      basicStrategySchema.parse({
+        callerInput,
+        profitStrategy,
+        tpslRows,
+        positionSizing,
       });
+      setErrors({});
+      return true;
+    } catch (error: any) {
+      const fieldErrors: Record<string, string> = {};
+      error.errors?.forEach((err: any) => {
+        const path = err.path.join('.');
+        fieldErrors[path] = err.message;
+      });
+      setErrors(fieldErrors);
+      return false;
+    }
+  };
+
+  const validateFullForm = (): boolean => {
+    try {
+      deployStrategySchema.parse({
+        callerInput,
+        profitStrategy,
+        tpslRows,
+        positionSizing,
+        entrySettings,
+        safetyControls,
+        tokenFilters,
+        activeHours,
+        operationalSettings,
+        isDraft: false,
+      });
+      setErrors({});
+      return true;
+    } catch (error: any) {
+      const fieldErrors: Record<string, string> = {};
+      error.errors?.forEach((err: any) => {
+        const path = err.path.join('.');
+        fieldErrors[path] = err.message;
+      });
+      setErrors(fieldErrors);
+      return false;
+    }
+  };
+
+  const handleDeploy = async () => {
+    // Validate full form
+    if (!validateFullForm()) {
+      toast.error('Validation Failed', {
+        description: 'Please check all required fields and fix any errors',
+      });
+      // Switch to basic tab if errors are there
+      if (Object.keys(errors).some(key => key.startsWith('callerInput') || key.startsWith('positionSizing'))) {
+        setCurrentTab('basic');
+      }
       return;
     }
 
     setIsDeploying(true);
+    setIsDraft(false);
 
     // TODO connect backend later
     const config = {
       callerInput,
       profitStrategy,
-      tpslRows: profitStrategy === 'custom' ? tpslRows : tpslRows.slice(0, 2), // Only default rows for default strategy
+      tpslRows: profitStrategy === 'custom' ? tpslRows : tpslRows.slice(0, 2),
+      positionSizing,
+      entrySettings,
+      safetyControls,
+      tokenFilters,
+      activeHours,
+      operationalSettings,
+      isDraft: false,
     };
 
     console.log('Deploy Strategy Config:', config);
@@ -50,8 +133,11 @@ export function DeployStrategyForm() {
 
     // Show success toast
     const selectedTrader = mockCallerOptions.find(opt => opt.value === callerInput);
+    const strategyName = operationalSettings.strategyName ||
+      `${profitStrategy === 'default' ? 'Default' : 'Custom'} Strategy`;
+
     toast.success('Strategy Deployed Successfully!', {
-      description: `${profitStrategy === 'default' ? 'Default' : 'Custom'} strategy deployed for ${selectedTrader?.label || 'selected trader'}`,
+      description: `"${strategyName}" deployed for ${selectedTrader?.label || 'selected trader'}`,
       duration: 5000,
     });
 
@@ -59,179 +145,329 @@ export function DeployStrategyForm() {
     setTimeout(() => {
       resetToDefault();
       setIsDeploying(false);
+      setCurrentTab('basic');
     }, 500);
   };
 
+  const handleSaveDraft = async () => {
+    // Basic validation only for drafts
+    if (!validateBasicTab()) {
+      toast.error('Validation Failed', {
+        description: 'Please complete required fields in Basic Strategy tab',
+      });
+      setCurrentTab('basic');
+      return;
+    }
+
+    setIsSavingDraft(true);
+    setIsDraft(true);
+
+    const config = {
+      callerInput,
+      profitStrategy,
+      tpslRows,
+      positionSizing,
+      entrySettings,
+      safetyControls,
+      tokenFilters,
+      activeHours,
+      operationalSettings,
+      isDraft: true,
+    };
+
+    console.log('Save Draft Config:', config);
+
+    // Simulate API call
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    toast.success('Draft Saved!', {
+      description: 'Your strategy configuration has been saved as a draft',
+      duration: 3000,
+    });
+
+    setIsSavingDraft(false);
+  };
+
   const isDefaultStrategy = profitStrategy === 'default';
-  const canDeploy = callerInput !== '' && !isDeploying;
+  const canDeploy = callerInput !== '' && !isDeploying && !isSavingDraft;
 
   return (
     <div className="space-y-6">
-      {/* Caller Input Section */}
-      <Card className="shadow-sm border">
-        <CardHeader>
-          <CardTitle>Select Trader</CardTitle>
-          <CardDescription>Choose a trader to copy</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            <Label htmlFor="caller-input">Trader</Label>
-            <Select value={callerInput} onValueChange={setCallerInput}>
-              <SelectTrigger id="caller-input">
-                <SelectValue placeholder="Select a trader..." />
-              </SelectTrigger>
-              <SelectContent>
-                {mockCallerOptions.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
+      <Tabs value={currentTab} onValueChange={(value) => setCurrentTab(value as DeployTabType)}>
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="basic" className="relative">
+            Basic Strategy
+            {Object.keys(errors).length > 0 && currentTab !== 'basic' && (
+              <Badge variant="destructive" className="ml-2 h-5 w-5 p-0 flex items-center justify-center">
+                !
+              </Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="advanced" className="relative">
+            Advanced Strategy
+            {hasCustomizedAdvanced && (
+              <Badge variant="secondary" className="ml-2">
+                <Sparkles className="h-3 w-3" />
+              </Badge>
+            )}
+          </TabsTrigger>
+        </TabsList>
 
-      {/* Profit Strategy Section */}
-      <Card className="shadow-sm border">
-        <CardHeader>
-          <CardTitle>Profit Strategy</CardTitle>
-          <CardDescription>Configure your take profit and stop loss settings</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="profit-strategy">Strategy Type</Label>
-            <Select value={profitStrategy} onValueChange={(value) => setProfitStrategy(value as 'default' | 'custom')}>
-              <SelectTrigger id="profit-strategy">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="default">Default Strategy</SelectItem>
-                <SelectItem value="custom">Custom Strategy</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Default Strategy Display */}
-          {isDefaultStrategy && (
-            <div className="p-4 bg-muted rounded-lg space-y-2">
-              <div className="text-sm font-medium">Default Configuration:</div>
-              <div className="text-sm text-muted-foreground space-y-1">
-                <div>• Take Profit: +100% → Sell 100%</div>
-                <div>• Stop Loss: -90% → Sell 100%</div>
-              </div>
-            </div>
-          )}
-
-          {/* Custom Strategy Table */}
-          {!isDefaultStrategy && (
-            <div className="space-y-4">
-              <div className="border rounded-lg">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[140px]">Type</TableHead>
-                      <TableHead>Trigger %</TableHead>
-                      <TableHead>Sell %</TableHead>
-                      <TableHead className="w-[60px]"></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {tpslRows.map((row) => (
-                      <TableRow key={row.id}>
-                        <TableCell>
-                          <Select
-                            value={row.conditionType}
-                            onValueChange={(value) => updateTPSLRow(row.id, 'conditionType', value)}
-                          >
-                            <SelectTrigger className="h-9">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="TP">Take Profit</SelectItem>
-                              <SelectItem value="SL">Stop Loss</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            <Input
-                              type="number"
-                              value={row.percentageTrigger}
-                              onChange={(e) =>
-                                updateTPSLRow(row.id, 'percentageTrigger', Number(e.target.value))
-                              }
-                              className="h-9"
-                              placeholder="0"
-                            />
-                            <span className="text-sm text-muted-foreground">%</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            <Input
-                              type="number"
-                              value={row.sellPercent}
-                              onChange={(e) =>
-                                updateTPSLRow(row.id, 'sellPercent', Number(e.target.value))
-                              }
-                              className="h-9"
-                              placeholder="0"
-                              min="0"
-                              max="100"
-                            />
-                            <span className="text-sm text-muted-foreground">%</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-9 w-9 text-red-500 hover:text-red-600 hover:bg-red-500/10"
-                            onClick={() => removeTPSLRow(row.id)}
-                            disabled={tpslRows.length <= 1}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
+        {/* BASIC TAB */}
+        <TabsContent value="basic" className="space-y-6 mt-6">
+          {/* Trader Selection */}
+          <Card className="shadow-sm border">
+            <CardHeader>
+              <CardTitle>Select Trader</CardTitle>
+              <CardDescription>Choose a trader to copy</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                <Label htmlFor="caller-input">
+                  Trader <span className="text-destructive">*</span>
+                </Label>
+                <Select value={callerInput} onValueChange={setCallerInput}>
+                  <SelectTrigger
+                    id="caller-input"
+                    className={errors.callerInput ? 'border-destructive' : ''}
+                  >
+                    <SelectValue placeholder="Select a trader..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {mockCallerOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
                     ))}
-                  </TableBody>
-                </Table>
+                  </SelectContent>
+                </Select>
+                {errors.callerInput && (
+                  <p className="text-sm text-destructive flex items-center gap-1">
+                    <AlertCircle className="h-3 w-3" />
+                    {errors.callerInput}
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Exit Strategy (TP/SL) */}
+          <Card className="shadow-sm border">
+            <CardHeader>
+              <CardTitle>Exit Strategy</CardTitle>
+              <CardDescription>Configure your take profit and stop loss settings</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="profit-strategy">
+                  Strategy Type <span className="text-destructive">*</span>
+                </Label>
+                <Select value={profitStrategy} onValueChange={(value) => setProfitStrategy(value as 'default' | 'custom')}>
+                  <SelectTrigger id="profit-strategy">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="default">Default Strategy</SelectItem>
+                    <SelectItem value="custom">Custom Strategy</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
-              <Button
-                variant="outline"
-                className="w-full"
-                onClick={addTPSLRow}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add Row
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+              {/* Default Strategy Display */}
+              {isDefaultStrategy && (
+                <div className="p-4 bg-muted rounded-lg space-y-2">
+                  <div className="text-sm font-medium">Default Configuration:</div>
+                  <div className="text-sm text-muted-foreground space-y-1">
+                    <div>• Take Profit: +100% → Sell 100%</div>
+                    <div>• Stop Loss: -90% → Sell 100%</div>
+                  </div>
+                </div>
+              )}
 
-      {/* Deploy Button */}
-      <Button
-        size="lg"
-        className="w-full text-base font-semibold"
-        onClick={handleDeploy}
-        disabled={!canDeploy}
-      >
-        {isDeploying ? (
-          <>
-            <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-            Deploying Strategy...
-          </>
-        ) : (
-          <>
-            <Rocket className="h-5 w-5 mr-2" />
-            Deploy Strategy
-          </>
-        )}
-      </Button>
+              {/* Custom Strategy Table */}
+              {!isDefaultStrategy && (
+                <div className="space-y-4">
+                  <div className="border rounded-lg">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-[140px]">Type</TableHead>
+                          <TableHead>Trigger %</TableHead>
+                          <TableHead>Sell %</TableHead>
+                          <TableHead className="w-[60px]"></TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {tpslRows.map((row) => (
+                          <TableRow key={row.id}>
+                            <TableCell>
+                              <Select
+                                value={row.conditionType}
+                                onValueChange={(value) => updateTPSLRow(row.id, 'conditionType', value)}
+                              >
+                                <SelectTrigger className="h-9">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="TP">Take Profit</SelectItem>
+                                  <SelectItem value="SL">Stop Loss</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                <Input
+                                  type="number"
+                                  value={row.percentageTrigger}
+                                  onChange={(e) =>
+                                    updateTPSLRow(row.id, 'percentageTrigger', Number(e.target.value))
+                                  }
+                                  className="h-9"
+                                  placeholder="0"
+                                />
+                                <span className="text-sm text-muted-foreground">%</span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                <Input
+                                  type="number"
+                                  value={row.sellPercent}
+                                  onChange={(e) =>
+                                    updateTPSLRow(row.id, 'sellPercent', Number(e.target.value))
+                                  }
+                                  className="h-9"
+                                  placeholder="0"
+                                  min="0"
+                                  max="100"
+                                />
+                                <span className="text-sm text-muted-foreground">%</span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-9 w-9 text-red-500 hover:text-red-600 hover:bg-red-500/10"
+                                onClick={() => removeTPSLRow(row.id)}
+                                disabled={tpslRows.length <= 1}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={addTPSLRow}
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Row
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Position Sizing */}
+          <Card className="shadow-sm border">
+            <CardContent className="pt-6">
+              <PositionSizingSection />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ADVANCED TAB */}
+        <TabsContent value="advanced" className="space-y-6 mt-6">
+          <div className="bg-muted/50 border border-dashed rounded-lg p-4 mb-6">
+            <p className="text-sm text-muted-foreground">
+              All settings in this tab are optional. Configure advanced features to fine-tune
+              your trading strategy.
+            </p>
+          </div>
+
+          {/* Entry Settings */}
+          <Card className="shadow-sm border">
+            <CardContent className="pt-6">
+              <EntrySettingsSection />
+            </CardContent>
+          </Card>
+
+          <Separator />
+
+          {/* Safety Controls */}
+          <Card className="shadow-sm border">
+            <CardContent className="pt-6">
+              <SafetyControlsSection />
+            </CardContent>
+          </Card>
+
+          <Separator />
+
+          {/* Filters */}
+          <Card className="shadow-sm border">
+            <CardContent className="pt-6">
+              <FiltersSection />
+            </CardContent>
+          </Card>
+
+          <Separator />
+
+          {/* Operational Settings */}
+          <Card className="shadow-sm border">
+            <CardContent className="pt-6">
+              <OperationalSettingsSection />
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      {/* Action Buttons */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <Button
+          variant="outline"
+          size="lg"
+          className="flex-1 text-base font-semibold"
+          onClick={handleSaveDraft}
+          disabled={!canDeploy}
+        >
+          {isSavingDraft ? (
+            <>
+              <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+              Saving Draft...
+            </>
+          ) : (
+            <>
+              <Save className="h-5 w-5 mr-2" />
+              Save as Draft
+            </>
+          )}
+        </Button>
+
+        <Button
+          size="lg"
+          className="flex-1 text-base font-semibold"
+          onClick={handleDeploy}
+          disabled={!canDeploy}
+        >
+          {isDeploying ? (
+            <>
+              <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+              Deploying Strategy...
+            </>
+          ) : (
+            <>
+              <Rocket className="h-5 w-5 mr-2" />
+              Deploy Strategy
+            </>
+          )}
+        </Button>
+      </div>
     </div>
   );
 }

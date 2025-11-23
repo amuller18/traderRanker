@@ -4,7 +4,7 @@ import { z } from 'zod';
 // Basic tab validation schema
 export const basicStrategySchema = z.object({
   // Trader selection - required
-  callerInput: z.string().min(1, 'Please select a trader'),
+  callerInput: z.array(z.string()).min(1, 'Please select at least one trader'),
 
   // Exit strategy - required
   profitStrategy: z.enum(['default', 'custom'], {

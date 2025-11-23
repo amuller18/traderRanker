@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+import { MultiSearchableSelect } from '@/components/ui/multi-searchable-select';
 import { useDeployStrategyStore } from '../store/deployStrategyStore';
 import { mockCallerOptions } from '../data/mock';
 import { Plus, Trash2, Rocket, Loader2, Save, Sparkles, AlertCircle } from 'lucide-react';
@@ -133,12 +134,13 @@ export function DeployStrategyForm() {
     await new Promise(resolve => setTimeout(resolve, 1500));
 
     // Show success toast
-    const selectedTrader = mockCallerOptions.find(opt => opt.value === callerInput);
+    const selectedTraders = mockCallerOptions.filter(opt => callerInput.includes(opt.value));
+    const traderNames = selectedTraders.map(t => t.label).join(', ');
     const strategyName = operationalSettings.strategyName ||
       `${profitStrategy === 'default' ? 'Default' : 'Custom'} Strategy`;
 
     toast.success('Strategy Deployed Successfully!', {
-      description: `"${strategyName}" deployed for ${selectedTrader?.label || 'selected trader'}`,
+      description: `"${strategyName}" deployed for ${callerInput.length} trader${callerInput.length > 1 ? 's' : ''}: ${traderNames}`,
       duration: 5000,
     });
 
@@ -190,7 +192,7 @@ export function DeployStrategyForm() {
   };
 
   const isDefaultStrategy = profitStrategy === 'default';
-  const canDeploy = callerInput !== '' && !isDeploying && !isSavingDraft;
+  const canDeploy = callerInput.length > 0 && !isDeploying && !isSavingDraft;
 
   return (
     <div className="space-y-6">
@@ -219,19 +221,19 @@ export function DeployStrategyForm() {
           {/* Trader Selection */}
           <Card className="shadow-sm border">
             <CardHeader>
-              <CardTitle>Select Trader</CardTitle>
-              <CardDescription>Choose a trader to copy</CardDescription>
+              <CardTitle>Select Traders</CardTitle>
+              <CardDescription>Choose one or more traders to copy</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
                 <Label htmlFor="caller-input">
-                  Trader <span className="text-destructive">*</span>
+                  Traders <span className="text-destructive">*</span>
                 </Label>
-                <SearchableSelect
+                <MultiSearchableSelect
                   id="caller-input"
                   options={mockCallerOptions}
-                  value={callerInput}
-                  onValueChange={setCallerInput}
+                  values={callerInput}
+                  onValuesChange={setCallerInput}
                   placeholder="Search traders..."
                   emptyText="No trader found."
                   className={errors.callerInput ? 'border-destructive' : ''}

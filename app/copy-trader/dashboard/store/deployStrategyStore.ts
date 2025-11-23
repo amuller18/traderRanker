@@ -17,7 +17,7 @@ import {
 
 interface DeployStrategyState {
   // Basic tab state
-  callerInput: string;
+  callerInput: string[]; // Array of trader IDs
   profitStrategy: 'default' | 'custom';
   tpslRows: TPSLRow[];
   positionSizing: PositionSizing;
@@ -34,7 +34,7 @@ interface DeployStrategyState {
   hasCustomizedAdvanced: boolean;
 
   // Basic tab actions
-  setCallerInput: (value: string) => void;
+  setCallerInput: (value: string[]) => void;
   setProfitStrategy: (value: 'default' | 'custom') => void;
   addTPSLRow: () => void;
   removeTPSLRow: (id: string) => void;
@@ -151,7 +151,7 @@ const isAdvancedCustomized = (state: DeployStrategyState): boolean => {
 
 export const useDeployStrategyStore = create<DeployStrategyState>((set, get) => ({
   // Initial state - Basic tab
-  callerInput: '',
+  callerInput: [],
   profitStrategy: 'default',
   tpslRows: [...defaultTPSLRows],
   positionSizing: { ...defaultPositionSizing },
@@ -168,7 +168,7 @@ export const useDeployStrategyStore = create<DeployStrategyState>((set, get) => 
   hasCustomizedAdvanced: false,
 
   // Basic tab actions
-  setCallerInput: (value: string) => set({ callerInput: value }),
+  setCallerInput: (value: string[]) => set({ callerInput: value }),
 
   setProfitStrategy: (value: 'default' | 'custom') => set({ profitStrategy: value }),
 
@@ -339,7 +339,7 @@ export const useDeployStrategyStore = create<DeployStrategyState>((set, get) => 
 
   resetToDefault: () =>
     set({
-      callerInput: '',
+      callerInput: [],
       profitStrategy: 'default',
       tpslRows: [...defaultTPSLRows],
       positionSizing: { ...defaultPositionSizing },

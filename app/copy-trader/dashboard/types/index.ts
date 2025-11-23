@@ -90,7 +90,7 @@ export interface OperationalSettings {
 // Complete deployment configuration
 export interface DeployStrategyConfig {
   // Basic tab (required)
-  callerInput: string;
+  callerInput: string[]; // Array of trader IDs
   profitStrategy: 'default' | 'custom';
   tpslRows: TPSLRow[];
   positionSizing: PositionSizing;

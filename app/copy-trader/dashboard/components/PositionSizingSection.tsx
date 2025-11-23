@@ -127,19 +127,21 @@ export function PositionSizingSection() {
             <Input
               id="maxPositionSize"
               type="number"
-              min={1}
+              min={0}
               max={10000000}
               step={1}
               value={positionSizing.maxPositionSize}
               onChange={(e) => setMaxPositionSize(Number(e.target.value))}
               className="pl-9"
-              placeholder="1000"
+              placeholder="0 for unlimited"
               aria-label="Maximum position size in dollars"
               required
             />
           </div>
           <p className="text-xs text-muted-foreground">
-            Cap on individual position size
+            {positionSizing.maxPositionSize === 0
+              ? 'Currently unlimited (no cap)'
+              : 'Cap on individual position size'}
           </p>
         </div>
       </div>
@@ -152,18 +154,20 @@ export function PositionSizingSection() {
         <Input
           id="maxConcurrentPositions"
           type="number"
-          min={1}
-          max={20}
+          min={0}
+          max={100}
           step={1}
           value={positionSizing.maxConcurrentPositions}
           onChange={(e) => setMaxConcurrentPositions(Number(e.target.value))}
           className="max-w-xs"
-          placeholder="3"
+          placeholder="0 for unlimited"
           aria-label="Maximum concurrent positions"
           required
         />
         <p className="text-xs text-muted-foreground">
-          Maximum number of simultaneous open positions (1-20)
+          {positionSizing.maxConcurrentPositions === 0
+            ? 'Currently unlimited (no limit on concurrent positions)'
+            : `Maximum ${positionSizing.maxConcurrentPositions} simultaneous open positions`}
         </p>
       </div>
     </div>

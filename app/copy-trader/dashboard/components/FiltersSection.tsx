@@ -6,13 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Combobox } from '@/components/ui/combobox';
 import { useDeployStrategyStore } from '../store/deployStrategyStore';
 import { TokenChain } from '../types';
 import { Filter, Clock } from 'lucide-react';
@@ -194,21 +188,18 @@ export function FiltersSection() {
             {/* Timezone */}
             <div className="space-y-2">
               <Label htmlFor="timezone">Timezone</Label>
-              <Select
+              <Combobox
+                id="timezone"
+                options={TIMEZONES.map((tz) => ({
+                  value: tz,
+                  label: tz.replace(/_/g, ' '),
+                }))}
                 value={activeHours.timezone}
                 onValueChange={setActiveHoursTimezone}
-              >
-                <SelectTrigger id="timezone" aria-label="Select timezone">
-                  <SelectValue placeholder="Select timezone" />
-                </SelectTrigger>
-                <SelectContent>
-                  {TIMEZONES.map((tz) => (
-                    <SelectItem key={tz} value={tz}>
-                      {tz.replace(/_/g, ' ')}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                placeholder="Select timezone..."
+                searchPlaceholder="Search timezones..."
+                emptyText="No timezone found."
+              />
             </div>
 
             <div className="bg-muted rounded-lg p-3">

@@ -44,13 +44,13 @@ export const basicStrategySchema = z.object({
       .max(100, 'Portfolio percentage must not exceed 100%'),
     maxPositionSize: z
       .number()
-      .min(1, 'Max position size must be at least $1')
+      .min(0, 'Max position size cannot be negative')
       .max(10000000, 'Max position size must not exceed $10,000,000'),
     maxConcurrentPositions: z
       .number()
       .int('Must be a whole number')
-      .min(1, 'Must allow at least 1 concurrent position')
-      .max(20, 'Cannot exceed 20 concurrent positions'),
+      .min(0, 'Cannot be negative')
+      .max(100, 'Cannot exceed 100 concurrent positions'),
   }),
 });
 

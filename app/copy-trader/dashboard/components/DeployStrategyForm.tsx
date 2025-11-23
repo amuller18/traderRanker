@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Combobox } from '@/components/ui/combobox';
 import { useDeployStrategyStore } from '../store/deployStrategyStore';
 import { mockCallerOptions } from '../data/mock';
 import { Plus, Trash2, Rocket, Loader2, Save, Sparkles, AlertCircle } from 'lucide-react';
@@ -226,21 +227,16 @@ export function DeployStrategyForm() {
                 <Label htmlFor="caller-input">
                   Trader <span className="text-destructive">*</span>
                 </Label>
-                <Select value={callerInput} onValueChange={setCallerInput}>
-                  <SelectTrigger
-                    id="caller-input"
-                    className={errors.callerInput ? 'border-destructive' : ''}
-                  >
-                    <SelectValue placeholder="Select a trader..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {mockCallerOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Combobox
+                  id="caller-input"
+                  options={mockCallerOptions}
+                  value={callerInput}
+                  onValueChange={setCallerInput}
+                  placeholder="Select a trader..."
+                  searchPlaceholder="Search traders..."
+                  emptyText="No trader found."
+                  className={errors.callerInput ? 'border-destructive' : ''}
+                />
                 {errors.callerInput && (
                   <p className="text-sm text-destructive flex items-center gap-1">
                     <AlertCircle className="h-3 w-3" />
@@ -262,15 +258,18 @@ export function DeployStrategyForm() {
                 <Label htmlFor="profit-strategy">
                   Strategy Type <span className="text-destructive">*</span>
                 </Label>
-                <Select value={profitStrategy} onValueChange={(value) => setProfitStrategy(value as 'default' | 'custom')}>
-                  <SelectTrigger id="profit-strategy">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="default">Default Strategy</SelectItem>
-                    <SelectItem value="custom">Custom Strategy</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Combobox
+                  id="profit-strategy"
+                  options={[
+                    { value: 'default', label: 'Default Strategy' },
+                    { value: 'custom', label: 'Custom Strategy' },
+                  ]}
+                  value={profitStrategy}
+                  onValueChange={(value) => setProfitStrategy(value as 'default' | 'custom')}
+                  placeholder="Select strategy type..."
+                  searchPlaceholder="Search strategies..."
+                  emptyText="No strategy found."
+                />
               </div>
 
               {/* Default Strategy Display */}
@@ -301,18 +300,18 @@ export function DeployStrategyForm() {
                         {tpslRows.map((row) => (
                           <TableRow key={row.id}>
                             <TableCell>
-                              <Select
+                              <Combobox
+                                options={[
+                                  { value: 'TP', label: 'Take Profit' },
+                                  { value: 'SL', label: 'Stop Loss' },
+                                ]}
                                 value={row.conditionType}
                                 onValueChange={(value) => updateTPSLRow(row.id, 'conditionType', value)}
-                              >
-                                <SelectTrigger className="h-9">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="TP">Take Profit</SelectItem>
-                                  <SelectItem value="SL">Stop Loss</SelectItem>
-                                </SelectContent>
-                              </Select>
+                                placeholder="Select type..."
+                                searchPlaceholder="Search..."
+                                emptyText="No type found."
+                                className="h-9"
+                              />
                             </TableCell>
                             <TableCell>
                               <div className="flex items-center gap-1">

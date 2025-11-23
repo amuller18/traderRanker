@@ -95,11 +95,11 @@ const defaultTPSLRows: TPSLRow[] = [
 ];
 
 const defaultPositionSizing: PositionSizing = {
-  mode: 'fixed',
+  mode: 'percentage',
   fixedAmount: 100,
   portfolioPercentage: 5,
-  maxPositionSize: 1000,
-  maxConcurrentPositions: 3,
+  maxPositionSize: 0, // 0 = unlimited
+  maxConcurrentPositions: 0, // 0 = unlimited
 };
 
 const defaultEntrySettings: EntrySettings = {

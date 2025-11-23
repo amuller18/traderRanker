@@ -7,7 +7,7 @@ import { AccountValueChart } from './components/AccountValueChart';
 import { TopStrategies } from './components/TopStrategies';
 import { RecentTrades } from './components/RecentTrades';
 import { RecentWins } from './components/RecentWins';
-import { DeployStrategyForm } from './components/DeployStrategyForm';
+import { EnhancedDeployStrategyForm } from './components/EnhancedDeployStrategyForm';
 import { TabType } from './types';
 import { Rocket, LayoutDashboard } from 'lucide-react';
 
@@ -80,7 +80,7 @@ export default function CopyTradingDashboard() {
         {/* Deploy Strategy Tab */}
         <TabsContent value="deploy" className="space-y-6">
           <div className="max-w-3xl mx-auto">
-            <DeployStrategyForm />
+            <EnhancedDeployStrategyForm />
           </div>
         </TabsContent>
       </Tabs>

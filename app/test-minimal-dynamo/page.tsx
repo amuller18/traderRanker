@@ -1,4 +1,4 @@
-import { fetchTraderStats, fetchTraderTrades } from "@/app/actions/trader-actions"
+import { fetchTraderStats, fetchTraderTrades } from "@/lib/api-client"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { AlertTriangle, CheckCircle, XCircle } from "lucide-react"

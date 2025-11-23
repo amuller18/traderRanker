@@ -1,4 +1,4 @@
-import { fetchAllTradesFiltered } from "@/app/actions/trader-actions"
+import { fetchAllTradesFiltered } from "@/lib/api-client"
 import { isUsingMockData } from "@/lib/trader-data"
 import { DataSourceStatus } from "@/app/components/data-source-status"
 import { Button } from "@/components/ui/button"

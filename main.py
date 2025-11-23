@@ -48,7 +48,7 @@ import numpy as np
 import pandas as pd
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -741,10 +741,11 @@ class TradeBasedSimulationRequest(BaseModel):
     tp: Optional[List[str]] = Field(None, description="List of 'ratio:sell' strings")
     sl: Optional[List[str]] = Field(None, description="List of 'ratio:sell' strings")
 
-    @validator("tp", "sl", always=True)
-    def _default_ladders(cls, v, field):
+    @field_validator("tp", "sl", mode="before")
+    @classmethod
+    def _default_ladders(cls, v, info):
         if v is None:
-            return ["0.05:1.0"] if field.name == "tp" else []
+            return ["0.05:1.0"] if info.field_name == "tp" else []
         return v
 
 

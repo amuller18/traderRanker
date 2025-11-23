@@ -2,22 +2,10 @@ import Link from "next/link"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { ArrowRight, BarChart3, Trophy, Copy, TrendingUp, Shield, Zap, Users, Star, Sparkles, Target, Activity } from "lucide-react"
-import { isUsingMockData } from "@/lib/trader-data"
-import { DataSourceStatus } from "@/app/components/data-source-status"
 import { PageHeader } from "./page-header"
 import { Card, CardContent } from "@/components/ui/card"
 
-export default async function LandingPage() {
-  let usingMockData = true
-
-  try {
-    // Check if we're using mock data
-    usingMockData = await isUsingMockData()
-  } catch (error) {
-    console.error("Error checking if using mock data:", error)
-    // Continue with assumption of mock data
-  }
-
+export default function LandingPage() {
   return (
     <div className="flex flex-col min-h-[100dvh]">
       <PageHeader />
@@ -30,7 +18,6 @@ export default async function LandingPage() {
           <div className="absolute bottom-0 left-0 translate-y-12 -translate-x-12 w-[500px] h-[500px] bg-chart-2/10 rounded-full blur-3xl animate-pulse" style={{ animationDuration: "5s" }} />
 
           <div className="container px-4 md:px-6 relative">
-            <DataSourceStatus usingMockData={usingMockData} />
 
             <div className="grid gap-8 lg:grid-cols-2 lg:gap-12 items-center">
               <div className="flex flex-col justify-center space-y-6 animate-fade-in">

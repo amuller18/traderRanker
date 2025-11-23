@@ -1,22 +1,9 @@
-import { isUsingMockData } from "@/lib/trader-data"
-import { DataSourceStatus } from "@/app/components/data-source-status"
 import { TokenSearch } from "@/app/components/token-search"
 
-export default async function TokenAnalysisPage() {
-  let usingMockData = true
-
-  try {
-    // Check if we're using mock data
-    usingMockData = await isUsingMockData()
-  } catch (error) {
-    console.error("Error checking if using mock data:", error)
-    // Continue with assumption of mock data
-  }
-
+export default function TokenAnalysisPage() {
   return (
     <div className="min-h-screen gradient-background">
       <div className="container py-10 px-4">
-        <DataSourceStatus usingMockData={usingMockData} />
 
       <div className="flex flex-col gap-3 mb-10 animate-fade-in">
         <h1 className="text-4xl font-bold tracking-tight text-gradient">Token Analysis</h1>

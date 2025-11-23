@@ -128,7 +128,6 @@ export const mockTrades: Trade[] = [
 ];
 
 export const mockCallerOptions = [
-  { value: '', label: 'Select a trader...' },
   { value: 'trader1', label: 'Momentum Scalper (68.5% WR)' },
   { value: 'trader2', label: 'Swing Master (72.1% WR)' },
   { value: 'trader3', label: 'Trend Follower (65.4% WR)' },

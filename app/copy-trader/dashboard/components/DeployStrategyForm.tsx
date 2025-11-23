@@ -82,7 +82,7 @@ export function DeployStrategyForm() {
               </SelectTrigger>
               <SelectContent>
                 {mockCallerOptions.map((option) => (
-                  <SelectItem key={option.value} value={option.value} disabled={!option.value}>
+                  <SelectItem key={option.value} value={option.value}>
                     {option.label}
                   </SelectItem>
                 ))}

@@ -3,19 +3,29 @@
 
 import { AccountDataPoint, Strategy, Trade } from '../types';
 
-export const mockAccountData: AccountDataPoint[] = [
-  { timestamp: '2025-11-01', value: 10000 },
-  { timestamp: '2025-11-02', value: 10500 },
-  { timestamp: '2025-11-03', value: 10200 },
-  { timestamp: '2025-11-04', value: 11000 },
-  { timestamp: '2025-11-05', value: 11500 },
-  { timestamp: '2025-11-06', value: 11200 },
-  { timestamp: '2025-11-07', value: 12000 },
-  { timestamp: '2025-11-08', value: 12800 },
-  { timestamp: '2025-11-09', value: 13200 },
-  { timestamp: '2025-11-10', value: 13500 },
-  { timestamp: '2025-11-11', value: 14200 },
-];
+// Generate historical account data for all time periods
+const generateAccountData = (): AccountDataPoint[] => {
+  const data: AccountDataPoint[] = [];
+  const startDate = new Date('2024-01-01');
+  const endDate = new Date('2025-11-23');
+  let currentValue = 5000; // Starting value
+
+  // Generate daily data points
+  for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+    // Simulate realistic market movements
+    const dailyChange = (Math.random() - 0.45) * 0.05; // Slight upward bias
+    currentValue = currentValue * (1 + dailyChange);
+
+    data.push({
+      timestamp: d.toISOString().split('T')[0],
+      value: Math.round(currentValue * 100) / 100,
+    });
+  }
+
+  return data;
+};
+
+export const mockAccountData: AccountDataPoint[] = generateAccountData();
 
 export const mockStrategies: Strategy[] = [
   {

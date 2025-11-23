@@ -1,11 +1,13 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { ChevronDown, ChevronUp } from "lucide-react"
+import { ChevronDown, ChevronUp, RefreshCw } from "lucide-react"
 import { formatROI } from "@/lib/utils"
 import { fetchTraderStats } from "@/app/actions/trader-actions"
+import { TraderRankingsSkeleton } from "./trader-rankings-skeleton"
 import Link from "next/link"
 
 interface Trader {
@@ -19,23 +21,39 @@ interface Trader {
 export function TraderRankings() {
   const [traders, setTraders] = useState<Trader[]>([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [sortField, setSortField] = useState<keyof Trader>("win_rate")
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc")
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize] = useState(20)
 
-  useEffect(() => {
-    const fetchTraders = async () => {
-      try {
-        const data = await fetchTraderStats()
-        setTraders(data)
-      } catch (error) {
-        console.error('Error fetching traders:', error)
-      } finally {
-        setLoading(false)
-      }
+  const fetchTraders = useCallback(async (isRefresh = false) => {
+    if (isRefresh) {
+      setRefreshing(true)
+    } else {
+      setLoading(true)
     }
 
-    fetchTraders()
+    try {
+      const data = await fetchTraderStats()
+      setTraders(data)
+      setLastUpdated(new Date())
+    } catch (error) {
+      console.error('Error fetching traders:', error)
+    } finally {
+      setLoading(false)
+      setRefreshing(false)
+    }
   }, [])
+
+  useEffect(() => {
+    fetchTraders()
+  }, [fetchTraders])
+
+  const handleRefresh = () => {
+    fetchTraders(true)
+  }
 
   const handleSort = (field: keyof Trader) => {
     if (field === sortField) {
@@ -58,13 +76,81 @@ export function TraderRankings() {
     return aValue < bValue ? -1 * modifier : aValue > bValue ? 1 * modifier : 0
   })
 
+  // Pagination
+  const totalPages = Math.ceil(sortedTraders.length / pageSize)
+  const startIndex = (currentPage - 1) * pageSize
+  const endIndex = startIndex + pageSize
+  const paginatedTraders = sortedTraders.slice(startIndex, endIndex)
+
   if (loading) {
-    return <div>Loading traders...</div>
+    return <TraderRankingsSkeleton />
   }
 
   return (
-    <div className="rounded-md border">
-      <Table>
+    <div className="space-y-4">
+      {/* Header with refresh button and stats */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <div className="text-sm text-muted-foreground">
+            {lastUpdated && (
+              <>
+                Last updated: {lastUpdated.toLocaleTimeString()}
+              </>
+            )}
+          </div>
+          <div className="text-sm text-muted-foreground">
+            Showing {startIndex + 1}-{Math.min(endIndex, sortedTraders.length)} of {sortedTraders.length} traders
+          </div>
+        </div>
+        <Button
+          onClick={handleRefresh}
+          disabled={refreshing}
+          variant="outline"
+          size="sm"
+          className="gap-2"
+        >
+          <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+          {refreshing ? 'Refreshing...' : 'Refresh'}
+        </Button>
+      </div>
+
+      {/* Mobile Card View */}
+      <div className="md:hidden space-y-4">
+        {paginatedTraders.map((trader) => (
+          <Card key={trader.caller} className="shadow-elevated">
+            <CardContent className="pt-6">
+              <div className="space-y-3">
+                <div>
+                  <div className="text-sm text-muted-foreground mb-1">Trader</div>
+                  <Link href={`/rankings/${trader.caller}`} className="text-primary hover:underline font-medium">
+                    {trader.caller}
+                  </Link>
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <div className="text-sm text-muted-foreground mb-1">Win Rate</div>
+                    <div className="font-semibold">{(trader.win_rate * 100).toFixed(1)}%</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground mb-1">Total Calls</div>
+                    <div className="font-semibold">{trader.total_calls}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground mb-1">Avg ROI</div>
+                    <div className={`font-semibold ${trader.average_roi >= 0 ? "text-green-500" : "text-red-500"}`}>
+                      {formatROI(trader.average_roi)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Desktop Table View */}
+      <div className="hidden md:block rounded-md border">
+        <Table>
         <TableHeader>
           <TableRow>
             <TableHead>Trader</TableHead>
@@ -101,7 +187,7 @@ export function TraderRankings() {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {sortedTraders.map((trader) => (
+          {paginatedTraders.map((trader) => (
             <TableRow key={trader.caller}>
               <TableCell>
                 <Link href={`/rankings/${trader.caller}`} className="text-primary hover:underline">
@@ -117,6 +203,32 @@ export function TraderRankings() {
           ))}
         </TableBody>
       </Table>
+      </div>
+
+      {/* Pagination controls */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+            disabled={currentPage === 1}
+          >
+            Previous
+          </Button>
+          <span className="text-sm text-muted-foreground">
+            Page {currentPage} of {totalPages}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+            disabled={currentPage === totalPages}
+          >
+            Next
+          </Button>
+        </div>
+      )}
     </div>
   )
 } 

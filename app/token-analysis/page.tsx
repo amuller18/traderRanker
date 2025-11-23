@@ -1,17 +1,12 @@
 import { TokenSearch } from "@/app/components/token-search"
+import { PageLayout } from "@/app/components/page-layout"
 
 export default function TokenAnalysisPage() {
   return (
-    <div className="min-h-screen gradient-background">
-      <div className="container py-10 px-4">
-
-      <div className="flex flex-col gap-3 mb-10 animate-fade-in">
-        <h1 className="text-4xl font-bold tracking-tight text-gradient">Token Analysis</h1>
-        <p className="text-muted-foreground text-lg">
-          Search for any token by contract address to view detailed performance metrics and trading history.
-        </p>
-      </div>
-
+    <PageLayout
+      title="Token Analysis"
+      description="Search for any token by contract address to view detailed performance metrics and trading history."
+    >
       <div className="max-w-2xl mx-auto">
         <TokenSearch className="mb-8" />
 
@@ -23,8 +18,7 @@ export default function TokenAnalysisPage() {
           </p>
         </div>
       </div>
-      </div>
-    </div>
+    </PageLayout>
   )
 }
 

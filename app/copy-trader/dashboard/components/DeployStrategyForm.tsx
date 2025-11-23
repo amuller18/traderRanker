@@ -16,6 +16,7 @@ import { mockCallerOptions } from '../data/mock';
 import { Plus, Trash2, Rocket, Loader2, Save, Sparkles, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { useState } from 'react';
+import { ZodError } from 'zod';
 import { PositionSizingSection } from './PositionSizingSection';
 import { EntrySettingsSection } from './EntrySettingsSection';
 import { SafetyControlsSection } from './SafetyControlsSection';
@@ -60,13 +61,15 @@ export function DeployStrategyForm() {
       });
       setErrors({});
       return true;
-    } catch (error: any) {
-      const fieldErrors: Record<string, string> = {};
-      error.errors?.forEach((err: any) => {
-        const path = err.path.join('.');
-        fieldErrors[path] = err.message;
-      });
-      setErrors(fieldErrors);
+    } catch (error) {
+      if (error instanceof ZodError) {
+        const fieldErrors: Record<string, string> = {};
+        error.errors.forEach((err) => {
+          const path = err.path.join('.');
+          fieldErrors[path] = err.message;
+        });
+        setErrors(fieldErrors);
+      }
       return false;
     }
   };
@@ -87,13 +90,15 @@ export function DeployStrategyForm() {
       });
       setErrors({});
       return true;
-    } catch (error: any) {
-      const fieldErrors: Record<string, string> = {};
-      error.errors?.forEach((err: any) => {
-        const path = err.path.join('.');
-        fieldErrors[path] = err.message;
-      });
-      setErrors(fieldErrors);
+    } catch (error) {
+      if (error instanceof ZodError) {
+        const fieldErrors: Record<string, string> = {};
+        error.errors.forEach((err) => {
+          const path = err.path.join('.');
+          fieldErrors[path] = err.message;
+        });
+        setErrors(fieldErrors);
+      }
       return false;
     }
   };

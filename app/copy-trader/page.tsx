@@ -1,31 +1,21 @@
 import Link from "next/link"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, Copy, Bell, Calendar, CheckCircle, Shield, Sparkles, Target, TrendingUp, Users, Zap, Star, DollarSign, ArrowRight, BarChart3, Activity } from "lucide-react"
+import { Copy, Bell, Calendar, CheckCircle, Shield, Sparkles, Target, TrendingUp, Users, Zap, Star, DollarSign, ArrowRight, BarChart3, Activity } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
+import { WaitlistForm } from "./components/waitlist-form"
 
 export default function CopyTraderPage() {
   return (
-    <div className="flex flex-col min-h-[100dvh]">
-      <main className="flex-1">
-        {/* Hero Section */}
-        <section className="w-full py-12 md:py-24 lg:py-32 xl:py-40 gradient-background relative overflow-hidden">
+    <>
+      {/* Hero Section */}
+      <section className="w-full py-12 md:py-24 lg:py-32 xl:py-40 gradient-background relative overflow-hidden">
           {/* Background decorative elements */}
           <div className="absolute inset-0 bg-grid-white/[0.02] bg-[size:40px_40px] [mask-image:radial-gradient(white,transparent_85%)]" />
           <div className="absolute top-0 right-0 -translate-y-12 translate-x-12 w-[600px] h-[600px] bg-primary/10 rounded-full blur-3xl animate-pulse" style={{ animationDuration: "4s" }} />
           <div className="absolute bottom-0 left-0 translate-y-12 -translate-x-12 w-[500px] h-[500px] bg-chart-1/10 rounded-full blur-3xl animate-pulse" style={{ animationDuration: "5s" }} />
 
           <div className="container px-4 md:px-6 relative">
-            <div className="flex justify-start mb-8 animate-fade-in">
-              <Link href="/">
-                <Button variant="ghost" className="gap-2 hover-lift glass">
-                  <ArrowLeft className="h-4 w-4" />
-                  Back to Home
-                </Button>
-              </Link>
-            </div>
-
             <div className="text-center mb-12 max-w-3xl mx-auto animate-fade-in">
               <div className="inline-flex items-center rounded-full border glass px-5 py-2 text-sm mb-6 mx-auto shadow-elevated">
                 <Calendar className="h-4 w-4 mr-2 text-primary" />
@@ -46,16 +36,7 @@ export default function CopyTraderPage() {
                     Launch Dashboard
                   </Button>
                 </Link>
-                <div className="flex max-w-md gap-2 flex-1 sm:flex-none">
-                  <Input
-                    type="email"
-                    placeholder="Enter your email"
-                    className="flex-1 h-12 text-base border-2 shadow-elevated"
-                  />
-                  <Button size="lg" variant="outline" className="h-12 px-6 font-semibold shadow-elevated-lg hover:shadow-elevated-xl hover-lift">
-                    Join Waitlist
-                  </Button>
-                </div>
+                <WaitlistForm variant="hero" />
               </div>
 
               {/* Stats */}
@@ -415,21 +396,7 @@ export default function CopyTraderPage() {
                         </p>
                       </div>
 
-                      <div className="space-y-4">
-                        <Input
-                          type="text"
-                          placeholder="Your name"
-                          className="h-12 border-2"
-                        />
-                        <Input
-                          type="email"
-                          placeholder="Your email"
-                          className="h-12 border-2"
-                        />
-                        <Button size="lg" className="w-full h-12 font-semibold text-base">
-                          Get Early Access <ArrowRight className="ml-2 h-5 w-5" />
-                        </Button>
-                      </div>
+                      <WaitlistForm variant="sidebar" />
 
                       <div className="pt-4 border-t">
                         <p className="text-xs text-muted-foreground text-center">
@@ -468,7 +435,6 @@ export default function CopyTraderPage() {
             </div>
           </div>
         </section>
-      </main>
 
       <footer className="flex flex-col gap-4 sm:flex-row py-10 w-full shrink-0 items-center px-4 md:px-6 border-t bg-muted/30 backdrop-blur-sm">
         <div className="flex items-center gap-2">
@@ -492,7 +458,7 @@ export default function CopyTraderPage() {
           </Link>
         </nav>
       </footer>
-    </div>
+    </>
   )
 }
 

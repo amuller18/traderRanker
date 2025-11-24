@@ -50,8 +50,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 import boto3
-from boto3.dynamodb.conditions import Key
-from botocore.exceptions import ClientError
+from boto3.dynamodb.conditions import Key, Attr
+from botocore.exceptions import ClientError, NoCredentialsError
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -79,26 +79,63 @@ load_dotenv()
 # ---------------------------------------------------------------------------
 # DynamoDB Setup
 # ---------------------------------------------------------------------------
-# Initialize DynamoDB client
+# Initialize DynamoDB client with proper credential handling and table verification
+traders_table = None
+trades_table = None
+
 try:
-    dynamodb = boto3.resource(
-        'dynamodb',
-        region_name=os.getenv('AWS_REGION', 'us-east-1'),
-        aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
-        aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY')
-    )
+    # Get AWS configuration from environment (falls back to default boto3 credential chain)
+    aws_region = os.getenv('AWS_REGION', 'us-east-1')
+    aws_access_key_id = os.getenv('AWS_ACCESS_KEY_ID')
+    aws_secret_access_key = os.getenv('AWS_SECRET_ACCESS_KEY')
+
+    # Build kwargs for boto3.resource - only include credentials if provided
+    dynamodb_kwargs = {'region_name': aws_region}
+    if aws_access_key_id and aws_secret_access_key:
+        dynamodb_kwargs['aws_access_key_id'] = aws_access_key_id
+        dynamodb_kwargs['aws_secret_access_key'] = aws_secret_access_key
+        logger.info(f"Using explicit AWS credentials from environment variables")
+    else:
+        logger.info(f"Using default AWS credential chain (env vars, ~/.aws/credentials, or IAM role)")
+
+    dynamodb = boto3.resource('dynamodb', **dynamodb_kwargs)
 
     TRADERS_TABLE = os.getenv('DYNAMODB_TRADERS_TABLE', 'CallerStatistics')
     TRADES_TABLE = os.getenv('DYNAMODB_TRADES_TABLE', 'Trades')
 
-    traders_table = dynamodb.Table(TRADERS_TABLE)
-    trades_table = dynamodb.Table(TRADES_TABLE)
+    # Verify tables exist before using them
+    client = boto3.client('dynamodb', **dynamodb_kwargs)
 
-    logger.info(f"DynamoDB initialized with tables: {TRADERS_TABLE}, {TRADES_TABLE}")
+    try:
+        client.describe_table(TableName=TRADERS_TABLE)
+        traders_table = dynamodb.Table(TRADERS_TABLE)
+        logger.info(f"✓ DynamoDB table '{TRADERS_TABLE}' verified and ready")
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'ResourceNotFoundException':
+            logger.warning(f"✗ DynamoDB table '{TRADERS_TABLE}' does not exist. Trader endpoints will return empty data.")
+        else:
+            logger.warning(f"✗ Cannot access table '{TRADERS_TABLE}': {e}. Trader endpoints will return empty data.")
+
+    try:
+        client.describe_table(TableName=TRADES_TABLE)
+        trades_table = dynamodb.Table(TRADES_TABLE)
+        logger.info(f"✓ DynamoDB table '{TRADES_TABLE}' verified and ready")
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'ResourceNotFoundException':
+            logger.warning(f"✗ DynamoDB table '{TRADES_TABLE}' does not exist. Trade endpoints will return empty data.")
+        else:
+            logger.warning(f"✗ Cannot access table '{TRADES_TABLE}': {e}. Trade endpoints will return empty data.")
+
+except NoCredentialsError:
+    logger.error(
+        f"✗ AWS credentials not found. Please set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY "
+        f"environment variables, configure ~/.aws/credentials, or use an IAM role. "
+        f"Region: {aws_region if 'aws_region' in locals() else 'us-east-1'}"
+    )
+except ClientError as e:
+    logger.error(f"✗ DynamoDB client error: {e}. Check credentials and region. API will return empty data.")
 except Exception as e:
-    logger.warning(f"DynamoDB initialization failed: {e}. API will return empty data.")
-    traders_table = None
-    trades_table = None
+    logger.warning(f"✗ DynamoDB initialization failed: {e}. API will return empty data.")
 
 # ---------------------------------------------------------------------------
 # Constants / config
@@ -2323,8 +2360,19 @@ async def get_trader_stats(
         return []
 
     try:
+        # Scan with pagination to retrieve all items
+        # Note: Using scan instead of query because filters are not on partition key
+        # For production with large datasets, consider using FilterExpression on scan
+        # or restructuring the table with GSI for better performance
         response = traders_table.scan()
         traders = response.get('Items', [])
+
+        # Handle pagination
+        while 'LastEvaluatedKey' in response:
+            response = traders_table.scan(
+                ExclusiveStartKey=response['LastEvaluatedKey']
+            )
+            traders.extend(response.get('Items', []))
 
         # Apply filters
         if winRateMin is not None:
@@ -2343,9 +2391,22 @@ async def get_trader_stats(
             search_lower = search.lower()
             traders = [t for t in traders if search_lower in t.get('caller', '').lower()]
 
+        if not traders:
+            logger.warning("No traders found in DynamoDB")
+            return []
+
         return [TraderStats(**t) for t in traders]
+    except ClientError as e:
+        error_code = e.response['Error']['Code']
+        if error_code == 'ResourceNotFoundException':
+            logger.error(f"Table not found: {e}")
+        elif error_code == 'AccessDeniedException':
+            logger.error(f"Access denied to DynamoDB table: {e}")
+        else:
+            logger.error(f"DynamoDB client error fetching trader stats: {e}")
+        return []
     except Exception as e:
-        logger.error(f"Error fetching trader stats: {e}")
+        logger.error(f"Unexpected error fetching trader stats: {e}")
         return []
 
 @app.get("/api/traders/{caller}/trades")
@@ -2363,13 +2424,35 @@ async def get_trader_trades(caller: str) -> List[Trade]:
         from urllib.parse import unquote
         decoded_caller = unquote(caller)
 
+        # Query with pagination (caller is the partition key)
         response = trades_table.query(
             KeyConditionExpression=Key('caller').eq(decoded_caller)
         )
         trades = response.get('Items', [])
+
+        # Handle pagination
+        while 'LastEvaluatedKey' in response:
+            response = trades_table.query(
+                KeyConditionExpression=Key('caller').eq(decoded_caller),
+                ExclusiveStartKey=response['LastEvaluatedKey']
+            )
+            trades.extend(response.get('Items', []))
+
+        if not trades:
+            logger.warning(f"No trades found for caller: {decoded_caller}")
+
         return [Trade(**t) for t in trades]
+    except ClientError as e:
+        error_code = e.response['Error']['Code']
+        if error_code == 'ResourceNotFoundException':
+            logger.error(f"Table not found: {e}")
+        elif error_code == 'AccessDeniedException':
+            logger.error(f"Access denied to DynamoDB table: {e}")
+        else:
+            logger.error(f"DynamoDB client error fetching trades for {caller}: {e}")
+        return []
     except Exception as e:
-        logger.error(f"Error fetching trades for {caller}: {e}")
+        logger.error(f"Unexpected error fetching trades for {caller}: {e}")
         return []
 
 @app.get("/api/trades")
@@ -2384,11 +2467,32 @@ async def get_all_trades() -> List[Trade]:
         return []
 
     try:
+        # Scan with pagination to retrieve all trades
         response = trades_table.scan()
         trades = response.get('Items', [])
+
+        # Handle pagination
+        while 'LastEvaluatedKey' in response:
+            response = trades_table.scan(
+                ExclusiveStartKey=response['LastEvaluatedKey']
+            )
+            trades.extend(response.get('Items', []))
+
+        if not trades:
+            logger.warning("No trades found in DynamoDB")
+
         return [Trade(**t) for t in trades]
+    except ClientError as e:
+        error_code = e.response['Error']['Code']
+        if error_code == 'ResourceNotFoundException':
+            logger.error(f"Table not found: {e}")
+        elif error_code == 'AccessDeniedException':
+            logger.error(f"Access denied to DynamoDB table: {e}")
+        else:
+            logger.error(f"DynamoDB client error fetching all trades: {e}")
+        return []
     except Exception as e:
-        logger.error(f"Error fetching all trades: {e}")
+        logger.error(f"Unexpected error fetching all trades: {e}")
         return []
 
 @app.get("/api/trades/filtered")
@@ -2413,8 +2517,16 @@ async def get_filtered_trades(
         return []
 
     try:
+        # Scan with pagination to retrieve all trades
         response = trades_table.scan()
         trades = response.get('Items', [])
+
+        # Handle pagination
+        while 'LastEvaluatedKey' in response:
+            response = trades_table.scan(
+                ExclusiveStartKey=response['LastEvaluatedKey']
+            )
+            trades.extend(response.get('Items', []))
 
         # Apply filters
         if roiMin is not None or roiMax is not None:
@@ -2443,9 +2555,21 @@ async def get_filtered_trades(
         if trader:
             trades = [t for t in trades if t.get('caller') == trader]
 
+        if not trades:
+            logger.warning("No filtered trades found in DynamoDB")
+
         return [Trade(**t) for t in trades]
+    except ClientError as e:
+        error_code = e.response['Error']['Code']
+        if error_code == 'ResourceNotFoundException':
+            logger.error(f"Table not found: {e}")
+        elif error_code == 'AccessDeniedException':
+            logger.error(f"Access denied to DynamoDB table: {e}")
+        else:
+            logger.error(f"DynamoDB client error fetching filtered trades: {e}")
+        return []
     except Exception as e:
-        logger.error(f"Error fetching filtered trades: {e}")
+        logger.error(f"Unexpected error fetching filtered trades: {e}")
         return []
 
 @app.post("/api/traders")
@@ -2473,12 +2597,20 @@ async def create_or_update_trader(trader: TraderStats) -> Dict[str, Any]:
             "success": True,
             "message": f"Trader {trader.caller} saved successfully"
         }
+    except ClientError as e:
+        error_code = e.response['Error']['Code']
+        if error_code == 'ResourceNotFoundException':
+            logger.error(f"Table not found: {e}")
+            return {"success": False, "message": "Table not found"}
+        elif error_code == 'AccessDeniedException':
+            logger.error(f"Access denied to DynamoDB table: {e}")
+            return {"success": False, "message": "Access denied"}
+        else:
+            logger.error(f"DynamoDB client error saving trader: {e}")
+            return {"success": False, "message": str(e)}
     except Exception as e:
-        logger.error(f"Error saving trader: {e}")
-        return {
-            "success": False,
-            "message": str(e)
-        }
+        logger.error(f"Unexpected error saving trader: {e}")
+        return {"success": False, "message": str(e)}
 
 @app.post("/api/trades")
 async def create_or_update_trade(trade: Trade) -> Dict[str, Any]:
@@ -2505,12 +2637,20 @@ async def create_or_update_trade(trade: Trade) -> Dict[str, Any]:
             "success": True,
             "message": f"Trade for {trade.caller} saved successfully"
         }
+    except ClientError as e:
+        error_code = e.response['Error']['Code']
+        if error_code == 'ResourceNotFoundException':
+            logger.error(f"Table not found: {e}")
+            return {"success": False, "message": "Table not found"}
+        elif error_code == 'AccessDeniedException':
+            logger.error(f"Access denied to DynamoDB table: {e}")
+            return {"success": False, "message": "Access denied"}
+        else:
+            logger.error(f"DynamoDB client error saving trade: {e}")
+            return {"success": False, "message": str(e)}
     except Exception as e:
-        logger.error(f"Error saving trade: {e}")
-        return {
-            "success": False,
-            "message": str(e)
-        }
+        logger.error(f"Unexpected error saving trade: {e}")
+        return {"success": False, "message": str(e)}
 
 @app.delete("/api/traders/{caller}")
 async def delete_trader(caller: str) -> Dict[str, Any]:
@@ -2534,12 +2674,20 @@ async def delete_trader(caller: str) -> Dict[str, Any]:
             "success": True,
             "message": f"Trader {caller} removed successfully"
         }
+    except ClientError as e:
+        error_code = e.response['Error']['Code']
+        if error_code == 'ResourceNotFoundException':
+            logger.error(f"Table not found: {e}")
+            return {"success": False, "message": "Table not found"}
+        elif error_code == 'AccessDeniedException':
+            logger.error(f"Access denied to DynamoDB table: {e}")
+            return {"success": False, "message": "Access denied"}
+        else:
+            logger.error(f"DynamoDB client error deleting trader: {e}")
+            return {"success": False, "message": str(e)}
     except Exception as e:
-        logger.error(f"Error deleting trader: {e}")
-        return {
-            "success": False,
-            "message": str(e)
-        }
+        logger.error(f"Unexpected error deleting trader: {e}")
+        return {"success": False, "message": str(e)}
 
 @app.delete("/api/trades")
 async def delete_trade(request: DeleteTradeRequest) -> Dict[str, Any]:
@@ -2570,12 +2718,20 @@ async def delete_trade(request: DeleteTradeRequest) -> Dict[str, Any]:
             "success": True,
             "message": f"Trade for {request.caller} removed successfully"
         }
+    except ClientError as e:
+        error_code = e.response['Error']['Code']
+        if error_code == 'ResourceNotFoundException':
+            logger.error(f"Table not found: {e}")
+            return {"success": False, "message": "Table not found"}
+        elif error_code == 'AccessDeniedException':
+            logger.error(f"Access denied to DynamoDB table: {e}")
+            return {"success": False, "message": "Access denied"}
+        else:
+            logger.error(f"DynamoDB client error deleting trade: {e}")
+            return {"success": False, "message": str(e)}
     except Exception as e:
-        logger.error(f"Error deleting trade: {e}")
-        return {
-            "success": False,
-            "message": str(e)
-        }
+        logger.error(f"Unexpected error deleting trade: {e}")
+        return {"success": False, "message": str(e)}
 
 # ---------------------------------------------------------------------------
 # Dev entry-point

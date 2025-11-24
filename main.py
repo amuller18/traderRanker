@@ -821,15 +821,15 @@ class SparklineData(BaseModel):
 class Trade(BaseModel):
     ca: str
     caller: str
-    date_called: str
-    high_time: str
-    low_time: str
-    initial_mc: float
-    current_mc: float
-    high_mc: float
-    low_mc: float
-    high_price: float
-    low_price: float
+    date_called: str = ""
+    high_time: str = ""
+    low_time: str = ""
+    initial_mc: float = 0.0
+    current_mc: float = 0.0
+    high_mc: float = 0.0
+    low_mc: float = 0.0
+    high_price: float = 0.0
+    low_price: float = 0.0
     price_change_24h: float = 0
     volume_24h: float = 0
     liquidity: float = 0

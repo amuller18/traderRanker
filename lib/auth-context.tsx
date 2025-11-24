@@ -40,8 +40,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const supabase = createClient();
 
-  // Fetch user profile from Supabase
-  const fetchUserProfile = async (authUser: SupabaseUser): Promise<User | null> => {
+  // Fetch user profile from Supabase with retry logic for race conditions
+  const fetchUserProfile = async (
+    authUser: SupabaseUser,
+    retries = 3,
+    delay = 1000
+  ): Promise<User | null> => {
     try {
       const { data: profile, error } = await supabase
         .from('profiles')
@@ -50,7 +54,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .single();
 
       if (error) {
-        console.error('Error fetching profile:', error);
+        // Log detailed error information
+        console.error('Error fetching profile:', {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+        });
+
+        // Handle race condition: profile not created yet after signup (PGRST116 = no rows found)
+        if (error.code === 'PGRST116' && retries > 0) {
+          console.log(`Profile not found, retrying in ${delay}ms... (${retries} retries left)`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          return fetchUserProfile(authUser, retries - 1, delay * 1.5);
+        }
+
         return null;
       }
 

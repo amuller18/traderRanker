@@ -4,10 +4,11 @@ import { useState, useEffect, useCallback } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { ChevronDown, ChevronUp, RefreshCw } from "lucide-react"
+import { ChevronDown, ChevronUp, RefreshCw, AlertCircle } from "lucide-react"
 import { formatROI } from "@/lib/utils"
 import { fetchTraderStats } from "@/lib/api-client"
 import { TraderRankingsSkeleton } from "./trader-rankings-skeleton"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import Link from "next/link"
 
 interface Trader {
@@ -22,6 +23,7 @@ export function TraderRankings() {
   const [traders, setTraders] = useState<Trader[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [sortField, setSortField] = useState<keyof Trader>("win_rate")
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc")
@@ -35,12 +37,22 @@ export function TraderRankings() {
       setLoading(true)
     }
 
+    setError(null) // Clear previous errors
+
     try {
       const data = await fetchTraderStats()
       setTraders(data)
       setLastUpdated(new Date())
+      setError(null) // Clear errors on success
     } catch (error) {
       console.error('Error fetching traders:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Failed to load trader rankings'
+      setError(errorMessage)
+
+      // Don't clear existing data on refresh errors, only on initial load
+      if (!isRefresh) {
+        setTraders([])
+      }
     } finally {
       setLoading(false)
       setRefreshing(false)
@@ -88,6 +100,17 @@ export function TraderRankings() {
 
   return (
     <div className="space-y-4">
+      {/* Error Alert */}
+      {error && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Error Loading Rankings</AlertTitle>
+          <AlertDescription className="whitespace-pre-line">
+            {error}
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Header with refresh button and stats */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">

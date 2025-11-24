@@ -2495,6 +2495,44 @@ async def get_all_trades() -> List[Trade]:
         logger.error(f"Unexpected error fetching all trades: {e}")
         return []
 
+def parse_and_validate_date(date_str: Optional[str], param_name: str, default: Optional[datetime] = None) -> Optional[datetime]:
+    """
+    Parse and validate a date parameter with robust error handling.
+
+    Args:
+        date_str: The date string to parse (can be None)
+        param_name: Name of the parameter (for logging)
+        default: Default datetime to return if parsing fails
+
+    Returns:
+        Parsed datetime object or default value
+    """
+    if not date_str:
+        return default
+
+    # Log the raw parameter value
+    logger.info(f"Parsing {param_name}: raw value = '{date_str}'")
+
+    # Validate basic structure - must contain date part (YYYY-MM-DD or similar)
+    if len(date_str) < 10:
+        logger.warning(f"Invalid {param_name} - too short ('{date_str}'). Using default.")
+        return default
+
+    # Check if it starts with a digit (valid date should start with year)
+    if not date_str[0].isdigit():
+        logger.warning(f"Invalid {param_name} - doesn't start with digit ('{date_str}'). Using default.")
+        return default
+
+    try:
+        # Normalize the date string - handle both Z and +00:00 formats
+        normalized = date_str.replace('Z', '+00:00')
+        parsed_dt = datetime.fromisoformat(normalized)
+        logger.info(f"Successfully parsed {param_name}: {parsed_dt.isoformat()}")
+        return parsed_dt
+    except (ValueError, AttributeError) as e:
+        logger.error(f"Failed to parse {param_name} '{date_str}': {e}. Using default.")
+        return default
+
 @app.get("/api/trades/filtered")
 async def get_filtered_trades(
     roiMin: Optional[float] = None,
@@ -2510,7 +2548,10 @@ async def get_filtered_trades(
     """
     Get filtered trades based on various criteria.
     """
-    logger.info("GET /api/trades/filtered")
+    # Log all raw parameters for debugging
+    logger.info(f"GET /api/trades/filtered - Raw params: roiMin={roiMin}, roiMax={roiMax}, "
+                f"mcMin={mcMin}, mcMax={mcMax}, dateFrom='{dateFrom}', dateTo='{dateTo}', "
+                f"search='{search}', trader='{trader}', timeframe='{timeframe}'")
 
     if trades_table is None:
         logger.warning("DynamoDB not available, returning empty list")
@@ -2542,8 +2583,13 @@ async def get_filtered_trades(
         if mcMax is not None:
             trades = [t for t in trades if t.get('initial_mc', 0) <= mcMax]
 
-        if dateFrom:
-            from_dt = datetime.fromisoformat(dateFrom.replace('Z', '+00:00'))
+        # Parse and validate date parameters with detailed logging
+        from_dt = parse_and_validate_date(dateFrom, "dateFrom", default=None)
+        to_dt = parse_and_validate_date(dateTo, "dateTo", default=None)
+
+        # Apply date filtering only if we have valid parsed dates
+        if from_dt is not None:
+            logger.info(f"Applying dateFrom filter: {from_dt.isoformat()}")
             filtered_trades = []
             for t in trades:
                 date_called = t.get('date_called', '')
@@ -2555,10 +2601,11 @@ async def get_filtered_trades(
                     except (ValueError, AttributeError):
                         # Skip trades with invalid date format
                         logger.warning(f"Skipping trade with invalid date_called: {date_called}")
+            logger.info(f"After dateFrom filter: {len(filtered_trades)} trades (from {len(trades)})")
             trades = filtered_trades
 
-        if dateTo:
-            to_dt = datetime.fromisoformat(dateTo.replace('Z', '+00:00'))
+        if to_dt is not None:
+            logger.info(f"Applying dateTo filter: {to_dt.isoformat()}")
             filtered_trades = []
             for t in trades:
                 date_called = t.get('date_called', '')
@@ -2570,6 +2617,7 @@ async def get_filtered_trades(
                     except (ValueError, AttributeError):
                         # Skip trades with invalid date format
                         logger.warning(f"Skipping trade with invalid date_called: {date_called}")
+            logger.info(f"After dateTo filter: {len(filtered_trades)} trades (from {len(trades)})")
             trades = filtered_trades
 
         if search:
@@ -2578,8 +2626,12 @@ async def get_filtered_trades(
         if trader:
             trades = [t for t in trades if t.get('caller') == trader]
 
+        # Log final results
+        logger.info(f"Returning {len(trades)} filtered trades")
         if not trades:
-            logger.warning("No filtered trades found in DynamoDB")
+            logger.warning(f"No trades matched filters - dateFrom={dateFrom}, dateTo={dateTo}, "
+                          f"roiMin={roiMin}, roiMax={roiMax}, mcMin={mcMin}, mcMax={mcMax}, "
+                          f"search={search}, trader={trader}")
 
         return [Trade(**t) for t in trades]
     except ClientError as e:

@@ -2587,39 +2587,33 @@ async def get_filtered_trades(
         from_dt = parse_and_validate_date(dateFrom, "dateFrom", default=None)
         to_dt = parse_and_validate_date(dateTo, "dateTo", default=None)
 
-        # Apply date filtering only if we have valid parsed dates
+        # Convert datetime parameters to unix timestamps for direct comparison
+        from_timestamp = None
+        to_timestamp = None
+
         if from_dt is not None:
-            logger.info(f"Applying dateFrom filter: {from_dt.isoformat()}")
-            filtered_trades = []
-            for t in trades:
-                timestamp = t.get('timestamp')
-                if timestamp:  # Skip trades with empty or missing timestamp
-                    try:
-                        # Convert unix timestamp (seconds) to datetime
-                        trade_dt = datetime.fromtimestamp(timestamp, tz=timezone.utc)
-                        if trade_dt >= from_dt:
-                            filtered_trades.append(t)
-                    except (ValueError, TypeError, OSError):
-                        # Skip trades with invalid timestamp
-                        logger.warning(f"Skipping trade with invalid timestamp: {timestamp}")
-            logger.info(f"After dateFrom filter: {len(filtered_trades)} trades (from {len(trades)})")
-            trades = filtered_trades
+            from_timestamp = int(from_dt.timestamp())
+            logger.info(f"Applying dateFrom filter: {from_dt.isoformat()} (unix: {from_timestamp})")
 
         if to_dt is not None:
-            logger.info(f"Applying dateTo filter: {to_dt.isoformat()}")
+            to_timestamp = int(to_dt.timestamp())
+            logger.info(f"Applying dateTo filter: {to_dt.isoformat()} (unix: {to_timestamp})")
+
+        # Apply date filtering using unix timestamp comparison
+        if from_timestamp is not None or to_timestamp is not None:
             filtered_trades = []
             for t in trades:
                 timestamp = t.get('timestamp')
                 if timestamp:  # Skip trades with empty or missing timestamp
                     try:
-                        # Convert unix timestamp (seconds) to datetime
-                        trade_dt = datetime.fromtimestamp(timestamp, tz=timezone.utc)
-                        if trade_dt <= to_dt:
+                        # Direct unix timestamp comparison
+                        if (from_timestamp is None or timestamp >= from_timestamp) and \
+                           (to_timestamp is None or timestamp <= to_timestamp):
                             filtered_trades.append(t)
-                    except (ValueError, TypeError, OSError):
+                    except (TypeError, AttributeError):
                         # Skip trades with invalid timestamp
                         logger.warning(f"Skipping trade with invalid timestamp: {timestamp}")
-            logger.info(f"After dateTo filter: {len(filtered_trades)} trades (from {len(trades)})")
+            logger.info(f"After date filter: {len(filtered_trades)} trades (from {len(trades)})")
             trades = filtered_trades
 
         if search:

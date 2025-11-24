@@ -35,34 +35,126 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Enable debug mode via environment variable
+const DEBUG_MODE = process.env.NEXT_PUBLIC_DEBUG_SUPABASE === 'true';
+
+/**
+ * Masks a token/key for safe logging by showing only the first 8 characters.
+ * @param token - The token to mask
+ * @returns Masked token string (e.g., "eyJhbGci...") or empty string
+ */
+function maskToken(token: string | undefined | null): string {
+  if (!token) return '(no token)';
+  if (token.length <= 8) return '***';
+  return `${token.substring(0, 8)}...`;
+}
+
+/**
+ * Safely stringifies an object for logging without throwing errors.
+ * Handles circular references and non-serializable values.
+ *
+ * @param obj - The object to stringify
+ * @param indent - Whether to use pretty-printing (default: false)
+ * @returns JSON string or error message
+ */
+function safeStringify(obj: unknown, indent = false): string {
+  try {
+    return JSON.stringify(obj, null, indent ? 2 : 0);
+  } catch (error) {
+    return `[Unstringifiable: ${error instanceof Error ? error.message : 'unknown error'}]`;
+  }
+}
+
 /**
  * Safely logs Supabase errors without causing runtime exceptions.
  * Guards against null/undefined error objects and safely accesses properties.
+ * Uses console.group for structured, collapsible logging.
  *
  * @param context - Description of where the error occurred (e.g., 'fetchUserProfile')
  * @param err - The error object from Supabase (can be null, undefined, or any shape)
  */
 function safeLogSupabaseError(context: string, err: unknown): void {
-  // Always log the raw error first to avoid losing information
-  console.error(`${context} - Supabase error (raw):`, err);
+  console.group(`❌ ${context} - Supabase Error`);
 
-  // Guard: If error is null, undefined, or not an object, we can't safely access properties
-  if (!err || typeof err !== 'object') {
-    console.error(`${context} - Error is not an object, skipping property access`);
-    return;
+  try {
+    // Always log the raw error first to avoid losing information
+    console.error('Raw error:', err);
+    console.error('Error type:', typeof err);
+    console.error('Error constructor:', err?.constructor?.name || 'N/A');
+
+    // Guard: If error is null, undefined, or not an object, we can't safely access properties
+    if (!err || typeof err !== 'object') {
+      console.error('⚠️ Error is not an object, cannot extract properties');
+      console.groupEnd();
+      return;
+    }
+
+    // Safely extract common Supabase error properties with fallbacks
+    // Supabase errors typically have: code, message, details, hint, status
+    const errorObj = err as Record<string, unknown>;
+    const safeError = {
+      code: errorObj.code ?? errorObj.status ?? null,
+      message: errorObj.message ?? errorObj.error_description ?? 'Unknown error',
+      details: errorObj.details ?? null,
+      hint: errorObj.hint ?? null,
+      status: errorObj.status ?? null,
+    };
+
+    console.error('Extracted properties:', safeError);
+  } catch (loggingError) {
+    console.error('⚠️ Exception while logging error:', loggingError);
+  } finally {
+    console.groupEnd();
   }
+}
 
-  // Safely extract common Supabase error properties with fallbacks
-  // Supabase errors typically have: code, message, details, hint, status
-  const errorObj = err as Record<string, unknown>;
-  const safeError = {
-    code: errorObj.code ?? errorObj.status ?? null,
-    message: errorObj.message ?? errorObj.error_description ?? 'Unknown error',
-    details: errorObj.details ?? null,
-    hint: errorObj.hint ?? null,
-  };
+/**
+ * Logs detailed information about a Supabase session in a structured, safe manner.
+ * @param session - The session object from getSession()
+ */
+function logSessionDetails(session: any): void {
+  if (!DEBUG_MODE) return;
 
-  console.error(`${context} - Supabase error (safe):`, safeError);
+  console.group('🔐 Session Details');
+  try {
+    console.log('Session exists:', !!session);
+    console.log('Access token present:', !!session?.access_token);
+    console.log('Access token (masked):', maskToken(session?.access_token));
+    console.log('Refresh token present:', !!session?.refresh_token);
+    console.log('Refresh token (masked):', maskToken(session?.refresh_token));
+    console.log('Token type:', session?.token_type ?? 'N/A');
+    console.log('Expires at:', session?.expires_at ?? 'N/A');
+    console.log('Expires in (seconds):', session?.expires_in ?? 'N/A');
+    console.log('User ID:', session?.user?.id ?? 'N/A');
+    console.log('User email:', session?.user?.email ?? 'N/A');
+  } catch (error) {
+    console.error('Error logging session details:', error);
+  } finally {
+    console.groupEnd();
+  }
+}
+
+/**
+ * Logs detailed information about a Supabase user in a structured, safe manner.
+ * @param user - The user object from getUser()
+ */
+function logUserDetails(user: any): void {
+  if (!DEBUG_MODE) return;
+
+  console.group('👤 User Details');
+  try {
+    console.log('User exists:', !!user);
+    console.log('User ID:', user?.id ?? 'N/A');
+    console.log('Email:', user?.email ?? 'N/A');
+    console.log('Email confirmed:', user?.email_confirmed_at ? 'Yes' : 'No');
+    console.log('Created at:', user?.created_at ?? 'N/A');
+    console.log('User metadata:', safeStringify(user?.user_metadata));
+    console.log('App metadata:', safeStringify(user?.app_metadata));
+  } catch (error) {
+    console.error('Error logging user details:', error);
+  } finally {
+    console.groupEnd();
+  }
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -71,61 +163,203 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const supabase = createClient();
 
   /**
-   * Fetches user profile from Supabase with retry logic for race conditions.
+   * Fetches user profile from Supabase with extensive debugging and retry logic.
    *
-   * Race condition handling: After user registration, the database trigger creates
-   * a profile row asynchronously. If we query too quickly, we get PGRST116 (no rows).
-   * We retry with exponential backoff to handle this gracefully.
+   * FEATURES:
+   * - Client-side only execution (guards against SSR/server-side calls)
+   * - Comprehensive logging of session, user, tokens, REST URLs, headers
+   * - Safe error handling that never throws on logging
+   * - Retry logic for both database race conditions (PGRST116) and network errors
+   * - Deterministic debugging output for troubleshooting
+   *
+   * RACE CONDITION HANDLING:
+   * After user registration, the database trigger creates a profile row asynchronously.
+   * If we query too quickly, we get PGRST116 (no rows). We retry with backoff.
+   *
+   * NETWORK ERROR HANDLING:
+   * Network failures, timeouts, or fetch errors trigger a single retry after 250ms.
    *
    * @param authUser - The authenticated Supabase user object
-   * @param retries - Number of retry attempts remaining (default: 3)
-   * @param delay - Delay in milliseconds before retrying (default: 1000ms)
+   * @param retries - Number of retry attempts remaining for PGRST116 (default: 3)
+   * @param delay - Delay in milliseconds before retrying PGRST116 (default: 1000ms)
+   * @param networkRetries - Number of retry attempts for network errors (default: 1)
    * @returns User profile object or null if not found/error occurred
    */
   const fetchUserProfile = async (
     authUser: SupabaseUser,
     retries = 3,
-    delay = 1000
+    delay = 1000,
+    networkRetries = 1
   ): Promise<User | null> => {
+    const startTime = Date.now();
+
+    console.group('🔍 fetchUserProfile - START');
+    console.log('Timestamp:', new Date().toISOString());
+    console.log('Retry attempts remaining (PGRST116):', retries);
+    console.log('Network retry attempts remaining:', networkRetries);
+
     try {
-      // Query the profiles table for this user's profile
-      const { data: profile, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', authUser.id)
-        .single();
-
-      if (error) {
-        // Use safe error logging to avoid runtime exceptions from null/undefined errors
-        safeLogSupabaseError('fetchUserProfile', error);
-
-        // Handle race condition: profile not created yet after signup
-        // PGRST116 = PostgreSQL REST API error code for "no rows returned"
-        // We need to safely check error.code since error might not have this property
-        const errorCode = (error as any)?.code ?? null;
-        if (errorCode === 'PGRST116' && retries > 0) {
-          console.log(`Profile not found, retrying in ${delay}ms... (${retries} retries left)`);
-          // Exponential backoff: wait, then retry with longer delay
-          await new Promise(resolve => setTimeout(resolve, delay));
-          return fetchUserProfile(authUser, retries - 1, delay * 1.5);
-        }
-
-        // Other errors or out of retries - return null
+      // GUARD: Ensure we're running client-side only
+      if (typeof window === 'undefined') {
+        console.warn('⚠️ fetchUserProfile called server-side! Aborting.');
+        console.warn('This function should only run in the browser.');
+        console.groupEnd();
         return null;
       }
 
-      // Successfully fetched profile - construct User object
-      return {
-        id: authUser.id,
-        email: authUser.email || '',
-        username: profile?.username || '',
-        wallet_address: profile?.wallet_address,
-        full_name: profile?.full_name,
-        avatar_url: profile?.avatar_url,
+      console.log('✅ Client-side execution confirmed');
+
+      // STEP 1: Get current session with detailed logging
+      console.group('📡 Step 1: Getting Session');
+      const sessionStart = Date.now();
+      const sessionResult = await supabase.auth.getSession();
+      const sessionDuration = Date.now() - sessionStart;
+
+      console.log('getSession() duration:', `${sessionDuration}ms`);
+      console.log('Session result data:', !!sessionResult.data);
+      console.log('Session result error:', sessionResult.error ?? 'none');
+
+      logSessionDetails(sessionResult.data?.session);
+      console.groupEnd();
+
+      // STEP 2: Get current user with detailed logging
+      console.group('📡 Step 2: Getting User');
+      const userStart = Date.now();
+      const userResult = await supabase.auth.getUser();
+      const userDuration = Date.now() - userStart;
+
+      console.log('getUser() duration:', `${userDuration}ms`);
+      console.log('User result data:', !!userResult.data);
+      console.log('User result error:', userResult.error ?? 'none');
+
+      logUserDetails(userResult.data?.user);
+      console.groupEnd();
+
+      // STEP 3: Validate we have necessary auth data
+      const session = sessionResult.data?.session;
+      const currentUser = userResult.data?.user;
+
+      if (!session || !currentUser || !currentUser.id) {
+        console.warn('⚠️ No valid session or user found');
+        console.warn('Session exists:', !!session);
+        console.warn('User exists:', !!currentUser);
+        console.warn('User ID:', currentUser?.id ?? 'N/A');
+        console.groupEnd();
+        return null;
+      }
+
+      console.log('✅ Valid session and user confirmed');
+
+      // STEP 4: Construct REST URL for debugging
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'unknown';
+      const restUrl = `${supabaseUrl}/rest/v1/profiles?id=eq.${currentUser.id}&select=*`;
+
+      console.group('🌐 Step 3: Profile Query Details');
+      console.log('Target user ID:', currentUser.id);
+      console.log('Constructed REST URL:', restUrl);
+      console.log('Authorization header (masked):', `Bearer ${maskToken(session.access_token)}`);
+      console.log('apikey header (masked):', maskToken(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY));
+      console.groupEnd();
+
+      // STEP 5: Execute profile query
+      console.group('📊 Step 4: Executing Profile Query');
+      const queryStart = Date.now();
+
+      const { data: profile, error, status } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', currentUser.id)
+        .single();
+
+      const queryDuration = Date.now() - queryStart;
+
+      // Log response immediately and safely
+      console.log('Query duration:', `${queryDuration}ms`);
+      console.log('Response status:', status ?? 'N/A');
+      console.log('Data received:', !!profile);
+      console.log('Error received:', !!error);
+
+      // Safe logging of profile data (avoid logging sensitive info in production)
+      if (profile) {
+        console.log('Profile data:', {
+          id: profile.id ?? 'N/A',
+          username: profile.username ?? 'N/A',
+          has_wallet: !!profile.wallet_address,
+          has_full_name: !!profile.full_name,
+          has_avatar: !!profile.avatar_url,
+        });
+      }
+
+      // Safe logging of error
+      if (error) {
+        safeLogSupabaseError('Profile Query', error);
+      }
+
+      console.groupEnd();
+
+      // STEP 6: Handle errors with retry logic
+      if (error) {
+        const errorCode = (error as any)?.code ?? null;
+        const errorMessage = (error as any)?.message ?? 'Unknown error';
+
+        // Retry for PGRST116 (no rows) - race condition after signup
+        if (errorCode === 'PGRST116' && retries > 0) {
+          console.log(`🔄 PGRST116 detected: Profile not found yet`);
+          console.log(`Retrying in ${delay}ms... (${retries} retries left)`);
+          console.groupEnd(); // Close main group before retry
+          await new Promise(resolve => setTimeout(resolve, delay));
+          return fetchUserProfile(authUser, retries - 1, delay * 1.5, networkRetries);
+        }
+
+        // For other errors, log and return null
+        console.error('❌ Profile query failed:', errorMessage);
+        console.groupEnd();
+        return null;
+      }
+
+      // STEP 7: Success - construct User object
+      if (!profile) {
+        console.warn('⚠️ Query succeeded but no profile data returned');
+        console.groupEnd();
+        return null;
+      }
+
+      const userProfile: User = {
+        id: currentUser.id,
+        email: currentUser.email || '',
+        username: profile.username || '',
+        wallet_address: profile.wallet_address,
+        full_name: profile.full_name,
+        avatar_url: profile.avatar_url,
       };
+
+      const totalDuration = Date.now() - startTime;
+      console.log('✅ Profile fetched successfully');
+      console.log('Total duration:', `${totalDuration}ms`);
+      console.groupEnd();
+
+      return userProfile;
+
     } catch (error) {
-      // Catch any unexpected exceptions (network errors, etc.)
+      // STEP 8: Handle unexpected exceptions (network errors, etc.)
+      console.group('⚠️ Exception Caught in fetchUserProfile');
+      console.error('Exception type:', error?.constructor?.name ?? 'Unknown');
+      console.error('Exception message:', error instanceof Error ? error.message : 'Unknown');
+      console.error('Exception stack:', error instanceof Error ? error.stack : 'N/A');
+
       safeLogSupabaseError('fetchUserProfile - unexpected exception', error);
+
+      // Retry once for network errors
+      if (networkRetries > 0) {
+        console.log('🔄 Network error detected, retrying once after 250ms...');
+        console.groupEnd();
+        await new Promise(resolve => setTimeout(resolve, 250));
+        return fetchUserProfile(authUser, retries, delay, 0); // No more network retries
+      }
+
+      console.error('❌ Failed after retries');
+      console.groupEnd();
+      console.groupEnd(); // Close main group
       return null;
     }
   };
@@ -133,9 +367,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Initialize auth state
   useEffect(() => {
     const initializeAuth = async () => {
+      if (DEBUG_MODE) {
+        console.group('🚀 AuthProvider Initialization');
+        console.log('Environment:', typeof window !== 'undefined' ? 'Browser' : 'Server');
+        console.log('Debug mode:', DEBUG_MODE);
+      }
+
       try {
         // Get current session
         const { data: { session } } = await supabase.auth.getSession();
+
+        if (DEBUG_MODE) {
+          console.log('Initial session check:', !!session);
+        }
 
         if (session?.user) {
           const userProfile = await fetchUserProfile(session.user);
@@ -145,6 +389,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.error('Error initializing auth:', error);
       } finally {
         setIsLoading(false);
+        if (DEBUG_MODE) {
+          console.groupEnd();
+        }
       }
     };
 
@@ -152,7 +399,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+      async (event, session) => {
+        if (DEBUG_MODE) {
+          console.log('🔔 Auth state changed:', event);
+        }
+
         if (session?.user) {
           const userProfile = await fetchUserProfile(session.user);
           setUser(userProfile);
@@ -175,6 +426,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     if (error) {
+      safeLogSupabaseError('login', error);
       throw error;
     }
 
@@ -211,10 +463,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     if (error) {
+      safeLogSupabaseError('register', error);
       throw error;
     }
 
     if (data.user) {
+      // Use retry logic for post-registration profile fetch
+      // The database trigger may not have created the profile yet
       const userProfile = await fetchUserProfile(data.user);
       setUser(userProfile);
     }
@@ -223,6 +478,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = async (): Promise<void> => {
     const { error } = await supabase.auth.signOut();
     if (error) {
+      safeLogSupabaseError('logout', error);
       throw error;
     }
     setUser(null);
@@ -239,6 +495,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .eq('id', user.id);
 
     if (error) {
+      safeLogSupabaseError('linkWallet', error);
       throw error;
     }
 
@@ -256,6 +513,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .eq('id', user.id);
 
     if (error) {
+      safeLogSupabaseError('unlinkWallet', error);
       throw error;
     }
 
@@ -273,6 +531,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .eq('id', user.id);
 
     if (error) {
+      safeLogSupabaseError('updateProfile', error);
       throw error;
     }
 

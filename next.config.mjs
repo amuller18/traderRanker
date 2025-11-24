@@ -7,17 +7,12 @@ try {
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'export',  // Enable static export for Cloudflare Pages
   eslint: {
     ignoreDuringBuilds: true,
   },
   typescript: {
     ignoreBuildErrors: true,
   },
-  images: {
-    unoptimized: true,
-  },
-  // Remove experimental features that don't work with static export
 }
 
 mergeConfig(nextConfig, userConfig)

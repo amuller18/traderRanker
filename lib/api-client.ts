@@ -8,12 +8,40 @@ import type { TraderStats, Trade, FilterOptions, TradeFilterOptions } from "./tr
 const API_BASE = process.env.NEXT_PUBLIC_PI_API_BASE || 'http://localhost:8000'
 
 /**
+ * Validates that the API base URL is properly configured
+ * @throws Error if API_BASE is not set or invalid
+ */
+function validateApiBase(): void {
+  if (!API_BASE) {
+    throw new Error(
+      'API configuration error: NEXT_PUBLIC_PI_API_BASE is not set. ' +
+      'Please set this environment variable in your .env.local file.'
+    )
+  }
+
+  // Check if we're in the browser and the URL looks valid
+  if (typeof window !== 'undefined') {
+    try {
+      new URL(API_BASE)
+    } catch {
+      throw new Error(
+        `API configuration error: NEXT_PUBLIC_PI_API_BASE "${API_BASE}" is not a valid URL. ` +
+        'Please check your .env.local file.'
+      )
+    }
+  }
+}
+
+/**
  * Generic fetch wrapper with error handling and API key auth
  */
 async function apiFetch<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
+  // Validate API base URL before making requests
+  validateApiBase()
+
   const apiKey = process.env.NEXT_PUBLIC_PI_API_KEY
 
   const headers: HeadersInit = {
@@ -22,21 +50,54 @@ async function apiFetch<T>(
     ...options.headers,
   }
 
+  const fullUrl = `${API_BASE}${endpoint}`
+
   try {
-    const response = await fetch(`${API_BASE}${endpoint}`, {
+    const response = await fetch(fullUrl, {
       ...options,
       headers,
     })
 
     if (!response.ok) {
-      const errorText = await response.text()
-      throw new Error(`API Error (${response.status}): ${errorText}`)
+      let errorMessage = `API Error (${response.status})`
+      try {
+        const errorText = await response.text()
+        const errorData = errorText ? JSON.parse(errorText) : null
+        errorMessage = `${errorMessage}: ${errorData?.message || errorText || response.statusText}`
+      } catch {
+        // If parsing fails, use statusText
+        errorMessage = `${errorMessage}: ${response.statusText}`
+      }
+      throw new Error(errorMessage)
     }
 
-    return await response.json()
+    const text = await response.text()
+    return text ? JSON.parse(text) : null
   } catch (error) {
-    console.error(`API fetch error for ${endpoint}:`, error)
-    throw error
+    // Enhanced error handling for network and other errors
+    if (error instanceof TypeError && error.message === 'Failed to fetch') {
+      const networkError = new Error(
+        `Network error: Unable to reach API at ${fullUrl}. ` +
+        'Please check:\n' +
+        '1. The backend server is running\n' +
+        '2. NEXT_PUBLIC_PI_API_BASE is set correctly\n' +
+        '3. CORS is properly configured on the server\n' +
+        '4. Your network connection'
+      )
+      console.error(`API fetch error for ${endpoint}:`, networkError.message)
+      throw networkError
+    }
+
+    // Re-throw API errors with context
+    if (error instanceof Error) {
+      console.error(`API fetch error for ${endpoint}:`, error.message)
+      throw error
+    }
+
+    // Unknown error
+    const unknownError = new Error(`Unknown error fetching ${endpoint}: ${error}`)
+    console.error(unknownError.message)
+    throw unknownError
   }
 }
 

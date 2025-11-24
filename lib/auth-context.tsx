@@ -420,19 +420,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = async (email: string, password: string): Promise<void> => {
+    console.debug('🔐 Login attempt for:', email);
+
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
 
     if (error) {
+      console.error('❌ Login failed:', error.message);
       safeLogSupabaseError('login', error);
       throw error;
     }
 
     if (data.user) {
+      console.debug('✅ Supabase auth successful, fetching profile...');
       const userProfile = await fetchUserProfile(data.user);
       setUser(userProfile);
+      console.debug('✅ User state updated:', userProfile ? userProfile.username : 'null');
     }
   };
 
@@ -441,6 +446,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     username: string,
     password: string
   ): Promise<void> => {
+    console.debug('📝 Registration attempt for:', { email, username });
+
     // First check if username is already taken
     const { data: existingProfile } = await supabase
       .from('profiles')
@@ -449,8 +456,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .single();
 
     if (existingProfile) {
+      console.warn('⚠️ Username already taken:', username);
       throw new Error('Username already in use');
     }
+
+    console.debug('✅ Username available, creating account...');
 
     const { data, error } = await supabase.auth.signUp({
       email,
@@ -463,6 +473,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     if (error) {
+      console.error('❌ Registration failed:', error.message);
       safeLogSupabaseError('register', error);
 
       // Provide user-friendly error messages for common cases
@@ -480,10 +491,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     if (data.user) {
+      console.debug('✅ Supabase signup successful, fetching profile...');
       // Use retry logic for post-registration profile fetch
       // The database trigger may not have created the profile yet
       const userProfile = await fetchUserProfile(data.user);
       setUser(userProfile);
+      console.debug('✅ User state updated after registration:', userProfile ? userProfile.username : 'null');
     }
   };
 

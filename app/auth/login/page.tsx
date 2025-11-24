@@ -32,8 +32,14 @@ export default function LoginPage() {
 
     try {
       await login(email, password);
+      console.debug('Login successful - auth state updated');
       toast.success("Successfully logged in!");
+
+      // Small delay to ensure auth state propagates
+      await new Promise(resolve => setTimeout(resolve, 100));
+
       router.push("/rankings");
+      router.refresh(); // Force refresh to update all components
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Login failed");
     } finally {

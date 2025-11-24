@@ -41,12 +41,23 @@ export default function RegisterPage() {
       return;
     }
 
+    if (username.length < 3) {
+      toast.error("Username must be at least 3 characters");
+      return;
+    }
+
     setIsLoading(true);
 
     try {
       await register(email, username, password);
+      console.debug('Registration successful - auth state updated');
       toast.success("Account created successfully!");
+
+      // Small delay to ensure auth state and profile propagate
+      await new Promise(resolve => setTimeout(resolve, 100));
+
       router.push("/rankings");
+      router.refresh(); // Force refresh to update all components
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Registration failed");
     } finally {

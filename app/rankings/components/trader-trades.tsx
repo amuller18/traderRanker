@@ -40,15 +40,12 @@ export function TraderTrades({ trades, currentPage, totalPages, totalTrades, tra
     router.push(`?${params.toString()}`)
   }
 
-  // Update ROI for a single trade
-  const updateTradeRoi = async (trade: Trade) => {
-    if (fetchedTokensRef.current.has(trade.ca)) return
-    
-    setLoadingStates(prev => ({ ...prev, [trade.ca]: true }))
-    setErrorStates(prev => ({ ...prev, [trade.ca]: false }))
-    
+  // Fetch all token prices in one bulk request
+  const fetchAllTokenPrices = async (tokenAddresses: string[]) => {
+    if (tokenAddresses.length === 0) return
+
     try {
-      // Use the new CoinGecko bulk price endpoint
+      console.log(`📊 Fetching prices for ${tokenAddresses.length} tokens in bulk...`)
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/bulk-token-prices`,
         {
@@ -58,51 +55,43 @@ export function TraderTrades({ trades, currentPage, totalPages, totalTrades, tra
             'Cache-Control': 'no-cache',
             'Pragma': 'no-cache'
           },
-          body: JSON.stringify({ tokens: [trade.ca] })
+          body: JSON.stringify({ tokens: tokenAddresses })
         }
       )
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        let errorMessage = errorData.error || `Failed to fetch token price: ${response.status}`
-        
-        if (response.status === 429) {
-          errorMessage = "Rate limit exceeded. Please try again in a few moments."
-        } else if (response.status === 503) {
-          errorMessage = "Service temporarily unavailable. Please try again later."
-        }
-        
-        throw new Error(errorMessage)
+        throw new Error(`Failed to fetch bulk prices: ${response.status}`)
       }
-      
+
       const results = await response.json()
-      const tokenResult = results.find((r: any) => r.token === trade.ca)
-      
-      if (!tokenResult) {
-        throw new Error("Token result not found")
-      }
-      
-      if (tokenResult.error) {
-        throw new Error(tokenResult.error)
-      }
-      
-      // Use the market cap from CoinGecko
-      setTokenInfos(prev => ({
-        ...prev,
-        [trade.ca]: {
-          fdv: tokenResult.market_cap,
-          price: tokenResult.price,
-          volume24h: 0,
-          liquidity: 0
+      console.log(`✅ Received ${results.length} price results`)
+
+      // Update all token infos at once
+      const newTokenInfos: Record<string, NonNullable<TokenInfo['marketInfo']>> = {}
+
+      results.forEach((result: any) => {
+        if (result.error) {
+          console.warn(`⚠️ Error for token ${result.token}:`, result.error)
+          setErrorStates(prev => ({ ...prev, [result.token]: true }))
+        } else {
+          newTokenInfos[result.token] = {
+            fdv: result.market_cap,
+            price: result.price,
+            volume24h: 0,
+            liquidity: 0
+          }
+          fetchedTokensRef.current.add(result.token)
         }
-      }))
-      fetchedTokensRef.current.add(trade.ca)
-      
+      })
+
+      setTokenInfos(prev => ({ ...prev, ...newTokenInfos }))
+
     } catch (error) {
-      console.error(`Error fetching token price for ${trade.ca}:`, error)
-      setErrorStates(prev => ({ ...prev, [trade.ca]: true }))
-    } finally {
-      setLoadingStates(prev => ({ ...prev, [trade.ca]: false }))
+      console.error('Error fetching bulk token prices:', error)
+      // Mark all tokens as failed
+      tokenAddresses.forEach(token => {
+        setErrorStates(prev => ({ ...prev, [token]: true }))
+      })
     }
   }
 
@@ -172,21 +161,16 @@ export function TraderTrades({ trades, currentPage, totalPages, totalTrades, tra
     return stats
   }
 
-  // Update ROI for all trades
+  // Fetch prices for all trades in one bulk request
   useEffect(() => {
-    const updates = trades.reduce((acc, trade) => {
-      if (!tokenInfos[trade.ca] && !loadingStates[trade.ca] && !fetchedTokensRef.current.has(trade.ca)) {
-        acc.push(trade)
-      }
-      return acc
-    }, [] as Trade[])
+    const tokensToFetch = trades
+      .filter(trade => !fetchedTokensRef.current.has(trade.ca))
+      .map(trade => trade.ca)
+      // Remove duplicates
+      .filter((value, index, self) => self.indexOf(value) === index)
 
-    const processUpdates = async () => {
-      await Promise.all(updates.map(trade => updateTradeRoi(trade)))
-    }
-
-    if (updates.length > 0) {
-      processUpdates()
+    if (tokensToFetch.length > 0) {
+      fetchAllTokenPrices(tokensToFetch)
     }
   }, [trades, retryCount])
 
@@ -194,9 +178,29 @@ export function TraderTrades({ trades, currentPage, totalPages, totalTrades, tra
 
   // Handle retry for all failed tokens
   const handleRetry = () => {
-    setRetryCount(prev => prev + 1)
-    setErrorStates({})
-    fetchedTokensRef.current.clear()
+    const failedTokens = Object.keys(errorStates).filter(token => errorStates[token])
+    if (failedTokens.length > 0) {
+      setErrorStates({})
+      failedTokens.forEach(token => fetchedTokensRef.current.delete(token))
+      fetchAllTokenPrices(failedTokens)
+    }
+  }
+
+  // Format date - handle both Unix timestamp (seconds) and ISO string
+  const formatDate = (dateValue: string | number) => {
+    try {
+      const dateNum = typeof dateValue === 'string' ? parseFloat(dateValue) : dateValue
+      // If it's a Unix timestamp (less than year 3000 in seconds)
+      if (dateNum < 32503680000) {
+        // Multiply by 1000 to convert seconds to milliseconds
+        return format(new Date(dateNum * 1000), "MMM d, yyyy HH:mm")
+      }
+      // Otherwise treat as ISO string or milliseconds
+      return format(new Date(dateValue), "MMM d, yyyy HH:mm")
+    } catch (error) {
+      console.error('Error formatting date:', dateValue, error)
+      return 'Invalid date'
+    }
   }
 
   return (
@@ -328,7 +332,7 @@ export function TraderTrades({ trades, currentPage, totalPages, totalTrades, tra
           <table className="w-full">
             <thead>
               <tr className="border-b bg-muted/50">
-                <th className="px-4 py-3 text-left text-sm font-medium w-[120px]">Date</th>
+                <th className="px-4 py-3 text-left text-sm font-medium w-[160px]">Date & Time</th>
                 <th className="px-4 py-3 text-left text-sm font-medium">Token</th>
                 <th className="px-4 py-3 text-left text-sm font-medium">Initial MC</th>
                 <th className="px-4 py-3 text-left text-sm font-medium">Current MC</th>
@@ -344,7 +348,7 @@ export function TraderTrades({ trades, currentPage, totalPages, totalTrades, tra
 
                 return (
                   <tr key={`${trade.caller}_${trade.ca}_${trade.date_called}`} className="border-b">
-                    <td className="px-4 py-3 text-sm whitespace-nowrap">{format(new Date(trade.date_called), "MMM d, yyyy")}</td>
+                    <td className="px-4 py-3 text-sm whitespace-nowrap">{formatDate(trade.date_called)}</td>
                     <td className="px-4 py-3 text-sm">
                       <Link href={`/token-analysis/${trade.ca}`} className="text-primary hover:underline">
                         {trade.ca}
@@ -352,35 +356,21 @@ export function TraderTrades({ trades, currentPage, totalPages, totalTrades, tra
                     </td>
                     <td className="px-4 py-3 text-sm">{formatMarketCap(trade.initial_mc)}</td>
                     <td className="px-4 py-3 text-sm">
-                      {isLoading ? (
-                        <span className="animate-pulse text-muted-foreground">•••</span>
-                      ) : hasError ? (
-                        <div className="flex items-center gap-2">
-                          <span className="text-muted-foreground">Failed to load price data</span>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setErrorStates(prev => ({ ...prev, [trade.ca]: false }))
-                              fetchedTokensRef.current.delete(trade.ca)
-                              updateTradeRoi(trade)
-                            }}
-                            className="h-6 w-6 p-0"
-                          >
-                            <RefreshCw className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      ) : (
+                      {hasError ? (
+                        <span className="text-muted-foreground">N/A</span>
+                      ) : tokenInfos[trade.ca] ? (
                         formatMarketCap(currentMc)
+                      ) : (
+                        <span className="animate-pulse text-muted-foreground">Loading...</span>
                       )}
                     </td>
                     <td className={`px-4 py-3 text-sm ${getPerformanceClass(roi)}`}>
-                      {isLoading ? (
-                        <span className="animate-pulse text-muted-foreground">•••%</span>
-                      ) : hasError ? (
-                        <span className="text-muted-foreground">Failed to load price data</span>
-                      ) : (
+                      {hasError ? (
+                        <span className="text-muted-foreground">N/A</span>
+                      ) : tokenInfos[trade.ca] ? (
                         `${roi.toFixed(1)}%`
+                      ) : (
+                        <span className="animate-pulse text-muted-foreground">Loading...</span>
                       )}
                     </td>
                   </tr>

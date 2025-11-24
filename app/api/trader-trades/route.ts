@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { fetchTraderTrades } from '@/app/actions/trader-actions'
+import { fetchTraderTrades } from '@/lib/api-client'
 
 export async function GET(request: NextRequest) {
   try {

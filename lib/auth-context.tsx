@@ -35,18 +35,60 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+/**
+ * Safely logs Supabase errors without causing runtime exceptions.
+ * Guards against null/undefined error objects and safely accesses properties.
+ *
+ * @param context - Description of where the error occurred (e.g., 'fetchUserProfile')
+ * @param err - The error object from Supabase (can be null, undefined, or any shape)
+ */
+function safeLogSupabaseError(context: string, err: unknown): void {
+  // Always log the raw error first to avoid losing information
+  console.error(`${context} - Supabase error (raw):`, err);
+
+  // Guard: If error is null, undefined, or not an object, we can't safely access properties
+  if (!err || typeof err !== 'object') {
+    console.error(`${context} - Error is not an object, skipping property access`);
+    return;
+  }
+
+  // Safely extract common Supabase error properties with fallbacks
+  // Supabase errors typically have: code, message, details, hint, status
+  const errorObj = err as Record<string, unknown>;
+  const safeError = {
+    code: errorObj.code ?? errorObj.status ?? null,
+    message: errorObj.message ?? errorObj.error_description ?? 'Unknown error',
+    details: errorObj.details ?? null,
+    hint: errorObj.hint ?? null,
+  };
+
+  console.error(`${context} - Supabase error (safe):`, safeError);
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const supabase = createClient();
 
-  // Fetch user profile from Supabase with retry logic for race conditions
+  /**
+   * Fetches user profile from Supabase with retry logic for race conditions.
+   *
+   * Race condition handling: After user registration, the database trigger creates
+   * a profile row asynchronously. If we query too quickly, we get PGRST116 (no rows).
+   * We retry with exponential backoff to handle this gracefully.
+   *
+   * @param authUser - The authenticated Supabase user object
+   * @param retries - Number of retry attempts remaining (default: 3)
+   * @param delay - Delay in milliseconds before retrying (default: 1000ms)
+   * @returns User profile object or null if not found/error occurred
+   */
   const fetchUserProfile = async (
     authUser: SupabaseUser,
     retries = 3,
     delay = 1000
   ): Promise<User | null> => {
     try {
+      // Query the profiles table for this user's profile
       const { data: profile, error } = await supabase
         .from('profiles')
         .select('*')
@@ -54,24 +96,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .single();
 
       if (error) {
-        // Log detailed error information
-        console.error('Error fetching profile:', {
-          code: error.code,
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-        });
+        // Use safe error logging to avoid runtime exceptions from null/undefined errors
+        safeLogSupabaseError('fetchUserProfile', error);
 
-        // Handle race condition: profile not created yet after signup (PGRST116 = no rows found)
-        if (error.code === 'PGRST116' && retries > 0) {
+        // Handle race condition: profile not created yet after signup
+        // PGRST116 = PostgreSQL REST API error code for "no rows returned"
+        // We need to safely check error.code since error might not have this property
+        const errorCode = (error as any)?.code ?? null;
+        if (errorCode === 'PGRST116' && retries > 0) {
           console.log(`Profile not found, retrying in ${delay}ms... (${retries} retries left)`);
+          // Exponential backoff: wait, then retry with longer delay
           await new Promise(resolve => setTimeout(resolve, delay));
           return fetchUserProfile(authUser, retries - 1, delay * 1.5);
         }
 
+        // Other errors or out of retries - return null
         return null;
       }
 
+      // Successfully fetched profile - construct User object
       return {
         id: authUser.id,
         email: authUser.email || '',
@@ -81,7 +124,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         avatar_url: profile?.avatar_url,
       };
     } catch (error) {
-      console.error('Error in fetchUserProfile:', error);
+      // Catch any unexpected exceptions (network errors, etc.)
+      safeLogSupabaseError('fetchUserProfile - unexpected exception', error);
       return null;
     }
   };

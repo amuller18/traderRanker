@@ -449,7 +449,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .single();
 
     if (existingProfile) {
-      throw new Error('Username is already taken');
+      throw new Error('Username already in use');
     }
 
     const { data, error } = await supabase.auth.signUp({
@@ -464,6 +464,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (error) {
       safeLogSupabaseError('register', error);
+
+      // Provide user-friendly error messages for common cases
+      const errorMessage = error.message.toLowerCase();
+
+      if (errorMessage.includes('already registered') ||
+          errorMessage.includes('already been registered') ||
+          errorMessage.includes('duplicate') ||
+          errorMessage.includes('unique constraint') && errorMessage.includes('email')) {
+        throw new Error('Email already registered');
+      }
+
+      // For other errors, use the original error message
       throw error;
     }
 

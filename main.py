@@ -2606,13 +2606,15 @@ async def get_filtered_trades(
                 timestamp = t.get('timestamp')
                 if timestamp:  # Skip trades with empty or missing timestamp
                     try:
+                        # Convert timestamp to int (handles Decimal from DynamoDB or string)
+                        timestamp_int = int(timestamp)
                         # Direct unix timestamp comparison
-                        if (from_timestamp is None or timestamp >= from_timestamp) and \
-                           (to_timestamp is None or timestamp <= to_timestamp):
+                        if (from_timestamp is None or timestamp_int >= from_timestamp) and \
+                           (to_timestamp is None or timestamp_int <= to_timestamp):
                             filtered_trades.append(t)
-                    except (TypeError, AttributeError):
+                    except (ValueError, TypeError):
                         # Skip trades with invalid timestamp
-                        logger.warning(f"Skipping trade with invalid timestamp: {timestamp}")
+                        logger.warning(f"Skipping trade with invalid timestamp type: {timestamp} (type: {type(timestamp)})")
             logger.info(f"After date filter: {len(filtered_trades)} trades (from {len(trades)})")
             trades = filtered_trades
 

@@ -748,6 +748,87 @@ class TradeBasedSimulationRequest(BaseModel):
             return ["0.05:1.0"] if info.field_name == "tp" else []
         return v
 
+# ---------------------------------------------------------------------------
+# Trader/Trade API Models
+# ---------------------------------------------------------------------------
+class SparklineData(BaseModel):
+    price: List[float] = Field(default_factory=list)
+
+class Trade(BaseModel):
+    ca: str
+    caller: str
+    date_called: str
+    high_time: str
+    low_time: str
+    initial_mc: float
+    current_mc: float
+    high_mc: float
+    low_mc: float
+    high_price: float
+    low_price: float
+    price_change_24h: float = 0
+    volume_24h: float = 0
+    liquidity: float = 0
+    holders: int = 0
+    market_cap_rank: int = 0
+    market_cap_change_24h: float = 0
+    market_cap_change_percentage_24h: float = 0
+    market_cap_dominance: float = 0
+    fully_diluted_valuation: float = 0
+    total_volume: float = 0
+    high_24h: float = 0
+    low_24h: float = 0
+    price_change_percentage_24h: float = 0
+    price_change_percentage_7d: float = 0
+    price_change_percentage_14d: float = 0
+    price_change_percentage_30d: float = 0
+    price_change_percentage_60d: float = 0
+    price_change_percentage_200d: float = 0
+    price_change_percentage_1y: float = 0
+    market_cap_change_24h_in_currency: float = 0
+    market_cap_change_percentage_24h_in_currency: float = 0
+    total_supply: float = 0
+    max_supply: float = 0
+    circulating_supply: float = 0
+    last_updated: str = ""
+    sparkline_in_7d: SparklineData = Field(default_factory=SparklineData)
+    price_change_percentage_1h_in_currency: float = 0
+    price_change_percentage_24h_in_currency: float = 0
+    price_change_percentage_7d_in_currency: float = 0
+    price_change_percentage_14d_in_currency: float = 0
+    price_change_percentage_30d_in_currency: float = 0
+    price_change_percentage_60d_in_currency: float = 0
+    price_change_percentage_200d_in_currency: float = 0
+    price_change_percentage_1y_in_currency: float = 0
+    roi: float = 0
+    roi_at_high: float = 0
+    roi_at_low: float = 0
+    profit_at_high: float = 0
+    profit_at_low: float = 0
+    profit: float = 0
+    is_winner: bool = False
+
+class TraderStats(BaseModel):
+    caller: str
+    win_rate: float = 0
+    total_calls: int = 0
+    winning_calls: int = 0
+    average_roi: float = 0
+    micro_cap_roi: float = 0
+    micro_cap_winrate: float = 0
+    small_cap_roi: float = 0
+    small_cap_winrate: float = 0
+    mid_cap_roi: float = 0
+    mid_cap_winrate: float = 0
+    large_cap_roi: float = 0
+    large_cap_winrate: float = 0
+    mega_cap_roi: float = 0
+    mega_cap_winrate: float = 0
+
+class DeleteTradeRequest(BaseModel):
+    caller: str
+    ca: str
+    date_called: str
 
 # ---------------------------------------------------------------------------
 # FastAPI app & CORS
@@ -2190,6 +2271,120 @@ async def try_dexscreener_fallback(session: aiohttp.ClientSession, token: str) -
     except Exception as e:
         logger.error(f"Error in DexScreener fallback for {token}: {e}")
         return None
+
+# ---------------------------------------------------------------------------
+# Trader and Trade API Endpoints
+# ---------------------------------------------------------------------------
+
+@app.get("/api/traders/stats")
+async def get_trader_stats(
+    winRateMin: Optional[float] = None,
+    winRateMax: Optional[float] = None,
+    totalCallsMin: Optional[int] = None,
+    totalCallsMax: Optional[int] = None,
+    roiMin: Optional[float] = None,
+    roiMax: Optional[float] = None,
+    search: Optional[str] = None
+) -> List[TraderStats]:
+    """
+    Get trader statistics with optional filtering.
+    TODO: Implement actual data retrieval from database.
+    """
+    logger.info("GET /api/traders/stats - TODO: Implement later")
+    # Dummy response - return empty list for now
+    return []
+
+@app.get("/api/traders/{caller}/trades")
+async def get_trader_trades(caller: str) -> List[Trade]:
+    """
+    Get all trades for a specific trader.
+    TODO: Implement actual data retrieval from database.
+    """
+    logger.info(f"GET /api/traders/{caller}/trades - TODO: Implement later")
+    # Dummy response - return empty list for now
+    return []
+
+@app.get("/api/trades")
+async def get_all_trades() -> List[Trade]:
+    """
+    Get all trades (unfiltered).
+    TODO: Implement actual data retrieval from database.
+    """
+    logger.info("GET /api/trades - TODO: Implement later")
+    # Dummy response - return empty list for now
+    return []
+
+@app.get("/api/trades/filtered")
+async def get_filtered_trades(
+    roiMin: Optional[float] = None,
+    roiMax: Optional[float] = None,
+    mcMin: Optional[float] = None,
+    mcMax: Optional[float] = None,
+    dateFrom: Optional[str] = None,
+    dateTo: Optional[str] = None,
+    search: Optional[str] = None,
+    trader: Optional[str] = None,
+    timeframe: Optional[str] = None
+) -> List[Trade]:
+    """
+    Get filtered trades based on various criteria.
+    TODO: Implement actual data retrieval and filtering from database.
+    """
+    logger.info("GET /api/trades/filtered - TODO: Implement later")
+    # Dummy response - return empty list for now
+    return []
+
+@app.post("/api/traders")
+async def create_or_update_trader(trader: TraderStats) -> Dict[str, Any]:
+    """
+    Create or update a trader.
+    TODO: Implement actual database write operation.
+    """
+    logger.info(f"POST /api/traders for {trader.caller} - TODO: Implement later")
+    # Dummy response - return success message
+    return {
+        "success": True,
+        "message": f"Trader {trader.caller} would be saved (not implemented yet)"
+    }
+
+@app.post("/api/trades")
+async def create_or_update_trade(trade: Trade) -> Dict[str, Any]:
+    """
+    Create or update a trade.
+    TODO: Implement actual database write operation.
+    """
+    logger.info(f"POST /api/trades for {trade.caller} - TODO: Implement later")
+    # Dummy response - return success message
+    return {
+        "success": True,
+        "message": f"Trade for {trade.caller} would be saved (not implemented yet)"
+    }
+
+@app.delete("/api/traders/{caller}")
+async def delete_trader(caller: str) -> Dict[str, Any]:
+    """
+    Delete a trader.
+    TODO: Implement actual database delete operation.
+    """
+    logger.info(f"DELETE /api/traders/{caller} - TODO: Implement later")
+    # Dummy response - return success message
+    return {
+        "success": True,
+        "message": f"Trader {caller} would be deleted (not implemented yet)"
+    }
+
+@app.delete("/api/trades")
+async def delete_trade(request: DeleteTradeRequest) -> Dict[str, Any]:
+    """
+    Delete a trade.
+    TODO: Implement actual database delete operation.
+    """
+    logger.info(f"DELETE /api/trades for {request.caller} - TODO: Implement later")
+    # Dummy response - return success message
+    return {
+        "success": True,
+        "message": f"Trade for {request.caller} would be deleted (not implemented yet)"
+    }
 
 # ---------------------------------------------------------------------------
 # Dev entry-point

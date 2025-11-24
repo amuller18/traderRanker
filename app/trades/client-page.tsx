@@ -6,7 +6,7 @@ import { TradesFilterPanel } from "./components/trades-filter-panel"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { RefreshCw } from "lucide-react"
-import { fetchAllTradesFiltered } from "../actions/trader-actions"
+import { fetchAllTradesFiltered } from "@/lib/api-client"
 import type { Trade, TradeFilterOptions } from "@/lib/trader-data"
 
 interface ClientPageProps {

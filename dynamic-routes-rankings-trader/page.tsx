@@ -1,4 +1,4 @@
-import { fetchTraderStats, fetchTraderTrades } from "@/app/actions/trader-actions"
+import { fetchTraderStats, fetchTraderTrades } from "@/lib/api-client"
 import { isUsingMockData } from "@/lib/trader-data"
 import { PerformanceMetrics } from "../components/performance-metrics"
 import { MarketCapPerformance } from "../components/market-cap-performance"

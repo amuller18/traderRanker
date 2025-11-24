@@ -1,5 +1,5 @@
 import { getTokenInfo, getTokenSupply } from "@/lib/token-api"
-import { fetchAllTrades } from "@/app/actions/trader-actions"
+import { fetchAllTrades } from "@/lib/api-client"
 import { isUsingMockData } from "@/lib/trader-data"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"

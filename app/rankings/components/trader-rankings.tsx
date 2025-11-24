@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { ChevronDown, ChevronUp, RefreshCw } from "lucide-react"
 import { formatROI } from "@/lib/utils"
-import { fetchTraderStats } from "@/app/actions/trader-actions"
+import { fetchTraderStats } from "@/lib/api-client"
 import { TraderRankingsSkeleton } from "./trader-rankings-skeleton"
 import Link from "next/link"
 

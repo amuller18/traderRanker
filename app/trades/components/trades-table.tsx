@@ -34,11 +34,21 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
 
   // Calculate ROI for a trade (same logic as token-analysis page)
   const calculateRoi = (trade: Trade) => {
-    const currentMc = tokenInfos[trade.ca]?.currentMc || 0
+    const currentMc = tokenInfos[trade.ca]?.currentMc
     const initialMc = trade.initial_mc
-    
-    if (initialMc === 0) return 0
-    
+
+    // If we don't have current market cap data yet, return null to indicate loading
+    if (currentMc === undefined) return null
+
+    // If initial MC is 0 or current MC is 0, can't calculate ROI
+    if (initialMc === 0 || currentMc === 0) return null
+
+    // Cap extremely high ROIs for very small market caps
+    if (currentMc < 10000) {
+      const rawRoi = ((currentMc - initialMc) / initialMc) * 100
+      return Math.min(rawRoi, 1000)
+    }
+
     return ((currentMc - initialMc) / initialMc) * 100
   }
 
@@ -52,8 +62,8 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
       } else if (sortField === "caller") {
         return sortDirection === "asc" ? a.caller.localeCompare(b.caller) : b.caller.localeCompare(a.caller)
       } else if (sortField === "roi") {
-        const aRoi = calculateRoi(a)
-        const bRoi = calculateRoi(b)
+        const aRoi = calculateRoi(a) ?? -Infinity
+        const bRoi = calculateRoi(b) ?? -Infinity
         return sortDirection === "asc" ? aRoi - bRoi : bRoi - aRoi
       } else {
         const aValue = a[sortField]
@@ -121,23 +131,35 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
         }
 
         const data = await response.json()
-        
+
+        console.log('Bulk price API response:', data)
+
         // Process all results at once
         const tokenInfosUpdate: Record<string, { currentMc: number }> = {}
         const errorStatesUpdate: Record<string, boolean> = {}
-        
+
         uniqueTokens.forEach(trade => {
           const tokenResult = data.find((result: any) => result.token === trade.ca)
-          
+
+          console.log(`Token ${trade.ca}: API result =`, tokenResult, `Stored current_mc =`, trade.current_mc)
+
           if (tokenResult && tokenResult.market_cap > 0) {
             tokenInfosUpdate[trade.ca] = {
               currentMc: tokenResult.market_cap,
             }
             fetchedTokensRef.current.add(trade.ca)
-          } else {
+          } else if (trade.current_mc && trade.current_mc > 0) {
             // Fallback to stored current_mc if API doesn't have data
+            console.log(`Using fallback current_mc for ${trade.ca}:`, trade.current_mc)
             tokenInfosUpdate[trade.ca] = {
               currentMc: trade.current_mc,
+            }
+            fetchedTokensRef.current.add(trade.ca)
+          } else {
+            // No data available from API or stored
+            console.warn(`No market cap data available for ${trade.ca}`)
+            tokenInfosUpdate[trade.ca] = {
+              currentMc: 0,
             }
             fetchedTokensRef.current.add(trade.ca)
           }
@@ -149,19 +171,27 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
         
       } catch (error) {
         console.error('Error updating ROI for tokens:', error)
-        
+
         // Fallback to stored data for all tokens on error
         const tokenInfosUpdate: Record<string, { currentMc: number }> = {}
         const errorStatesUpdate: Record<string, boolean> = {}
-        
+
         uniqueTokens.forEach(trade => {
-          tokenInfosUpdate[trade.ca] = {
-            currentMc: trade.current_mc,
+          if (trade.current_mc && trade.current_mc > 0) {
+            console.log(`Fallback: Using stored current_mc for ${trade.ca}:`, trade.current_mc)
+            tokenInfosUpdate[trade.ca] = {
+              currentMc: trade.current_mc,
+            }
+          } else {
+            console.warn(`Fallback: No current_mc available for ${trade.ca}`)
+            tokenInfosUpdate[trade.ca] = {
+              currentMc: 0,
+            }
           }
           fetchedTokensRef.current.add(trade.ca)
           errorStatesUpdate[trade.ca] = true
         })
-        
+
         setTokenInfos(prev => ({ ...prev, ...tokenInfosUpdate }))
         setErrorStates(prev => ({ ...prev, ...errorStatesUpdate }))
       } finally {
@@ -178,7 +208,8 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
     if (uniqueTokens.length > 0) {
       processUpdates()
     }
-  }, [currentPage, retryCount]) // Only run when page changes or retry is triggered
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage, retryCount, paginatedTrades]) // Run when page changes, retry is triggered, or trades change
 
   const handleSort = (field: SortField) => {
     if (field === sortField) {
@@ -368,17 +399,20 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
                 const roi = calculateRoi(trade)
                 const isLoading = loadingStates[trade.ca]
                 const hasError = errorStates[trade.ca]
+                const currentMc = tokenInfos[trade.ca]?.currentMc
 
                 return (
                   <TableRow key={`${trade.caller}-${trade.ca}-${trade.date_called}`}>
-                    <TableCell>{formatDate(trade.date_called)}</TableCell>
+                    <TableCell>
+                      {trade.date_called ? formatDate(trade.date_called) : <span className="text-muted-foreground">N/A</span>}
+                    </TableCell>
                     <TableCell>
                       <Link href={`/rankings/${encodeURIComponent(trade.caller)}`} className="hover:underline text-primary">
                         {trade.caller}
                       </Link>
                     </TableCell>
                     <TableCell>
-                      <Link 
+                      <Link
                         href={`/token-analysis/${encodeURIComponent(trade.ca)}`}
                         className="hover:underline text-primary font-mono truncate max-w-[200px] block"
                         title={trade.ca}
@@ -386,13 +420,23 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
                         {trade.ca.substring(0, 6)}...{trade.ca.substring(trade.ca.length - 4)}
                       </Link>
                     </TableCell>
-                    <TableCell>{formatMarketCap(trade.initial_mc)}</TableCell>
-                    <TableCell className={getPerformanceClass(roi)}>
+                    <TableCell>
+                      {trade.initial_mc > 0 ? (
+                        formatMarketCap(trade.initial_mc)
+                      ) : currentMc && currentMc > 0 ? (
+                        <span className="text-muted-foreground italic" title="Using current MC (initial MC not available)">
+                          {formatMarketCap(currentMc)}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">N/A</span>
+                      )}
+                    </TableCell>
+                    <TableCell className={roi !== null ? getPerformanceClass(roi) : ""}>
                       {isLoading ? (
                         <span className="animate-pulse text-muted-foreground">•••%</span>
                       ) : hasError ? (
                         <div className="flex items-center gap-2">
-                          <span className="text-muted-foreground">Failed to load price data</span>
+                          <span className="text-xs text-muted-foreground">Error</span>
                           <Button
                             variant="ghost"
                             size="sm"
@@ -406,8 +450,10 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
                             <RefreshCw className="h-4 w-4" />
                           </Button>
                         </div>
-                      ) : (
+                      ) : roi !== null ? (
                         `${roi.toFixed(1)}%`
+                      ) : (
+                        <span className="text-muted-foreground">N/A</span>
                       )}
                     </TableCell>
                     <TableCell>

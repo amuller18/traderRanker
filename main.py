@@ -2544,10 +2544,33 @@ async def get_filtered_trades(
 
         if dateFrom:
             from_dt = datetime.fromisoformat(dateFrom.replace('Z', '+00:00'))
-            trades = [t for t in trades if datetime.fromisoformat(t.get('date_called', '').replace('Z', '+00:00')) >= from_dt]
+            filtered_trades = []
+            for t in trades:
+                date_called = t.get('date_called', '')
+                if date_called:  # Skip trades with empty or missing date_called
+                    try:
+                        trade_dt = datetime.fromisoformat(date_called.replace('Z', '+00:00'))
+                        if trade_dt >= from_dt:
+                            filtered_trades.append(t)
+                    except (ValueError, AttributeError):
+                        # Skip trades with invalid date format
+                        logger.warning(f"Skipping trade with invalid date_called: {date_called}")
+            trades = filtered_trades
+
         if dateTo:
             to_dt = datetime.fromisoformat(dateTo.replace('Z', '+00:00'))
-            trades = [t for t in trades if datetime.fromisoformat(t.get('date_called', '').replace('Z', '+00:00')) <= to_dt]
+            filtered_trades = []
+            for t in trades:
+                date_called = t.get('date_called', '')
+                if date_called:  # Skip trades with empty or missing date_called
+                    try:
+                        trade_dt = datetime.fromisoformat(date_called.replace('Z', '+00:00'))
+                        if trade_dt <= to_dt:
+                            filtered_trades.append(t)
+                    except (ValueError, AttributeError):
+                        # Skip trades with invalid date format
+                        logger.warning(f"Skipping trade with invalid date_called: {date_called}")
+            trades = filtered_trades
 
         if search:
             search_lower = search.lower()

@@ -40,6 +40,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const supabase = createClient();
 
+  // Log Supabase configuration on mount (only in development)
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Supabase config:', {
+        url: process.env.NEXT_PUBLIC_SUPABASE_URL ? 'configured' : 'MISSING',
+        anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? 'configured' : 'MISSING',
+      });
+    }
+  }, []);
+
   // Fetch user profile from Supabase with retry logic for race conditions
   const fetchUserProfile = async (
     authUser: SupabaseUser,
@@ -47,15 +57,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     delay = 1000
   ): Promise<User | null> => {
     try {
+      console.log('Fetching profile for user:', authUser.id);
       const { data: profile, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', authUser.id)
         .single();
 
+      console.log('Query result - data:', profile, 'error:', error);
+
       if (error) {
-        // Log detailed error information
-        console.error('Error fetching profile:', {
+        // Log the complete error object to understand its structure
+        console.error('Error fetching profile - Full error:', error);
+        console.error('Error fetching profile - Stringified:', JSON.stringify(error, null, 2));
+        console.error('Error properties:', {
           code: error.code,
           message: error.message,
           details: error.details,

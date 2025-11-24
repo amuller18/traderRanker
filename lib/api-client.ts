@@ -76,15 +76,44 @@ export async function fetchTraderStats(filters?: FilterOptions): Promise<TraderS
 }
 
 /**
- * Fetch trades for a specific trader
+ * Fetch trades for a specific trader with optional pagination
  */
-export async function fetchTraderTrades(caller: string): Promise<Trade[]> {
+export async function fetchTraderTrades(
+  caller: string,
+  options?: { limit?: number; offset?: number }
+): Promise<Trade[]> {
   try {
     const encodedCaller = encodeURIComponent(caller)
-    return await apiFetch<Trade[]>(`/api/traders/${encodedCaller}/trades`)
+    const queryParams = new URLSearchParams()
+
+    if (options?.limit) {
+      queryParams.set('limit', options.limit.toString())
+    }
+    if (options?.offset) {
+      queryParams.set('offset', options.offset.toString())
+    }
+
+    const query = queryParams.toString()
+    const endpoint = `/api/traders/${encodedCaller}/trades${query ? `?${query}` : ''}`
+
+    return await apiFetch<Trade[]>(endpoint)
   } catch (error) {
     console.error(`Error in fetchTraderTrades for ${caller}:`, error)
     return []
+  }
+}
+
+/**
+ * Get total trade count for a trader
+ */
+export async function fetchTraderTradeCount(caller: string): Promise<number> {
+  try {
+    const encodedCaller = encodeURIComponent(caller)
+    const trades = await apiFetch<Trade[]>(`/api/traders/${encodedCaller}/trades?count=true`)
+    return Array.isArray(trades) ? trades.length : 0
+  } catch (error) {
+    console.error(`Error in fetchTraderTradeCount for ${caller}:`, error)
+    return 0
   }
 }
 

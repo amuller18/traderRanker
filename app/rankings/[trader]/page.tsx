@@ -24,7 +24,7 @@ interface TraderDetailPageProps {
 export default async function TraderDetailPage({ params, searchParams }: TraderDetailPageProps) {
   const traderId = decodeURIComponent(params.trader)
   const page = Number(searchParams.page) || 1
-  const pageSize = Number(searchParams.pageSize) || 25
+  const pageSize = 100 // Load 100 trades per page
   let usingMockData = true
 
   try {
@@ -35,113 +35,40 @@ export default async function TraderDetailPage({ params, searchParams }: TraderD
     // Continue with assumption of mock data
   }
 
-  // Fetch all trades for the trader
-  const allTrades = await fetchTraderTrades(traderId)
+  // Fetch trader stats from API
+  const allTraders = await fetchTraderStats()
+  const trader = allTraders.find(t => t.caller === traderId)
 
-  if (allTrades.length === 0) {
+  if (!trader) {
+    console.error(`Trader ${traderId} not found in stats`)
     notFound()
   }
 
-  // Fetch current market data for all trades
-  const tokenInfos = await Promise.all(
-    allTrades.map(async (trade) => {
-      try {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/token-info?address=${trade.ca}`)
-        if (response.ok) {
-          const data = await response.json()
-          return {
-            token: trade.ca,
-            marketInfo: data.marketInfo
-          }
-        }
-      } catch (error) {
-        console.error(`Error fetching token info for ${trade.ca}:`, error)
-      }
-      return {
-        token: trade.ca,
-        marketInfo: null
-      }
-    })
-  )
-
-  // Calculate trader stats from trades with current market data
-  const total_calls = allTrades.length
-  const winning_calls = allTrades.filter((trade, index) => {
-    const tokenInfo = tokenInfos[index]
-    if (!tokenInfo?.marketInfo) return false
-    const currentMc = tokenInfo.marketInfo.fdv || 0
-    return currentMc > trade.initial_mc
-  }).length
-  const win_rate = total_calls > 0 ? winning_calls / total_calls : 0
-
-  // Calculate average ROI using current market data
-  const average_roi = total_calls > 0 ? allTrades.reduce((sum, trade, index) => {
-    const tokenInfo = tokenInfos[index]
-    if (!tokenInfo?.marketInfo) return sum
-    const currentMc = tokenInfo.marketInfo.fdv || 0
-    const roi = ((currentMc - trade.initial_mc) / trade.initial_mc) * 100
-    return sum + roi
-  }, 0) / total_calls : 0
-
-  // Calculate market cap performance
-  const microCapTrades = allTrades.filter(trade => trade.initial_mc < 1_000_000)
-  const smallCapTrades = allTrades.filter(trade => trade.initial_mc >= 1_000_000 && trade.initial_mc < 10_000_000)
-  const midCapTrades = allTrades.filter(trade => trade.initial_mc >= 10_000_000 && trade.initial_mc < 100_000_000)
-  const largeCapTrades = allTrades.filter(trade => trade.initial_mc >= 100_000_000 && trade.initial_mc < 1_000_000_000)
-  const megaCapTrades = allTrades.filter(trade => trade.initial_mc >= 1_000_000_000)
-
-  const calculateCapStats = (capTrades: Trade[]) => {
-    if (capTrades.length === 0) return { roi: 0, winrate: 0 }
-
-    let totalRoi = 0
-    let winningTrades = 0
-
-    capTrades.forEach((trade, index) => {
-      const tokenInfo = tokenInfos[allTrades.indexOf(trade)]
-      if (!tokenInfo?.marketInfo) return
-
-      const currentMc = tokenInfo.marketInfo.fdv || 0
-      const roi = ((currentMc - trade.initial_mc) / trade.initial_mc) * 100
-      totalRoi += roi
-      if (currentMc > trade.initial_mc) winningTrades++
-    })
-
-    return {
-      roi: totalRoi / capTrades.length,
-      winrate: winningTrades / capTrades.length
-    }
-  }
-
-  const microCapStats = calculateCapStats(microCapTrades)
-  const smallCapStats = calculateCapStats(smallCapTrades)
-  const midCapStats = calculateCapStats(midCapTrades)
-  const largeCapStats = calculateCapStats(largeCapTrades)
-  const megaCapStats = calculateCapStats(megaCapTrades)
-
-  const trader = {
-    caller: traderId,
-    total_calls,
-    winning_calls,
-    win_rate,
-    average_roi,
-    micro_cap_roi: microCapStats.roi,
-    micro_cap_winrate: microCapStats.winrate,
-    small_cap_roi: smallCapStats.roi,
-    small_cap_winrate: smallCapStats.winrate,
-    mid_cap_roi: midCapStats.roi,
-    mid_cap_winrate: midCapStats.winrate,
-    large_cap_roi: largeCapStats.roi,
-    large_cap_winrate: largeCapStats.winrate,
-    mega_cap_roi: megaCapStats.roi,
-    mega_cap_winrate: megaCapStats.winrate,
-  }
+  console.log(`📊 Loading trader profile: ${traderId}`)
+  console.log(`📈 Total calls: ${trader.total_calls}, Page: ${page}`)
 
   // Calculate pagination
-  const totalTrades = allTrades.length
+  const totalTrades = trader.total_calls
   const totalPages = Math.ceil(totalTrades / pageSize)
-  const startIndex = (page - 1) * pageSize
-  const endIndex = startIndex + pageSize
-  const paginatedTrades = allTrades.slice(startIndex, endIndex)
+  const offset = (page - 1) * pageSize
+
+  console.log(`📄 Fetching trades: limit=${pageSize}, offset=${offset}`)
+
+  // Fetch only the trades for the current page
+  const paginatedTrades = await fetchTraderTrades(traderId, {
+    limit: pageSize,
+    offset: offset
+  })
+
+  console.log(`✅ Fetched ${paginatedTrades.length} trades for page ${page}`)
+
+  if (paginatedTrades.length === 0 && page === 1) {
+    console.error(`No trades found for trader ${traderId}`)
+    notFound()
+  }
+
+  const startIndex = offset
+  const endIndex = startIndex + paginatedTrades.length
 
   return (
     <div className="min-h-screen gradient-background">

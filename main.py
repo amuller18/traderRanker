@@ -49,6 +49,9 @@ import pandas as pd
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
+import boto3
+from boto3.dynamodb.conditions import Key
+from botocore.exceptions import ClientError
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -72,6 +75,30 @@ logger.info("=" * 60)
 # Load environment variables
 # ---------------------------------------------------------------------------
 load_dotenv()
+
+# ---------------------------------------------------------------------------
+# DynamoDB Setup
+# ---------------------------------------------------------------------------
+# Initialize DynamoDB client
+try:
+    dynamodb = boto3.resource(
+        'dynamodb',
+        region_name=os.getenv('AWS_REGION', 'us-east-1'),
+        aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+        aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY')
+    )
+
+    TRADERS_TABLE = os.getenv('DYNAMODB_TRADERS_TABLE', 'CallerStatistics')
+    TRADES_TABLE = os.getenv('DYNAMODB_TRADES_TABLE', 'Trades')
+
+    traders_table = dynamodb.Table(TRADERS_TABLE)
+    trades_table = dynamodb.Table(TRADES_TABLE)
+
+    logger.info(f"DynamoDB initialized with tables: {TRADERS_TABLE}, {TRADES_TABLE}")
+except Exception as e:
+    logger.warning(f"DynamoDB initialization failed: {e}. API will return empty data.")
+    traders_table = None
+    trades_table = None
 
 # ---------------------------------------------------------------------------
 # Constants / config
@@ -2288,31 +2315,81 @@ async def get_trader_stats(
 ) -> List[TraderStats]:
     """
     Get trader statistics with optional filtering.
-    TODO: Implement actual data retrieval from database.
     """
-    logger.info("GET /api/traders/stats - TODO: Implement later")
-    # Dummy response - return empty list for now
-    return []
+    logger.info("GET /api/traders/stats")
+
+    if traders_table is None:
+        logger.warning("DynamoDB not available, returning empty list")
+        return []
+
+    try:
+        response = traders_table.scan()
+        traders = response.get('Items', [])
+
+        # Apply filters
+        if winRateMin is not None:
+            traders = [t for t in traders if t.get('win_rate', 0) >= winRateMin]
+        if winRateMax is not None:
+            traders = [t for t in traders if t.get('win_rate', 0) <= winRateMax]
+        if totalCallsMin is not None:
+            traders = [t for t in traders if t.get('total_calls', 0) >= totalCallsMin]
+        if totalCallsMax is not None:
+            traders = [t for t in traders if t.get('total_calls', 0) <= totalCallsMax]
+        if roiMin is not None:
+            traders = [t for t in traders if t.get('average_roi', 0) >= roiMin]
+        if roiMax is not None:
+            traders = [t for t in traders if t.get('average_roi', 0) <= roiMax]
+        if search:
+            search_lower = search.lower()
+            traders = [t for t in traders if search_lower in t.get('caller', '').lower()]
+
+        return [TraderStats(**t) for t in traders]
+    except Exception as e:
+        logger.error(f"Error fetching trader stats: {e}")
+        return []
 
 @app.get("/api/traders/{caller}/trades")
 async def get_trader_trades(caller: str) -> List[Trade]:
     """
     Get all trades for a specific trader.
-    TODO: Implement actual data retrieval from database.
     """
-    logger.info(f"GET /api/traders/{caller}/trades - TODO: Implement later")
-    # Dummy response - return empty list for now
-    return []
+    logger.info(f"GET /api/traders/{caller}/trades")
+
+    if trades_table is None:
+        logger.warning("DynamoDB not available, returning empty list")
+        return []
+
+    try:
+        from urllib.parse import unquote
+        decoded_caller = unquote(caller)
+
+        response = trades_table.query(
+            KeyConditionExpression=Key('caller').eq(decoded_caller)
+        )
+        trades = response.get('Items', [])
+        return [Trade(**t) for t in trades]
+    except Exception as e:
+        logger.error(f"Error fetching trades for {caller}: {e}")
+        return []
 
 @app.get("/api/trades")
 async def get_all_trades() -> List[Trade]:
     """
     Get all trades (unfiltered).
-    TODO: Implement actual data retrieval from database.
     """
-    logger.info("GET /api/trades - TODO: Implement later")
-    # Dummy response - return empty list for now
-    return []
+    logger.info("GET /api/trades")
+
+    if trades_table is None:
+        logger.warning("DynamoDB not available, returning empty list")
+        return []
+
+    try:
+        response = trades_table.scan()
+        trades = response.get('Items', [])
+        return [Trade(**t) for t in trades]
+    except Exception as e:
+        logger.error(f"Error fetching all trades: {e}")
+        return []
 
 @app.get("/api/trades/filtered")
 async def get_filtered_trades(
@@ -2328,63 +2405,177 @@ async def get_filtered_trades(
 ) -> List[Trade]:
     """
     Get filtered trades based on various criteria.
-    TODO: Implement actual data retrieval and filtering from database.
     """
-    logger.info("GET /api/trades/filtered - TODO: Implement later")
-    # Dummy response - return empty list for now
-    return []
+    logger.info("GET /api/trades/filtered")
+
+    if trades_table is None:
+        logger.warning("DynamoDB not available, returning empty list")
+        return []
+
+    try:
+        response = trades_table.scan()
+        trades = response.get('Items', [])
+
+        # Apply filters
+        if roiMin is not None or roiMax is not None:
+            filtered_trades = []
+            for trade in trades:
+                roi = ((trade.get('current_mc', 0) - trade.get('initial_mc', 0)) / trade.get('initial_mc', 1)) * 100 if trade.get('initial_mc', 0) > 0 else 0
+                if (roiMin is None or roi >= roiMin) and (roiMax is None or roi <= roiMax):
+                    filtered_trades.append(trade)
+            trades = filtered_trades
+
+        if mcMin is not None:
+            trades = [t for t in trades if t.get('initial_mc', 0) >= mcMin]
+        if mcMax is not None:
+            trades = [t for t in trades if t.get('initial_mc', 0) <= mcMax]
+
+        if dateFrom:
+            from_dt = datetime.fromisoformat(dateFrom.replace('Z', '+00:00'))
+            trades = [t for t in trades if datetime.fromisoformat(t.get('date_called', '').replace('Z', '+00:00')) >= from_dt]
+        if dateTo:
+            to_dt = datetime.fromisoformat(dateTo.replace('Z', '+00:00'))
+            trades = [t for t in trades if datetime.fromisoformat(t.get('date_called', '').replace('Z', '+00:00')) <= to_dt]
+
+        if search:
+            search_lower = search.lower()
+            trades = [t for t in trades if search_lower in t.get('ca', '').lower()]
+        if trader:
+            trades = [t for t in trades if t.get('caller') == trader]
+
+        return [Trade(**t) for t in trades]
+    except Exception as e:
+        logger.error(f"Error fetching filtered trades: {e}")
+        return []
 
 @app.post("/api/traders")
 async def create_or_update_trader(trader: TraderStats) -> Dict[str, Any]:
     """
     Create or update a trader.
-    TODO: Implement actual database write operation.
     """
-    logger.info(f"POST /api/traders for {trader.caller} - TODO: Implement later")
-    # Dummy response - return success message
-    return {
-        "success": True,
-        "message": f"Trader {trader.caller} would be saved (not implemented yet)"
-    }
+    logger.info(f"POST /api/traders for {trader.caller}")
+
+    if traders_table is None:
+        return {
+            "success": False,
+            "message": "DynamoDB not available"
+        }
+
+    if not trader.caller:
+        return {
+            "success": False,
+            "message": "Trader caller is required"
+        }
+
+    try:
+        traders_table.put_item(Item=trader.dict())
+        return {
+            "success": True,
+            "message": f"Trader {trader.caller} saved successfully"
+        }
+    except Exception as e:
+        logger.error(f"Error saving trader: {e}")
+        return {
+            "success": False,
+            "message": str(e)
+        }
 
 @app.post("/api/trades")
 async def create_or_update_trade(trade: Trade) -> Dict[str, Any]:
     """
     Create or update a trade.
-    TODO: Implement actual database write operation.
     """
-    logger.info(f"POST /api/trades for {trade.caller} - TODO: Implement later")
-    # Dummy response - return success message
-    return {
-        "success": True,
-        "message": f"Trade for {trade.caller} would be saved (not implemented yet)"
-    }
+    logger.info(f"POST /api/trades for {trade.caller}")
+
+    if trades_table is None:
+        return {
+            "success": False,
+            "message": "DynamoDB not available"
+        }
+
+    if not trade.caller or not trade.ca or not trade.date_called:
+        return {
+            "success": False,
+            "message": "Trade caller, ca, and date_called are required"
+        }
+
+    try:
+        trades_table.put_item(Item=trade.dict())
+        return {
+            "success": True,
+            "message": f"Trade for {trade.caller} saved successfully"
+        }
+    except Exception as e:
+        logger.error(f"Error saving trade: {e}")
+        return {
+            "success": False,
+            "message": str(e)
+        }
 
 @app.delete("/api/traders/{caller}")
 async def delete_trader(caller: str) -> Dict[str, Any]:
     """
     Delete a trader.
-    TODO: Implement actual database delete operation.
     """
-    logger.info(f"DELETE /api/traders/{caller} - TODO: Implement later")
-    # Dummy response - return success message
-    return {
-        "success": True,
-        "message": f"Trader {caller} would be deleted (not implemented yet)"
-    }
+    logger.info(f"DELETE /api/traders/{caller}")
+
+    if traders_table is None:
+        return {
+            "success": False,
+            "message": "DynamoDB not available"
+        }
+
+    try:
+        from urllib.parse import unquote
+        decoded_caller = unquote(caller)
+
+        traders_table.delete_item(Key={'caller': decoded_caller})
+        return {
+            "success": True,
+            "message": f"Trader {caller} removed successfully"
+        }
+    except Exception as e:
+        logger.error(f"Error deleting trader: {e}")
+        return {
+            "success": False,
+            "message": str(e)
+        }
 
 @app.delete("/api/trades")
 async def delete_trade(request: DeleteTradeRequest) -> Dict[str, Any]:
     """
     Delete a trade.
-    TODO: Implement actual database delete operation.
     """
-    logger.info(f"DELETE /api/trades for {request.caller} - TODO: Implement later")
-    # Dummy response - return success message
-    return {
-        "success": True,
-        "message": f"Trade for {request.caller} would be deleted (not implemented yet)"
-    }
+    logger.info(f"DELETE /api/trades for {request.caller}")
+
+    if trades_table is None:
+        return {
+            "success": False,
+            "message": "DynamoDB not available"
+        }
+
+    if not request.caller or not request.ca or not request.date_called:
+        return {
+            "success": False,
+            "message": "caller, ca, and date_called are required"
+        }
+
+    try:
+        trades_table.delete_item(Key={
+            'caller': request.caller,
+            'ca': request.ca,
+            'date_called': request.date_called
+        })
+        return {
+            "success": True,
+            "message": f"Trade for {request.caller} removed successfully"
+        }
+    except Exception as e:
+        logger.error(f"Error deleting trade: {e}")
+        return {
+            "success": False,
+            "message": str(e)
+        }
 
 # ---------------------------------------------------------------------------
 # Dev entry-point

@@ -5,7 +5,7 @@
 
 import type { TraderStats, Trade, FilterOptions, TradeFilterOptions } from "./trader-data"
 
-const API_BASE = process.env.NEXT_PUBLIC_PI_API_BASE || 'http://localhost:4000'
+const API_BASE = process.env.NEXT_PUBLIC_PI_API_BASE || 'http://localhost:8000'
 
 /**
  * Generic fetch wrapper with error handling and API key auth

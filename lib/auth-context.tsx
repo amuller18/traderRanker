@@ -41,7 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const supabase = createClient();
 
   // Fetch user profile from Supabase
-  const fetchUserProfile = async (authUser: SupabaseUser): Promise<User | null> => {
+  const fetchUserProfile = async (authUser: SupabaseUser, retries = 3): Promise<User | null> => {
     try {
       const { data: profile, error } = await supabase
         .from('profiles')
@@ -50,6 +50,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .single();
 
       if (error) {
+        // Check if the profiles table doesn't exist
+        if (error.code === 'PGRST116' || error.message.includes('relation "public.profiles" does not exist')) {
+          console.error('❌ Database schema not set up! Please run the SQL schema in Supabase.');
+          console.error('📝 Instructions: Check AUTH_SETUP_COMPLETE.md for setup steps.');
+          throw new Error('Database schema not set up. Please run the SQL schema in Supabase (see AUTH_SETUP_COMPLETE.md)');
+        }
+
+        // If profile not found and we have retries left, wait and retry
+        // (profile might still be creating from the trigger)
+        if (error.code === 'PGRST116' && retries > 0) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          return fetchUserProfile(authUser, retries - 1);
+        }
+
         console.error('Error fetching profile:', error);
         return null;
       }
@@ -57,14 +71,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return {
         id: authUser.id,
         email: authUser.email || '',
-        username: profile?.username || '',
+        username: profile?.username || authUser.user_metadata?.username || '',
         wallet_address: profile?.wallet_address,
         full_name: profile?.full_name,
         avatar_url: profile?.avatar_url,
       };
     } catch (error) {
       console.error('Error in fetchUserProfile:', error);
-      return null;
+      throw error;
     }
   };
 
@@ -117,8 +131,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     if (data.user) {
-      const userProfile = await fetchUserProfile(data.user);
-      setUser(userProfile);
+      try {
+        const userProfile = await fetchUserProfile(data.user);
+        setUser(userProfile);
+      } catch (error: any) {
+        // If profile fetch fails, still set basic user info from auth
+        setUser({
+          id: data.user.id,
+          email: data.user.email || '',
+          username: data.user.user_metadata?.username || data.user.email?.split('@')[0] || 'User',
+        });
+        // Re-throw to show the error to the user
+        throw error;
+      }
     }
   };
 
@@ -127,15 +152,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     username: string,
     password: string
   ): Promise<void> => {
-    // First check if username is already taken
-    const { data: existingProfile } = await supabase
-      .from('profiles')
-      .select('username')
-      .eq('username', username)
-      .single();
+    try {
+      // First check if username is already taken
+      const { data: existingProfile } = await supabase
+        .from('profiles')
+        .select('username')
+        .eq('username', username)
+        .single();
 
-    if (existingProfile) {
-      throw new Error('Username is already taken');
+      if (existingProfile) {
+        throw new Error('Username is already taken');
+      }
+    } catch (error: any) {
+      // If the table doesn't exist, we'll catch it later when trying to fetch profile
+      // If it's a "not found" error, that's good - username is available
+      if (error?.code !== 'PGRST116') {
+        // Re-throw if it's actually a "username taken" error
+        if (error?.message === 'Username is already taken') {
+          throw error;
+        }
+      }
     }
 
     const { data, error } = await supabase.auth.signUp({
@@ -144,6 +180,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       options: {
         data: {
           username,
+          display_name: username, // Save username as display name in Supabase Auth
+          full_name: username, // Also save as full_name
         },
       },
     });
@@ -153,8 +191,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     if (data.user) {
-      const userProfile = await fetchUserProfile(data.user);
-      setUser(userProfile);
+      // Wait a moment for the trigger to create the profile
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      try {
+        const userProfile = await fetchUserProfile(data.user);
+        setUser(userProfile);
+      } catch (error: any) {
+        // If profile fetch fails, still set basic user info from auth
+        setUser({
+          id: data.user.id,
+          email: data.user.email || '',
+          username: username,
+        });
+        // Re-throw to show the error to the user
+        throw error;
+      }
     }
   };
 

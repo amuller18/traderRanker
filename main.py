@@ -30,7 +30,7 @@ Back-tester FastAPI micro-service (extended, ladder-TP/SL version)
 import math
 import asyncio
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 import logging
 import sys
@@ -2592,15 +2592,16 @@ async def get_filtered_trades(
             logger.info(f"Applying dateFrom filter: {from_dt.isoformat()}")
             filtered_trades = []
             for t in trades:
-                date_called = t.get('date_called', '')
-                if date_called:  # Skip trades with empty or missing date_called
+                timestamp = t.get('timestamp')
+                if timestamp:  # Skip trades with empty or missing timestamp
                     try:
-                        trade_dt = datetime.fromisoformat(date_called.replace('Z', '+00:00'))
+                        # Convert unix timestamp (seconds) to datetime
+                        trade_dt = datetime.fromtimestamp(timestamp, tz=timezone.utc)
                         if trade_dt >= from_dt:
                             filtered_trades.append(t)
-                    except (ValueError, AttributeError):
-                        # Skip trades with invalid date format
-                        logger.warning(f"Skipping trade with invalid date_called: {date_called}")
+                    except (ValueError, TypeError, OSError):
+                        # Skip trades with invalid timestamp
+                        logger.warning(f"Skipping trade with invalid timestamp: {timestamp}")
             logger.info(f"After dateFrom filter: {len(filtered_trades)} trades (from {len(trades)})")
             trades = filtered_trades
 
@@ -2608,15 +2609,16 @@ async def get_filtered_trades(
             logger.info(f"Applying dateTo filter: {to_dt.isoformat()}")
             filtered_trades = []
             for t in trades:
-                date_called = t.get('date_called', '')
-                if date_called:  # Skip trades with empty or missing date_called
+                timestamp = t.get('timestamp')
+                if timestamp:  # Skip trades with empty or missing timestamp
                     try:
-                        trade_dt = datetime.fromisoformat(date_called.replace('Z', '+00:00'))
+                        # Convert unix timestamp (seconds) to datetime
+                        trade_dt = datetime.fromtimestamp(timestamp, tz=timezone.utc)
                         if trade_dt <= to_dt:
                             filtered_trades.append(t)
-                    except (ValueError, AttributeError):
-                        # Skip trades with invalid date format
-                        logger.warning(f"Skipping trade with invalid date_called: {date_called}")
+                    except (ValueError, TypeError, OSError):
+                        # Skip trades with invalid timestamp
+                        logger.warning(f"Skipping trade with invalid timestamp: {timestamp}")
             logger.info(f"After dateTo filter: {len(filtered_trades)} trades (from {len(trades)})")
             trades = filtered_trades
 

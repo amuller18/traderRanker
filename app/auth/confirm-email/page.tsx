@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, Suspense, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -22,7 +22,10 @@ function ConfirmEmailContent() {
   const email = searchParams.get("email");
   const [isChecking, setIsChecking] = useState(false);
   const [checkCount, setCheckCount] = useState(0);
-  const supabase = createClient();
+
+  // CRITICAL: Use useMemo to ensure we get the same client instance across renders
+  // This prevents infinite loops from recreating the client on every render
+  const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
     if (!email) {
@@ -79,7 +82,7 @@ function ConfirmEmailContent() {
       clearTimeout(initialTimeout);
       clearInterval(interval);
     };
-  }, [email, router, supabase, checkCount]);
+  }, [email, router, supabase]);
 
   return (
     <div className="flex flex-col min-h-screen">

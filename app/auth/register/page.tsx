@@ -64,8 +64,7 @@ export default function RegisterPage() {
         // Small delay to ensure auth state and profile propagate
         await new Promise(resolve => setTimeout(resolve, 100));
 
-        router.push("/rankings");
-        router.refresh(); // Force refresh to update all components
+        router.push("/account");
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Registration failed";

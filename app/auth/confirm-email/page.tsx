@@ -50,8 +50,7 @@ function ConfirmEmailContent() {
           // Wait a moment for the profile to be created
           await new Promise(resolve => setTimeout(resolve, 500));
 
-          router.push("/rankings");
-          router.refresh();
+          router.push("/account");
           return true;
         }
 

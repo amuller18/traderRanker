@@ -26,7 +26,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, username: string, password: string) => Promise<void>;
+  register: (email: string, username: string, password: string) => Promise<{ requiresEmailConfirmation: boolean }>;
   logout: () => Promise<void>;
   linkWallet: (walletAddress: string) => Promise<void>;
   unlinkWallet: () => Promise<void>;
@@ -445,19 +445,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     email: string,
     username: string,
     password: string
-  ): Promise<void> => {
+  ): Promise<{ requiresEmailConfirmation: boolean }> => {
     console.debug('📝 Registration attempt for:', { email, username });
 
     // First check if username is already taken
-    const { data: existingProfile } = await supabase
+    const { data: existingProfile, error: profileCheckError } = await supabase
       .from('profiles')
       .select('username')
       .eq('username', username)
       .single();
 
+    // If we got data back, username is taken
     if (existingProfile) {
       console.warn('⚠️ Username already taken:', username);
       throw new Error('Username already in use');
+    }
+
+    // If error is not PGRST116 (no rows found), it's a real error
+    if (profileCheckError && profileCheckError.code !== 'PGRST116') {
+      console.error('❌ Error checking username availability:', profileCheckError.message);
+      safeLogSupabaseError('username check', profileCheckError);
+      throw new Error('Error checking username availability');
     }
 
     console.debug('✅ Username available, creating account...');
@@ -490,14 +498,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw error;
     }
 
-    if (data.user) {
-      console.debug('✅ Supabase signup successful, fetching profile...');
+    // Check if we have a session (email confirmation disabled) or need email confirmation
+    if (!data.session) {
+      console.debug('⚠️ No session created - email confirmation required');
+      return { requiresEmailConfirmation: true };
+    }
+
+    if (data.user && data.session) {
+      console.debug('✅ Supabase signup successful with immediate session, fetching profile...');
       // Use retry logic for post-registration profile fetch
       // The database trigger may not have created the profile yet
       const userProfile = await fetchUserProfile(data.user);
       setUser(userProfile);
       console.debug('✅ User state updated after registration:', userProfile ? userProfile.username : 'null');
     }
+
+    return { requiresEmailConfirmation: false };
   };
 
   const logout = async (): Promise<void> => {

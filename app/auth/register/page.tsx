@@ -49,17 +49,27 @@ export default function RegisterPage() {
     setIsLoading(true);
 
     try {
-      await register(email, username, password);
-      console.debug('Registration successful - auth state updated');
-      toast.success("Account created successfully!");
+      const result = await register(email, username, password);
 
-      // Small delay to ensure auth state and profile propagate
-      await new Promise(resolve => setTimeout(resolve, 100));
+      if (result.requiresEmailConfirmation) {
+        console.debug('Registration successful - email confirmation required');
+        toast.info("Account created! Please check your email to confirm.");
 
-      router.push("/rankings");
-      router.refresh(); // Force refresh to update all components
+        // Redirect to email confirmation page
+        router.push(`/auth/confirm-email?email=${encodeURIComponent(email)}`);
+      } else {
+        console.debug('Registration successful - auth state updated');
+        toast.success("Account created successfully!");
+
+        // Small delay to ensure auth state and profile propagate
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        router.push("/rankings");
+        router.refresh(); // Force refresh to update all components
+      }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Registration failed");
+      const errorMessage = error instanceof Error ? error.message : "Registration failed";
+      toast.error(errorMessage);
     } finally {
       setIsLoading(false);
     }

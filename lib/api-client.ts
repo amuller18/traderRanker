@@ -207,8 +207,11 @@ export async function fetchAllTradesFiltered(filters?: TradeFilterOptions): Prom
         queryParams.set('mcMax', filters.marketCapRange[1].toString())
       }
       if (filters.dateRange) {
-        queryParams.set('dateFrom', filters.dateRange[0].toISOString())
-        queryParams.set('dateTo', filters.dateRange[1].toISOString())
+        // Convert to Unix timestamps (seconds since epoch)
+        const fromTimestamp = Math.floor(filters.dateRange[0].getTime() / 1000)
+        const toTimestamp = Math.floor(filters.dateRange[1].getTime() / 1000)
+        queryParams.set('dateFrom', fromTimestamp.toString())
+        queryParams.set('dateTo', toTimestamp.toString())
       }
       if (filters.searchTerm) {
         queryParams.set('search', filters.searchTerm)

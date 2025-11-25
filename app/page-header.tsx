@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { ThemeToggle } from "@/components/theme-toggle"
-import { TrendingUp, Menu, LogOut, Wallet, Link2, Unlink } from "lucide-react"
+import { TrendingUp, Menu, LogOut, Wallet, Link2, Unlink, Settings } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Sheet,
@@ -173,6 +173,13 @@ export function PageHeader() {
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link href="/account">
+                    <Settings className="mr-2 h-4 w-4" />
+                    <span>My Account</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
                 {connected && !user?.wallet_address && (
                   <DropdownMenuItem onClick={() => linkWallet(publicKey!)}>
                     <Link2 className="mr-2 h-4 w-4" />
@@ -249,6 +256,16 @@ export function PageHeader() {
                     </Link>
                   )
                 })}
+                {isAuthenticated && (
+                  <Link
+                    href="/account"
+                    onClick={() => setOpen(false)}
+                    className="px-4 py-3 rounded-lg text-sm font-medium transition-all text-foreground/70 hover:text-foreground hover:bg-secondary flex items-center gap-2"
+                  >
+                    <Settings className="h-4 w-4" />
+                    My Account
+                  </Link>
+                )}
                 <div className="pt-4 border-t space-y-2">
                   {/* Wallet Connection (Mobile) */}
                   {connected ? (

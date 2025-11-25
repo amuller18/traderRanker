@@ -15,7 +15,7 @@ import {
 dotenv.config()
 
 const app = express()
-const PORT = process.env.PORT || 4000
+const PORT = process.env.PORT || 8000
 
 // Initialize DynamoDB Client
 const dynamoClient = new DynamoDBClient({

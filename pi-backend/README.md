@@ -68,7 +68,7 @@ Fill in your actual values:
 
 ```env
 # Server Configuration
-PORT=4000
+PORT=8000
 NODE_ENV=production
 
 # API Security - Generate a strong random key
@@ -114,7 +114,7 @@ credentials-file: /home/pi/.cloudflared/YOUR_TUNNEL_ID.json
 
 ingress:
   - hostname: api.yourdomain.com
-    service: http://localhost:4000
+    service: http://localhost:8000
   - service: http_status:404
 ```
 
@@ -207,7 +207,7 @@ sudo journalctl -u cloudflared -f
 
 ```bash
 # From your Pi (local)
-curl http://localhost:4000/health
+curl http://localhost:8000/health
 
 # From anywhere (through Cloudflare Tunnel)
 curl https://api.yourdomain.com/health

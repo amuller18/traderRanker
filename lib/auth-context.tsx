@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
@@ -160,7 +160,10 @@ function logUserDetails(user: any): void {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const supabase = createClient();
+
+  // CRITICAL: Use useMemo to ensure we get the same client instance across renders
+  // This prevents creating multiple clients which breaks session persistence
+  const supabase = useMemo(() => createClient(), []);
 
   /**
    * Fetches user profile from Supabase with extensive debugging and retry logic.
@@ -371,6 +374,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.group('🚀 AuthProvider Initialization');
         console.log('Environment:', typeof window !== 'undefined' ? 'Browser' : 'Server');
         console.log('Debug mode:', DEBUG_MODE);
+        console.log('Supabase client:', supabase ? 'initialized (singleton)' : 'null');
       }
 
       try {
@@ -417,7 +421,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       subscription.unsubscribe();
     };
-  }, []);
+    // supabase is stable (useMemo), but included for completeness
+    // fetchUserProfile is stable (defined inline), eslint-disable if needed
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase]);
 
   const login = async (email: string, password: string): Promise<void> => {
     console.debug('🔐 Login attempt for:', email);

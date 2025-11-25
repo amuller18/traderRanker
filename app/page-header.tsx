@@ -203,7 +203,7 @@ export function PageHeader() {
             </DropdownMenu>
           ) : (
             <Button asChild variant="default" size="sm" className="hidden md:flex">
-              <Link href="/auth/login">Login</Link>
+              <Link href="/auth/login">Sign up/Login</Link>
             </Button>
           )}
           <ThemeToggle />
@@ -315,7 +315,7 @@ export function PageHeader() {
                       className="w-full"
                       onClick={() => setOpen(false)}
                     >
-                      <Link href="/auth/login">Login</Link>
+                      <Link href="/auth/login">Sign up/Login</Link>
                     </Button>
                   )}
                 </div>

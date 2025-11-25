@@ -2539,18 +2539,19 @@ async def get_filtered_trades(
     roiMax: Optional[float] = None,
     mcMin: Optional[float] = None,
     mcMax: Optional[float] = None,
-    dateFrom: Optional[str] = None,
-    dateTo: Optional[str] = None,
+    dateFrom: Optional[int] = None,
+    dateTo: Optional[int] = None,
     search: Optional[str] = None,
     trader: Optional[str] = None,
     timeframe: Optional[str] = None
 ) -> List[Trade]:
     """
     Get filtered trades based on various criteria.
+    Dates are expected as Unix timestamps (seconds since epoch).
     """
     # Log all raw parameters for debugging
     logger.info(f"GET /api/trades/filtered - Raw params: roiMin={roiMin}, roiMax={roiMax}, "
-                f"mcMin={mcMin}, mcMax={mcMax}, dateFrom='{dateFrom}', dateTo='{dateTo}', "
+                f"mcMin={mcMin}, mcMax={mcMax}, dateFrom={dateFrom}, dateTo={dateTo}, "
                 f"search='{search}', trader='{trader}', timeframe='{timeframe}'")
 
     if trades_table is None:
@@ -2583,24 +2584,9 @@ async def get_filtered_trades(
         if mcMax is not None:
             trades = [t for t in trades if t.get('initial_mc', 0) <= mcMax]
 
-        # Parse and validate date parameters with detailed logging
-        from_dt = parse_and_validate_date(dateFrom, "dateFrom", default=None)
-        to_dt = parse_and_validate_date(dateTo, "dateTo", default=None)
-
-        # Convert datetime parameters to unix timestamps for direct comparison
-        from_timestamp = None
-        to_timestamp = None
-
-        if from_dt is not None:
-            from_timestamp = int(from_dt.timestamp())
-            logger.info(f"Applying dateFrom filter: {from_dt.isoformat()} (unix: {from_timestamp})")
-
-        if to_dt is not None:
-            to_timestamp = int(to_dt.timestamp())
-            logger.info(f"Applying dateTo filter: {to_dt.isoformat()} (unix: {to_timestamp})")
-
         # Apply date filtering using unix timestamp comparison
-        if from_timestamp is not None or to_timestamp is not None:
+        if dateFrom is not None or dateTo is not None:
+            logger.info(f"Applying date filter: from={dateFrom}, to={dateTo}")
             filtered_trades = []
             for t in trades:
                 timestamp = t.get('timestamp')
@@ -2609,8 +2595,8 @@ async def get_filtered_trades(
                         # Convert timestamp to int (handles Decimal from DynamoDB or string)
                         timestamp_int = int(timestamp)
                         # Direct unix timestamp comparison
-                        if (from_timestamp is None or timestamp_int >= from_timestamp) and \
-                           (to_timestamp is None or timestamp_int <= to_timestamp):
+                        if (dateFrom is None or timestamp_int >= dateFrom) and \
+                           (dateTo is None or timestamp_int <= dateTo):
                             filtered_trades.append(t)
                     except (ValueError, TypeError):
                         # Skip trades with invalid timestamp

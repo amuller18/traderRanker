@@ -255,6 +255,39 @@ class SupabaseAdmin:
                 logger.error(f"Error unlinking wallet: {e}")
                 return False
 
+    async def update_profile_wallet(
+        self,
+        user_id: str,
+        public_key: str
+    ) -> bool:
+        """
+        Update the user's profile with their wallet public key.
+
+        Args:
+            user_id: Supabase auth user ID
+            public_key: Solana wallet public key
+
+        Returns:
+            True if successful, False otherwise
+        """
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.patch(
+                    f"{self.rest_url}/profiles",
+                    headers=self._get_headers(),
+                    params={"id": f"eq.{user_id}"},
+                    json={
+                        "wallet_pubkeys": public_key,
+                        "wallet_address": public_key  # Also update legacy field
+                    }
+                )
+                response.raise_for_status()
+                logger.info(f"Profile wallet updated for user {user_id}")
+                return True
+            except Exception as e:
+                logger.error(f"Error updating profile wallet: {e}")
+                return False
+
     async def create_user_with_wallet(
         self,
         public_key: str
@@ -289,6 +322,9 @@ class SupabaseAdmin:
                 )
                 response.raise_for_status()
                 user_data = response.json()
+
+                # Update the profile with wallet public key
+                await self.update_profile_wallet(user_data["id"], public_key)
 
                 # Create a session for this user
                 session = await self.create_user_session(user_data["id"])

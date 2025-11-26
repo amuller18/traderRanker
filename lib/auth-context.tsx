@@ -9,14 +9,15 @@ interface UserProfile {
   username: string;
   full_name?: string;
   avatar_url?: string;
-  wallet_address?: string;
+  wallet_pubkeys?: string;
 }
 
 interface User {
   id: string;
   email: string;
   username: string;
-  wallet_address?: string;
+  wallet_address?: string;  // Keep for backward compatibility
+  wallet_pubkeys?: string;  // New field for Phantom wallet
   full_name?: string;
   avatar_url?: string;
 }
@@ -331,7 +332,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         id: currentUser.id,
         email: currentUser.email || '',
         username: profile.username || '',
-        wallet_address: profile.wallet_address,
+        wallet_address: profile.wallet_address,  // Legacy field
+        wallet_pubkeys: profile.wallet_pubkeys,  // New field for Phantom wallet
         full_name: profile.full_name,
         avatar_url: profile.avatar_url,
       };
@@ -537,9 +539,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error('User must be logged in to link wallet');
     }
 
+    // Update both wallet_address (legacy) and wallet_pubkeys (Phantom)
     const { error } = await supabase
       .from('profiles')
-      .update({ wallet_address: walletAddress })
+      .update({
+        wallet_address: walletAddress,  // Keep for backward compatibility
+        wallet_pubkeys: walletAddress   // New field for Phantom wallet
+      })
       .eq('id', user.id);
 
     if (error) {
@@ -547,7 +553,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw error;
     }
 
-    setUser({ ...user, wallet_address: walletAddress });
+    setUser({ ...user, wallet_address: walletAddress, wallet_pubkeys: walletAddress });
   };
 
   const unlinkWallet = async (): Promise<void> => {
@@ -557,7 +563,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { error } = await supabase
       .from('profiles')
-      .update({ wallet_address: null })
+      .update({
+        wallet_address: null,
+        wallet_pubkeys: null
+      })
       .eq('id', user.id);
 
     if (error) {
@@ -565,7 +574,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw error;
     }
 
-    setUser({ ...user, wallet_address: undefined });
+    setUser({ ...user, wallet_address: undefined, wallet_pubkeys: undefined });
   };
 
   const updateProfile = async (updates: Partial<UserProfile>): Promise<void> => {

@@ -11,6 +11,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { mockAccountData } from '@/app/copy-trader/dashboard/data/mock';
 import { AccountDataPoint } from '@/app/copy-trader/dashboard/types';
+import { PageHeader } from '@/app/page-header';
 
 export default function AccountPage() {
   const { user, updateProfile } = useAuth();
@@ -97,14 +98,16 @@ export default function AccountPage() {
   };
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-4xl">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2">Account Settings</h1>
-        <p className="text-muted-foreground">
-          Manage your profile and view your account overview
-        </p>
-      </div>
+    <>
+      <PageHeader />
+      <div className="container mx-auto px-4 py-8 max-w-4xl">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold mb-2">Account Settings</h1>
+          <p className="text-muted-foreground">
+            Manage your profile and view your account overview
+          </p>
+        </div>
 
       <div className="grid gap-6">
         {/* Profile Card */}
@@ -190,8 +193,8 @@ export default function AccountPage() {
                 <div className="flex-1">
                   <Label className="text-xs text-muted-foreground">Wallet Address</Label>
                   <p className="font-medium font-mono text-sm">
-                    {user.wallet_address ? (
-                      `${user.wallet_address.slice(0, 6)}...${user.wallet_address.slice(-4)}`
+                    {(user.wallet_pubkeys || user.wallet_address) ? (
+                      `${(user.wallet_pubkeys || user.wallet_address)!.slice(0, 6)}...${(user.wallet_pubkeys || user.wallet_address)!.slice(-4)}`
                     ) : (
                       <span className="text-muted-foreground">No wallet linked</span>
                     )}
@@ -265,5 +268,6 @@ export default function AccountPage() {
         </Card>
       </div>
     </div>
+    </>
   );
 }

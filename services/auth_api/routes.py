@@ -247,6 +247,9 @@ async def verify_signature(
                 detail="User not found. Please contact support."
             )
 
+        # Update profile with wallet public key (ensure it's in profiles table)
+        await supabase_admin.update_profile_wallet(user_id, request.public_key)
+
         # Mark nonce as used
         await supabase_admin.mark_nonce_as_used(nonce_record["id"])
 

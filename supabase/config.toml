@@ -1,0 +1,21 @@
+# Supabase Local Development Configuration
+# This file is used when running Supabase locally with CLI
+# For production, configure these settings in the Supabase Dashboard
+
+[auth]
+# Enable Web3 authentication
+[auth.web3.solana]
+enabled = true
+
+[auth.web3.ethereum]
+enabled = true
+
+# Rate limiting for Web3 sign-ins (30 per 5 minutes per IP)
+[auth.rate_limit]
+web3 = 30
+
+# Optional: Enable CAPTCHA for additional security
+# [auth.captcha]
+# enabled = true
+# provider = "hcaptcha"
+# secret = "your-hcaptcha-secret"

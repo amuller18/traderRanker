@@ -895,6 +895,39 @@ class DeleteTradeRequest(BaseModel):
     date_called: str
 
 # ---------------------------------------------------------------------------
+# Helper function to convert DynamoDB items to Trade objects
+# ---------------------------------------------------------------------------
+def dynamodb_item_to_trade(item: dict) -> Trade:
+    """
+    Convert a DynamoDB item to a Trade object.
+    If date_called is missing or empty but timestamp exists, convert timestamp to ISO string.
+    """
+    # Make a copy to avoid modifying the original
+    trade_dict = dict(item)
+
+    # Check if date_called is missing or empty
+    if not trade_dict.get('date_called') and trade_dict.get('timestamp'):
+        try:
+            # Convert Unix timestamp to ISO string
+            timestamp_val = trade_dict['timestamp']
+            # Handle Decimal type from DynamoDB
+            if isinstance(timestamp_val, (int, float)):
+                timestamp_int = int(timestamp_val)
+            else:
+                # Try to convert from Decimal or string
+                timestamp_int = int(timestamp_val)
+
+            # Convert to datetime and format as ISO string
+            dt = datetime.fromtimestamp(timestamp_int)
+            trade_dict['date_called'] = dt.isoformat()
+            logger.debug(f"Converted timestamp {timestamp_int} to date_called {trade_dict['date_called']}")
+        except (ValueError, TypeError) as e:
+            logger.warning(f"Failed to convert timestamp to date_called: {e}")
+            # Keep date_called empty if conversion fails
+
+    return Trade(**trade_dict)
+
+# ---------------------------------------------------------------------------
 # FastAPI app & CORS
 # ---------------------------------------------------------------------------
 app = FastAPI(title="Solana Backtester API", version="0.3.0 (ladder)")
@@ -2441,7 +2474,7 @@ async def get_trader_trades(caller: str) -> List[Trade]:
         if not trades:
             logger.warning(f"No trades found for caller: {decoded_caller}")
 
-        return [Trade(**t) for t in trades]
+        return [dynamodb_item_to_trade(t) for t in trades]
     except ClientError as e:
         error_code = e.response['Error']['Code']
         if error_code == 'ResourceNotFoundException':
@@ -2481,7 +2514,7 @@ async def get_all_trades() -> List[Trade]:
         if not trades:
             logger.warning("No trades found in DynamoDB")
 
-        return [Trade(**t) for t in trades]
+        return [dynamodb_item_to_trade(t) for t in trades]
     except ClientError as e:
         error_code = e.response['Error']['Code']
         if error_code == 'ResourceNotFoundException':
@@ -2617,7 +2650,7 @@ async def get_filtered_trades(
                           f"roiMin={roiMin}, roiMax={roiMax}, mcMin={mcMin}, mcMax={mcMax}, "
                           f"search={search}, trader={trader}")
 
-        return [Trade(**t) for t in trades]
+        return [dynamodb_item_to_trade(t) for t in trades]
     except ClientError as e:
         error_code = e.response['Error']['Code']
         if error_code == 'ResourceNotFoundException':

@@ -931,6 +931,17 @@ def dynamodb_item_to_trade(item: dict) -> Trade:
 # FastAPI app & CORS
 # ---------------------------------------------------------------------------
 app = FastAPI(title="Solana Backtester API", version="0.3.0 (ladder)")
+
+# ---------------------------------------------------------------------------
+# Phantom Wallet Authentication Routes
+# ---------------------------------------------------------------------------
+# Import and include wallet authentication routes
+try:
+    from services.auth_api import router as wallet_auth_router
+    app.include_router(wallet_auth_router)
+    logger.info("Wallet authentication routes loaded successfully")
+except Exception as e:
+    logger.warning(f"Failed to load wallet authentication routes: {e}")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,

@@ -104,9 +104,11 @@ export function PageHeader() {
                 <DropdownMenuLabel className="font-normal">
                   <div className="flex flex-col space-y-1">
                     <p className="text-sm font-medium leading-none">{user?.username}</p>
-                    <p className="text-xs leading-none text-muted-foreground">
-                      {user?.email}
-                    </p>
+                    {user?.email && (
+                      <p className="text-xs leading-none text-muted-foreground">
+                        {user.email}
+                      </p>
+                    )}
                     {(user?.wallet_pubkeys || user?.wallet_address) && (
                       <p className="text-xs leading-none text-muted-foreground mt-1">
                         <Wallet className="h-3 w-3 inline mr-1" />
@@ -155,7 +157,9 @@ export function PageHeader() {
                     </Avatar>
                     <div className="flex flex-col">
                       <p className="text-sm font-medium">{user.username}</p>
-                      <p className="text-xs text-muted-foreground">{user.email}</p>
+                      {user.email && (
+                        <p className="text-xs text-muted-foreground">{user.email}</p>
+                      )}
                       {(user?.wallet_pubkeys || user?.wallet_address) && (
                         <p className="text-xs text-muted-foreground mt-1">
                           <Wallet className="h-3 w-3 inline mr-1" />

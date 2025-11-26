@@ -18,6 +18,7 @@ import {
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { PageHeader } from "@/app/page-header";
+import { PhantomSignInButton } from "@/components/PhantomSignInButton";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -147,6 +148,28 @@ export default function RegisterPage() {
                 "Create account"
               )}
             </Button>
+
+            {/* Divider */}
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-background px-2 text-muted-foreground">
+                  Or continue with
+                </span>
+              </div>
+            </div>
+
+            {/* Phantom Wallet Sign-Up */}
+            <PhantomSignInButton
+              onSuccess={() => {
+                router.push('/account');
+                router.refresh();
+              }}
+              className="w-full"
+            />
+
             <p className="text-sm text-muted-foreground text-center">
               Already have an account?{" "}
               <Link

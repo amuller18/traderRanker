@@ -14,7 +14,7 @@ interface UserProfile {
 
 interface User {
   id: string;
-  email: string;
+  email?: string;  // Optional for Web3-only users
   username: string;
   wallet_address?: string;  // Keep for backward compatibility
   wallet_pubkeys?: string;  // New field for Phantom wallet
@@ -330,7 +330,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const userProfile: User = {
         id: currentUser.id,
-        email: currentUser.email || '',
+        email: currentUser.email || undefined,  // Can be undefined for Web3-only users
         username: profile.username || '',
         wallet_address: profile.wallet_address,  // Legacy field
         wallet_pubkeys: profile.wallet_pubkeys,  // New field for Phantom wallet

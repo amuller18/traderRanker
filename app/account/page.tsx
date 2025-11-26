@@ -85,7 +85,7 @@ export default function AccountPage() {
   const formatCurrency = (value: number) =>
     `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-  const getInitials = (name: string, email: string) => {
+  const getInitials = (name?: string, email?: string, username?: string) => {
     if (name) {
       return name
         .split(' ')
@@ -94,7 +94,13 @@ export default function AccountPage() {
         .toUpperCase()
         .slice(0, 2);
     }
-    return email.slice(0, 2).toUpperCase();
+    if (email) {
+      return email.slice(0, 2).toUpperCase();
+    }
+    if (username) {
+      return username.slice(0, 2).toUpperCase();
+    }
+    return 'U';  // Default fallback
   };
 
   return (
@@ -134,7 +140,7 @@ export default function AccountPage() {
               <Avatar className="h-20 w-20">
                 <AvatarImage src={isEditing ? avatarUrl : user.avatar_url} />
                 <AvatarFallback className="text-lg">
-                  {getInitials(user.full_name || '', user.email)}
+                  {getInitials(user.full_name, user.email, user.username)}
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1">
@@ -180,13 +186,15 @@ export default function AccountPage() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-                <Mail className="h-5 w-5 text-muted-foreground" />
-                <div className="flex-1">
-                  <Label className="text-xs text-muted-foreground">Email</Label>
-                  <p className="font-medium">{user.email}</p>
+              {user.email && (
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                  <Mail className="h-5 w-5 text-muted-foreground" />
+                  <div className="flex-1">
+                    <Label className="text-xs text-muted-foreground">Email</Label>
+                    <p className="font-medium">{user.email}</p>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
                 <Wallet className="h-5 w-5 text-muted-foreground" />

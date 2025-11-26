@@ -18,6 +18,7 @@ import {
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { PageHeader } from "@/app/page-header";
+import { PhantomSignInButton } from "@/components/PhantomSignInButton";
 
 export default function LoginPage() {
   const router = useRouter();

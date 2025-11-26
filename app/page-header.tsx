@@ -195,34 +195,6 @@ export function PageHeader() {
                   </Link>
                 )}
                 <div className="pt-4 border-t space-y-2">
-                  {/* Wallet Connection (Mobile) */}
-                  {connected ? (
-                    <Button
-                      variant="outline"
-                      className="w-full justify-start gap-2"
-                      onClick={() => {
-                        handleDisconnectWallet()
-                        setOpen(false)
-                      }}
-                    >
-                      <Wallet className="h-4 w-4" />
-                      {truncateAddress(publicKey || '')}
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="outline"
-                      className="w-full justify-start gap-2"
-                      onClick={() => {
-                        handleConnectWallet()
-                        setOpen(false)
-                      }}
-                      disabled={connecting}
-                    >
-                      <Wallet className="h-4 w-4" />
-                      {connecting ? 'Connecting...' : 'Connect Wallet'}
-                    </Button>
-                  )}
-
                   {/* Auth Actions (Mobile) */}
                   {isAuthenticated ? (
                     <Button

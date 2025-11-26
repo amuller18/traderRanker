@@ -93,20 +93,46 @@ export default function LoginPage() {
                   Signing in...
                 </>
               ) : (
-                "Sign in"
+                "Sign in with Email"
               )}
             </Button>
-            <p className="text-sm text-muted-foreground text-center">
-              Don&apos;t have an account?{" "}
-              <Link
-                href="/auth/register"
-                className="text-primary hover:underline font-medium"
-              >
-                Sign up
-              </Link>
-            </p>
           </CardFooter>
         </form>
+        <CardContent className="pt-0">
+          {/* Divider */}
+          <div className="relative mb-4">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-background px-2 text-muted-foreground">
+                Or continue with
+              </span>
+            </div>
+          </div>
+
+          {/* Phantom Wallet Sign-In */}
+          <PhantomSignInButton
+            onSuccess={() => {
+              router.push('/');
+              router.refresh();
+            }}
+            onError={(error) => {
+              console.error('Phantom sign-in error:', error);
+            }}
+          />
+        </CardContent>
+        <CardFooter className="flex flex-col space-y-4">
+          <p className="text-sm text-muted-foreground text-center">
+            Don&apos;t have an account?{" "}
+            <Link
+              href="/auth/register"
+              className="text-primary hover:underline font-medium"
+            >
+              Sign up
+            </Link>
+          </p>
+        </CardFooter>
       </Card>
       </div>
     </div>

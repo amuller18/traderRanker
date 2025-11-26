@@ -526,6 +526,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async (): Promise<void> => {
+    // Disconnect Phantom wallet if connected
+    try {
+      if (typeof window !== 'undefined') {
+        const provider = (window as any).phantom?.solana || (window as any).solana;
+        if (provider && provider.isConnected) {
+          await provider.disconnect();
+          console.debug('✅ Phantom wallet disconnected');
+        }
+      }
+    } catch (walletError) {
+      console.warn('⚠️ Failed to disconnect wallet:', walletError);
+      // Continue with logout even if wallet disconnect fails
+    }
+
+    // Sign out from Supabase
     const { error } = await supabase.auth.signOut();
     if (error) {
       safeLogSupabaseError('logout', error);

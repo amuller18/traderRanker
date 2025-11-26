@@ -612,7 +612,7 @@ export default async function TokenDetailPage({
                                   <td className="p-3">{format(new Date(trade.date_called), "MMM d, yyyy HH:mm")}</td>
                                   <td className="p-3">
                                     <Link
-                                      href={`/rankings/${encodeURIComponent(trade.caller)}`}
+                                      href={`/trader/${encodeURIComponent(trade.caller)}`}
                                       className="hover:underline text-primary"
                                     >
                                       {trade.caller}

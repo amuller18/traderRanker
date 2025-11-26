@@ -48,7 +48,7 @@ export function TraderTable({ traders }: TraderTableProps) {
   }
 
   const handleRowClick = (trader: string) => {
-    router.push(`/rankings/${encodeURIComponent(trader)}`)
+    router.push(`/trader/${encodeURIComponent(trader)}`)
   }
 
   return (
@@ -167,7 +167,7 @@ export function TraderTable({ traders }: TraderTableProps) {
                   {trader.average_roi >= 0 ? "+" : ""}{(trader.average_roi * 100).toFixed(1)}%
                 </TableCell>
                 <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                  <Link href={`/rankings/${encodeURIComponent(trader.caller)}`}>
+                  <Link href={`/trader/${encodeURIComponent(trader.caller)}`}>
                     <Button variant="outline" size="sm" className="hover-lift">
                       View
                     </Button>

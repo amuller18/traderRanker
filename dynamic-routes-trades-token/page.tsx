@@ -224,7 +224,7 @@ export default async function TokenDetailPage({ params }: TokenDetailPageProps) 
                   <div key={trader} className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Users className="h-4 w-4 text-muted-foreground" />
-                      <Link href={`/rankings/${encodeURIComponent(trader)}`} className="hover:underline">
+                      <Link href={`/trader/${encodeURIComponent(trader)}`} className="hover:underline">
                         {trader}
                       </Link>
                     </div>
@@ -269,7 +269,7 @@ export default async function TokenDetailPage({ params }: TokenDetailPageProps) 
                       <td className="p-3">{format(new Date(trade.date_called), "MMM d, yyyy")}</td>
                       <td className="p-3">
                         <Link
-                          href={`/rankings/${encodeURIComponent(trade.caller)}`}
+                          href={`/trader/${encodeURIComponent(trade.caller)}`}
                           className="hover:underline text-primary"
                         >
                           {trade.caller}

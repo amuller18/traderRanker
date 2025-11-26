@@ -407,7 +407,7 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
                       {trade.date_called ? formatDate(trade.date_called) : <span className="text-muted-foreground">N/A</span>}
                     </TableCell>
                     <TableCell>
-                      <Link href={`/rankings/${encodeURIComponent(trade.caller)}`} className="hover:underline text-primary">
+                      <Link href={`/trader/${encodeURIComponent(trade.caller)}`} className="hover:underline text-primary">
                         {trade.caller}
                       </Link>
                     </TableCell>

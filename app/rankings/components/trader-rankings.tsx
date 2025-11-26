@@ -145,7 +145,7 @@ export function TraderRankings() {
               <div className="space-y-3">
                 <div>
                   <div className="text-sm text-muted-foreground mb-1">Trader</div>
-                  <Link href={`/rankings/${encodeURIComponent(trader.caller)}`} className="text-primary hover:underline font-medium">
+                  <Link href={`/trader/${encodeURIComponent(trader.caller)}`} className="text-primary hover:underline font-medium">
                     {trader.caller}
                   </Link>
                 </div>
@@ -213,7 +213,7 @@ export function TraderRankings() {
           {paginatedTraders.map((trader) => (
             <TableRow key={trader.caller}>
               <TableCell>
-                <Link href={`/rankings/${encodeURIComponent(trader.caller)}`} className="text-primary hover:underline">
+                <Link href={`/trader/${encodeURIComponent(trader.caller)}`} className="text-primary hover:underline">
                   {trader.caller}
                 </Link>
               </TableCell>

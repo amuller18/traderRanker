@@ -2439,7 +2439,16 @@ async def get_trader_stats(
             logger.warning("No traders found in DynamoDB")
             return []
 
-        return [TraderStats(**t) for t in traders]
+        # Map DynamoDB field 'username' to 'caller' for TraderStats model
+        mapped_traders = []
+        for t in traders:
+            trader_dict = dict(t)
+            # Rename 'username' to 'caller' if it exists
+            if 'username' in trader_dict:
+                trader_dict['caller'] = trader_dict.pop('username')
+            mapped_traders.append(TraderStats(**trader_dict))
+
+        return mapped_traders
     except ClientError as e:
         error_code = e.response['Error']['Code']
         if error_code == 'ResourceNotFoundException':

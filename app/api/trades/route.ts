@@ -16,17 +16,9 @@ interface TokenPriceResult {
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url)
-    const trader = searchParams.get('trader')
-
-    if (!trader) {
-      return NextResponse.json({ error: 'Trader parameter is required' }, { status: 400 })
-    }
-
-    // Fetch trades from Python backend
-    const encodedTrader = encodeURIComponent(trader)
+    // Fetch all trades from Python backend
     const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-    const tradesResponse = await fetch(`${backendUrl}/api/traders/${encodedTrader}/trades`, {
+    const tradesResponse = await fetch(`${backendUrl}/api/trades`, {
       cache: 'no-store'
     })
 
@@ -78,10 +70,10 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(updatedTrades)
   } catch (error) {
-    console.error('Error fetching trader trades:', error)
+    console.error('Error fetching all trades:', error)
     return NextResponse.json(
-      { error: 'Failed to fetch trader trades' },
+      { error: 'Failed to fetch trades' },
       { status: 500 }
     )
   }
-} 
+}

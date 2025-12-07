@@ -17,21 +17,17 @@ interface TokenPriceResult {
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
-    const trader = searchParams.get('trader')
 
-    if (!trader) {
-      return NextResponse.json({ error: 'Trader parameter is required' }, { status: 400 })
-    }
-
-    // Fetch trades from Python backend
-    const encodedTrader = encodeURIComponent(trader)
+    // Forward all query parameters to Python backend
     const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-    const tradesResponse = await fetch(`${backendUrl}/api/traders/${encodedTrader}/trades`, {
-      cache: 'no-store'
-    })
+    const queryString = searchParams.toString()
+    const tradesResponse = await fetch(
+      `${backendUrl}/api/trades/filtered${queryString ? `?${queryString}` : ''}`,
+      { cache: 'no-store' }
+    )
 
     if (!tradesResponse.ok) {
-      throw new Error(`Failed to fetch trades: ${tradesResponse.status}`)
+      throw new Error(`Failed to fetch filtered trades: ${tradesResponse.status}`)
     }
 
     const trades: Trade[] = await tradesResponse.json()
@@ -74,14 +70,14 @@ export async function GET(request: NextRequest) {
       current_mc: priceMap.get(trade.ca) || trade.current_mc || 0
     }))
 
-    console.log(`✅ Updated ${updatedTrades.filter(t => t.current_mc > 0).length}/${trades.length} trades with current market caps`)
+    console.log(`✅ Updated ${updatedTrades.filter(t => t.current_mc > 0).length}/${trades.length} filtered trades with current market caps`)
 
     return NextResponse.json(updatedTrades)
   } catch (error) {
-    console.error('Error fetching trader trades:', error)
+    console.error('Error fetching filtered trades:', error)
     return NextResponse.json(
-      { error: 'Failed to fetch trader trades' },
+      { error: 'Failed to fetch filtered trades' },
       { status: 500 }
     )
   }
-} 
+}

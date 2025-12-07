@@ -39,12 +39,39 @@ A Solana token analysis and backtesting platform with trader ranking capabilitie
 - Stores user profiles (username, wallet address, avatar)
 - **Only** used for user-related data
 
+### Code Architecture (Server/Backend Split)
+
+The Express backend follows a clean **Server/Backend** layered architecture:
+
+```
+pi-backend/src/
+├── index.js                     # Entry point
+├── server/                      # SERVER LAYER (HTTP handling)
+│   ├── middleware/
+│   │   ├── auth.js              # Authentication
+│   │   └── errorHandler.js      # Error handling
+│   └── routes/
+│       ├── index.js             # Route registry
+│       ├── health.js            # Health checks
+│       ├── traders.js           # Trader routes
+│       └── trades.js            # Trade routes
+└── backend/                     # BACKEND LAYER (Business logic)
+    ├── repositories/            # Data access
+    ├── services/                # Business logic
+    └── utils/                   # Domain utilities
+```
+
+**Server Layer:** Handles HTTP requests, authentication, routing
+**Backend Layer:** Contains all business logic and data access (no HTTP code)
+
 ### Why This Architecture?
 
 - ✅ **Separation of Concerns**: User auth is separated from business data
 - ✅ **Scalability**: DynamoDB handles trader/trade data efficiently
 - ✅ **Security**: Supabase provides built-in auth with RLS (Row Level Security)
 - ✅ **Flexibility**: Backend can be deployed anywhere (Raspberry Pi, VPS, etc.)
+- ✅ **Testability**: Clean layer separation enables unit testing
+- ✅ **Maintainability**: Single-responsibility modules are easier to modify
 
 ## Backend Setup
 

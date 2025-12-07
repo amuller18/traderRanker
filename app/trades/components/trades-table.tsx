@@ -243,7 +243,7 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
   }
 
   const handleTokenClick = (ca: string) => {
-    router.push(`/token-analysis/${encodeURIComponent(ca)}`)
+    router.push(`/token-analysis?token=${encodeURIComponent(ca)}`)
   }
 
   // Handle retry for all failed tokens
@@ -407,13 +407,13 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
                       {trade.date_called ? formatDate(trade.date_called) : <span className="text-muted-foreground">N/A</span>}
                     </TableCell>
                     <TableCell>
-                      <Link href={`/rankings/${encodeURIComponent(trade.caller)}`} className="hover:underline text-primary">
+                      <Link href={`/rankings?trader=${encodeURIComponent(trade.caller)}`} className="hover:underline text-primary">
                         {trade.caller}
                       </Link>
                     </TableCell>
                     <TableCell>
                       <Link
-                        href={`/token-analysis/${encodeURIComponent(trade.ca)}`}
+                        href={`/token-analysis?token=${encodeURIComponent(trade.ca)}`}
                         className="hover:underline text-primary font-mono truncate max-w-[200px] block"
                         title={trade.ca}
                       >

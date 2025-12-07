@@ -350,7 +350,7 @@ export function TraderTrades({ trades, currentPage, totalPages, totalTrades, tra
                   <tr key={`${trade.caller}_${trade.ca}_${trade.date_called}`} className="border-b">
                     <td className="px-4 py-3 text-sm whitespace-nowrap">{formatDate(trade.date_called)}</td>
                     <td className="px-4 py-3 text-sm">
-                      <Link href={`/token-analysis/${trade.ca}`} className="text-primary hover:underline">
+                      <Link href={`/token-analysis?token=${encodeURIComponent(trade.ca)}`} className="text-primary hover:underline">
                         {trade.ca}
                       </Link>
                     </td>

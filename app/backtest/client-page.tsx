@@ -1128,8 +1128,8 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                       {tokenBreakdown.map((token) => (
                         <tr key={token.trade_id} className="border-b hover:bg-muted/50">
                           <td className="py-2">
-                            <a 
-                              href={`/token-analysis/${token.token}`}
+                            <a
+                              href={`/token-analysis?token=${encodeURIComponent(token.token)}`}
                               className="font-mono text-xs text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
                               target="_blank"
                               rel="noopener noreferrer"

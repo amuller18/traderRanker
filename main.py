@@ -100,8 +100,8 @@ try:
 
     dynamodb = boto3.resource('dynamodb', **dynamodb_kwargs)
 
-    TRADERS_TABLE = os.getenv('DYNAMODB_TRADER_STATISTICS', 'officialStats')
-    TRADES_TABLE = os.getenv('DYNAMODB_TRADES_TABLE', 'officialCalls')
+    TRADERS_TABLE = os.getenv('DYNAMODB_TRADER_STATISTICS', 'officialCalls')
+    TRADES_TABLE = os.getenv('DYNAMODB_TRADES_TABLE', 'officialStats')
 
     # Verify tables exist before using them
     client = boto3.client('dynamodb', **dynamodb_kwargs)
@@ -902,9 +902,14 @@ def dynamodb_item_to_trade(item: dict) -> Trade:
     """
     Convert a DynamoDB item to a Trade object.
     If date_called is missing or empty but timestamp exists, convert timestamp to ISO string.
+    Maps 'username' field to 'caller' if present for DynamoDB compatibility.
     """
     # Make a copy to avoid modifying the original
     trade_dict = dict(item)
+
+    # Map username to caller if it exists
+    if 'username' in trade_dict:
+        trade_dict['caller'] = trade_dict.pop('username')
 
     # Check if date_called is missing or empty
     if not trade_dict.get('date_called') and trade_dict.get('timestamp'):
@@ -2440,7 +2445,16 @@ async def get_trader_stats(
             logger.warning("No traders found in DynamoDB")
             return []
 
-        return [TraderStats(**t) for t in traders]
+        # Map DynamoDB field 'username' to 'caller' for TraderStats model
+        mapped_traders = []
+        for t in traders:
+            trader_dict = dict(t)
+            # Rename 'username' to 'caller' if it exists
+            if 'username' in trader_dict:
+                trader_dict['caller'] = trader_dict.pop('username')
+            mapped_traders.append(TraderStats(**trader_dict))
+
+        return mapped_traders
     except ClientError as e:
         error_code = e.response['Error']['Code']
         if error_code == 'ResourceNotFoundException':
@@ -2469,8 +2483,9 @@ async def get_trader_trades(caller: str) -> List[Trade]:
         from urllib.parse import unquote
         decoded_caller = unquote(caller)
 
-        # Query with pagination (caller is the partition key)
+        # Query with pagination (username is the partition key in DynamoDB)
         response = trades_table.query(
+            IndexName='caller',
             KeyConditionExpression=Key('caller').eq(decoded_caller)
         )
         trades = response.get('Items', [])
@@ -2478,6 +2493,7 @@ async def get_trader_trades(caller: str) -> List[Trade]:
         # Handle pagination
         while 'LastEvaluatedKey' in response:
             response = trades_table.query(
+                IndexName='caller',
                 KeyConditionExpression=Key('caller').eq(decoded_caller),
                 ExclusiveStartKey=response['LastEvaluatedKey']
             )

@@ -46,7 +46,7 @@ export function TokenSearch({ className = "" }: TokenSearchProps) {
     setIsLoading(true)
 
     // Navigate to the token detail page
-    router.push(`/token-analysis/${encodeURIComponent(trimmedAddress)}`)
+    router.push(`/token-analysis?token=${encodeURIComponent(trimmedAddress)}`)
   }
 
   return (

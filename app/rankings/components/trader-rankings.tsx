@@ -41,7 +41,16 @@ export function TraderRankings() {
 
     try {
       const data = await fetchTraderStats()
-      setTraders(data)
+
+      // Deduplicate traders by caller (keep first occurrence of each unique caller)
+      const uniqueTraders = data.reduce((acc: Trader[], trader) => {
+        if (!acc.find(t => t.caller === trader.caller)) {
+          acc.push(trader)
+        }
+        return acc
+      }, [])
+
+      setTraders(uniqueTraders)
       setLastUpdated(new Date())
       setError(null) // Clear errors on success
     } catch (error) {
@@ -145,7 +154,7 @@ export function TraderRankings() {
               <div className="space-y-3">
                 <div>
                   <div className="text-sm text-muted-foreground mb-1">Trader</div>
-                  <Link href={`/rankings/${encodeURIComponent(trader.caller)}`} className="text-primary hover:underline font-medium">
+                  <Link href={`/rankings?trader=${encodeURIComponent(trader.caller)}`} className="text-primary hover:underline font-medium">
                     {trader.caller}
                   </Link>
                 </div>
@@ -213,7 +222,7 @@ export function TraderRankings() {
           {paginatedTraders.map((trader) => (
             <TableRow key={trader.caller}>
               <TableCell>
-                <Link href={`/rankings/${encodeURIComponent(trader.caller)}`} className="text-primary hover:underline">
+                <Link href={`/rankings?trader=${encodeURIComponent(trader.caller)}`} className="text-primary hover:underline">
                   {trader.caller}
                 </Link>
               </TableCell>

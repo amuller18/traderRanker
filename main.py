@@ -100,8 +100,8 @@ try:
 
     dynamodb = boto3.resource('dynamodb', **dynamodb_kwargs)
 
-    TRADERS_TABLE = os.getenv('DYNAMODB_TRADERS_TABLE', 'CallerStatistics')
-    TRADES_TABLE = os.getenv('DYNAMODB_TRADES_TABLE', 'Trades')
+    TRADERS_TABLE = os.getenv('DYNAMODB_TRADER_STATISTICS', 'officialStats')
+    TRADES_TABLE = os.getenv('DYNAMODB_TRADES_TABLE', 'officialCalls')
 
     # Verify tables exist before using them
     client = boto3.client('dynamodb', **dynamodb_kwargs)
@@ -109,6 +109,7 @@ try:
     try:
         client.describe_table(TableName=TRADERS_TABLE)
         traders_table = dynamodb.Table(TRADERS_TABLE)
+        
         logger.info(f"✓ DynamoDB table '{TRADERS_TABLE}' verified and ready")
     except ClientError as e:
         if e.response['Error']['Code'] == 'ResourceNotFoundException':

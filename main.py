@@ -2484,24 +2484,16 @@ async def get_trader_trades(caller: str) -> List[Trade]:
 
         # Query with pagination (username is the partition key in DynamoDB)
         response = trades_table.query(
-<<<<<<< HEAD
             IndexName='caller',
             KeyConditionExpression=Key('caller').eq(decoded_caller)
-=======
-            KeyConditionExpression=Key('username').eq(decoded_caller)
->>>>>>> 51ff5de3258578ca787e1d73ba97523e11d219b6
         )
         trades = response.get('Items', [])
 
         # Handle pagination
         while 'LastEvaluatedKey' in response:
             response = trades_table.query(
-<<<<<<< HEAD
                 IndexName='caller',
                 KeyConditionExpression=Key('caller').eq(decoded_caller),
-=======
-                KeyConditionExpression=Key('username').eq(decoded_caller),
->>>>>>> 51ff5de3258578ca787e1d73ba97523e11d219b6
                 ExclusiveStartKey=response['LastEvaluatedKey']
             )
             trades.extend(response.get('Items', []))

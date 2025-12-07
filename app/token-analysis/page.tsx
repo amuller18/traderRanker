@@ -98,7 +98,8 @@ interface TokenAnalysisPageProps {
   }
 }
 
-export default async function TokenAnalysisPage({ searchParams }: TokenAnalysisPageProps) {
+export default async function TokenAnalysisPage(props: TokenAnalysisPageProps) {
+  const searchParams = await Promise.resolve(props.searchParams)
   const tokenParam = searchParams.token
 
   // If no token query param, show the token search page
@@ -124,7 +125,8 @@ export default async function TokenAnalysisPage({ searchParams }: TokenAnalysisP
   }
 
   // Otherwise, show token detail page
-  const tokenAddress = decodeURIComponent(tokenParam)
+  // Note: searchParams are already decoded by Next.js, no need to decode again
+  const tokenAddress = tokenParam
   let usingMockData = true
 
   try {

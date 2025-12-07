@@ -27,7 +27,8 @@ interface RankingsPageProps {
   }
 }
 
-export default async function RankingsPage({ searchParams }: RankingsPageProps) {
+export default async function RankingsPage(props: RankingsPageProps) {
+  const searchParams = await Promise.resolve(props.searchParams)
   const traderParam = searchParams.trader
 
   // If no trader query param, show the rankings list
@@ -46,7 +47,8 @@ export default async function RankingsPage({ searchParams }: RankingsPageProps) 
   }
 
   // Otherwise, show trader detail page
-  const traderId = decodeURIComponent(traderParam)
+  // Note: searchParams are already decoded by Next.js, no need to decode again
+  const traderId = traderParam
   const page = Number(searchParams.page) || 1
   const pageSize = 100 // Load 100 trades per page
   let usingMockData = true

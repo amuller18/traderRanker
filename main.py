@@ -2479,6 +2479,7 @@ async def get_trader_trades(caller: str) -> List[Trade]:
 
         # Query with pagination (caller is the partition key)
         response = trades_table.query(
+            IndexName='caller',
             KeyConditionExpression=Key('caller').eq(decoded_caller)
         )
         trades = response.get('Items', [])
@@ -2486,6 +2487,7 @@ async def get_trader_trades(caller: str) -> List[Trade]:
         # Handle pagination
         while 'LastEvaluatedKey' in response:
             response = trades_table.query(
+                IndexName='caller',
                 KeyConditionExpression=Key('caller').eq(decoded_caller),
                 ExclusiveStartKey=response['LastEvaluatedKey']
             )

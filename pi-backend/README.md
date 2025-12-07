@@ -2,7 +2,7 @@
 
 This is the Express.js API server that runs on your Raspberry Pi and serves data to your Next.js frontend on Vercel.
 
-## Architecture
+## System Architecture
 
 ```
 ┌─────────────┐         ┌──────────────────┐         ┌──────────────┐
@@ -16,6 +16,58 @@ This is the Express.js API server that runs on your Raspberry Pi and serves data
                                                        │  DynamoDB   │
                                                        └─────────────┘
 ```
+
+## Code Architecture (Server/Backend Split)
+
+The codebase follows a clean **Server/Backend** architecture pattern:
+
+```
+src/
+├── index.js                    # Entry point - app startup & configuration
+├── server/                     # SERVER LAYER (HTTP handling)
+│   ├── middleware/
+│   │   ├── auth.js             # API key & Cloudflare JWT authentication
+│   │   └── errorHandler.js     # 404 and global error handlers
+│   └── routes/
+│       ├── index.js            # Route registry & middleware binding
+│       ├── health.js           # Health check endpoint
+│       ├── traders.js          # Trader API routes (thin wrappers)
+│       └── trades.js           # Trade API routes (thin wrappers)
+└── backend/                    # BACKEND LAYER (Business logic)
+    ├── repositories/
+    │   ├── dynamoClient.js     # DynamoDB client configuration
+    │   ├── traderRepository.js # Trader data access (CRUD)
+    │   └── tradeRepository.js  # Trade data access (CRUD)
+    ├── services/
+    │   ├── traderService.js    # Trader business logic
+    │   └── tradeService.js     # Trade business logic
+    └── utils/
+        └── filters.js          # Data filtering utilities
+```
+
+### Layer Responsibilities
+
+**Server Layer** (HTTP / Edge)
+- Accepts HTTP requests
+- Validates authentication (API keys, JWTs)
+- Parses request parameters
+- Calls backend services
+- Formats HTTP responses
+- Handles errors
+
+**Backend Layer** (Domain / Application Logic)
+- Contains all business logic
+- Manages data access through repositories
+- Applies domain-level filtering and validation
+- No HTTP-specific code
+- No framework dependencies
+
+### Key Design Principles
+
+1. **Routes are thin wrappers** - They only translate HTTP to service calls
+2. **Backend never imports from server** - Dependency flows one direction
+3. **Services orchestrate repositories** - Business logic lives in services
+4. **Repositories are pure data access** - No business logic in repositories
 
 ## Setup on Raspberry Pi
 
@@ -144,7 +196,7 @@ Type=simple
 User=pi
 WorkingDirectory=/home/pi/traderranker-api
 Environment=NODE_ENV=production
-ExecStart=/usr/bin/node src/server.js
+ExecStart=/usr/bin/node src/index.js
 Restart=on-failure
 RestartSec=10
 

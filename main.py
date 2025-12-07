@@ -1689,7 +1689,6 @@ async def try_dexscreener_bulk(session: aiohttp.ClientSession, tokens: List[str]
             await asyncio.sleep(REQUEST_DELAY_SECONDS)
 
             url = f"https://api.dexscreener.com/latest/dex/tokens/{addresses}"
-            logger.info(f"DexScreener bulk request for {len(batch)} tokens")
 
             async with session.get(
                 url,
@@ -1735,7 +1734,6 @@ async def try_dexscreener_bulk(session: aiohttp.ClientSession, tokens: List[str]
 
                         if market_cap and market_cap > 0:
                             price = float(price_usd) if price_usd and price_usd != '0' else 0
-                            logger.info(f"✅ DexScreener bulk success for {token_address}: price=${price}, market_cap=${market_cap}")
                             results[token_address] = TokenPriceResult(
                                 token=token_address,
                                 price=price,
@@ -1744,7 +1742,6 @@ async def try_dexscreener_bulk(session: aiohttp.ClientSession, tokens: List[str]
                             break
                         elif fdv and fdv > 0:
                             price = float(price_usd) if price_usd and price_usd != '0' else 0
-                            logger.info(f"✅ DexScreener bulk success for {token_address}: price=${price}, fdv=${fdv}")
                             results[token_address] = TokenPriceResult(
                                 token=token_address,
                                 price=price,
@@ -1782,8 +1779,6 @@ async def try_birdeye_bulk(session: aiohttp.ClientSession, tokens: List[str]) ->
             params = {
                 "list_address": ",".join(batch)
             }
-
-            logger.info(f"Birdeye bulk request for {len(batch)} tokens")
 
             # Try first API key only for bulk requests to avoid spamming
             if not BIRDEYE_API_KEYS:
@@ -1843,7 +1838,6 @@ async def try_birdeye_bulk(session: aiohttp.ClientSession, tokens: List[str]) ->
                             supply = 1e9
                             market_cap = price * supply
 
-                            logger.info(f"✅ Birdeye bulk success for {token_address}: price=${price}, market_cap=${market_cap}")
                             results[token_address] = TokenPriceResult(
                                 token=token_address,
                                 price=price,
@@ -1869,31 +1863,24 @@ async def bulk_token_prices(req: BulkPriceRequest):
     if not req.tokens:
         raise HTTPException(400, "No tokens provided")
 
-    logger.info(f"Fetching prices for {len(req.tokens)} tokens using bulk APIs")
-
     # Track results by token address
     results_map: Dict[str, TokenPriceResult] = {}
     remaining_tokens = list(req.tokens)
 
     async with aiohttp.ClientSession() as session:
         # Step 1: Try DexScreener bulk first (best for Solana DEX tokens)
-        logger.info(f"Step 1: Trying DexScreener bulk for {len(remaining_tokens)} tokens")
         dexscreener_results = await try_dexscreener_bulk(session, remaining_tokens)
         results_map.update(dexscreener_results)
         remaining_tokens = [t for t in remaining_tokens if t not in results_map]
-        logger.info(f"DexScreener found {len(dexscreener_results)} tokens, {len(remaining_tokens)} remaining")
 
         # Step 2: Try Birdeye bulk for remaining tokens
         if remaining_tokens:
-            logger.info(f"Step 2: Trying Birdeye bulk for {len(remaining_tokens)} tokens")
             birdeye_results = await try_birdeye_bulk(session, remaining_tokens)
             results_map.update(birdeye_results)
             remaining_tokens = [t for t in remaining_tokens if t not in results_map]
-            logger.info(f"Birdeye found {len(birdeye_results)} tokens, {len(remaining_tokens)} remaining")
 
         # Step 3: Try CoinGecko bulk for remaining tokens (in batches of 100)
         if remaining_tokens:
-            logger.info(f"Step 3: Trying CoinGecko bulk for {len(remaining_tokens)} tokens")
             BATCH_SIZE = 100
             for i in range(0, len(remaining_tokens), BATCH_SIZE):
                 batch = remaining_tokens[i:i + BATCH_SIZE]
@@ -1917,26 +1904,20 @@ async def bulk_token_prices(req: BulkPriceRequest):
                                 if token in price_data and "usd" in price_data[token]:
                                     price = price_data[token]["usd"]
                                     market_cap = price * 1e9
-                                    logger.info(f"✅ CoinGecko bulk success for {token}: price=${price}, market_cap=${market_cap}")
                                     results_map[token] = TokenPriceResult(
                                         token=token,
                                         price=price,
                                         market_cap=market_cap
                                     )
-                        else:
-                            logger.warning(f"CoinGecko bulk API error: {response.status}")
 
                 except Exception as e:
                     logger.error(f"Error in CoinGecko bulk request: {e}")
 
             # Update remaining tokens after CoinGecko
             remaining_tokens = [t for t in remaining_tokens if t not in results_map]
-            logger.info(f"CoinGecko found some tokens, {len(remaining_tokens)} remaining")
 
         # Step 4: For any remaining tokens, return error results
-        # (We could add individual fallbacks here if needed, but it defeats the purpose of bulk APIs)
         for token in remaining_tokens:
-            logger.warning(f"No price data found for {token} from any bulk API")
             results_map[token] = TokenPriceResult(
                 token=token,
                 price=0,
@@ -1946,8 +1927,6 @@ async def bulk_token_prices(req: BulkPriceRequest):
 
     # Convert results_map to list in the same order as input tokens
     results = [results_map[token] for token in req.tokens]
-
-    logger.info(f"Bulk price fetch complete: {len([r for r in results if r.price > 0])}/{len(req.tokens)} tokens with prices")
     return results
 
 @app.post("/api/simulate/breakdown", response_model=List[TokenBreakdown])

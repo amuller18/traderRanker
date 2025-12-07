@@ -901,9 +901,14 @@ def dynamodb_item_to_trade(item: dict) -> Trade:
     """
     Convert a DynamoDB item to a Trade object.
     If date_called is missing or empty but timestamp exists, convert timestamp to ISO string.
+    Maps 'username' field to 'caller' if present for DynamoDB compatibility.
     """
     # Make a copy to avoid modifying the original
     trade_dict = dict(item)
+
+    # Map username to caller if it exists
+    if 'username' in trade_dict:
+        trade_dict['caller'] = trade_dict.pop('username')
 
     # Check if date_called is missing or empty
     if not trade_dict.get('date_called') and trade_dict.get('timestamp'):
@@ -2477,16 +2482,16 @@ async def get_trader_trades(caller: str) -> List[Trade]:
         from urllib.parse import unquote
         decoded_caller = unquote(caller)
 
-        # Query with pagination (caller is the partition key)
+        # Query with pagination (username is the partition key in DynamoDB)
         response = trades_table.query(
-            KeyConditionExpression=Key('caller').eq(decoded_caller)
+            KeyConditionExpression=Key('username').eq(decoded_caller)
         )
         trades = response.get('Items', [])
 
         # Handle pagination
         while 'LastEvaluatedKey' in response:
             response = trades_table.query(
-                KeyConditionExpression=Key('caller').eq(decoded_caller),
+                KeyConditionExpression=Key('username').eq(decoded_caller),
                 ExclusiveStartKey=response['LastEvaluatedKey']
             )
             trades.extend(response.get('Items', []))

@@ -20,15 +20,15 @@ export const metadata = {
 }
 
 interface RankingsPageProps {
-  searchParams: {
+  searchParams: Promise<{
     trader?: string
     page?: string
     pageSize?: string
-  }
+  }>
 }
 
 export default async function RankingsPage(props: RankingsPageProps) {
-  const searchParams = await Promise.resolve(props.searchParams)
+  const searchParams = await props.searchParams
   const traderParam = searchParams.trader
 
   // If no trader query param, show the rankings list

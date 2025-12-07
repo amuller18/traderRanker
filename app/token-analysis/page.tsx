@@ -93,13 +93,13 @@ const getPriceChangeClass = (change: number | undefined): string => {
 };
 
 interface TokenAnalysisPageProps {
-  searchParams: {
+  searchParams: Promise<{
     token?: string
-  }
+  }>
 }
 
 export default async function TokenAnalysisPage(props: TokenAnalysisPageProps) {
-  const searchParams = await Promise.resolve(props.searchParams)
+  const searchParams = await props.searchParams
   const tokenParam = searchParams.token
 
   // If no token query param, show the token search page

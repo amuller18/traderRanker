@@ -1863,24 +1863,33 @@ async def bulk_token_prices(req: BulkPriceRequest):
     if not req.tokens:
         raise HTTPException(400, "No tokens provided")
 
+    import time
+    start_time = time.time()
+    logger.info(f"📊 Bulk price request for {len(req.tokens)} tokens")
+
     # Track results by token address
     results_map: Dict[str, TokenPriceResult] = {}
     remaining_tokens = list(req.tokens)
 
     async with aiohttp.ClientSession() as session:
         # Step 1: Try DexScreener bulk first (best for Solana DEX tokens)
+        step1_start = time.time()
         dexscreener_results = await try_dexscreener_bulk(session, remaining_tokens)
         results_map.update(dexscreener_results)
         remaining_tokens = [t for t in remaining_tokens if t not in results_map]
+        logger.info(f"✓ DexScreener: {len(dexscreener_results)} found in {time.time() - step1_start:.2f}s, {len(remaining_tokens)} remaining")
 
         # Step 2: Try Birdeye bulk for remaining tokens
         if remaining_tokens:
+            step2_start = time.time()
             birdeye_results = await try_birdeye_bulk(session, remaining_tokens)
             results_map.update(birdeye_results)
             remaining_tokens = [t for t in remaining_tokens if t not in results_map]
+            logger.info(f"✓ Birdeye: {len(birdeye_results)} found in {time.time() - step2_start:.2f}s, {len(remaining_tokens)} remaining")
 
         # Step 3: Try CoinGecko bulk for remaining tokens (in batches of 100)
         if remaining_tokens:
+            step3_start = time.time()
             BATCH_SIZE = 100
             for i in range(0, len(remaining_tokens), BATCH_SIZE):
                 batch = remaining_tokens[i:i + BATCH_SIZE]
@@ -1915,6 +1924,7 @@ async def bulk_token_prices(req: BulkPriceRequest):
 
             # Update remaining tokens after CoinGecko
             remaining_tokens = [t for t in remaining_tokens if t not in results_map]
+            logger.info(f"✓ CoinGecko: done in {time.time() - step3_start:.2f}s, {len(remaining_tokens)} remaining")
 
         # Step 4: For any remaining tokens, return error results
         for token in remaining_tokens:
@@ -1927,6 +1937,11 @@ async def bulk_token_prices(req: BulkPriceRequest):
 
     # Convert results_map to list in the same order as input tokens
     results = [results_map[token] for token in req.tokens]
+
+    success_count = len([r for r in results if r.price > 0])
+    total_time = time.time() - start_time
+    logger.info(f"✅ Bulk API complete: {success_count}/{len(req.tokens)} tokens with prices in {total_time:.2f}s")
+
     return results
 
 @app.post("/api/simulate/breakdown", response_model=List[TokenBreakdown])

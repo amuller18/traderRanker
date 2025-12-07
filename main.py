@@ -1633,19 +1633,19 @@ async def try_birdeye_fallback(session: aiohttp.ClientSession, token: str) -> Op
         headers = {
             'accept': 'application/json',
         }
-        
+
         # Try all API keys
         success, data, used_key = await try_all_birdeye_keys(session, url, headers=headers)
-        
+
         if not success:
             logger.warning(f"All Birdeye API keys failed for {token}")
             return None
-            
+
         price = data.get('data', {}).get('value', 0)
         if not price or price == 0:
             logger.warning(f"No price data from Birdeye for {token}")
             return None
-            
+
         # Try to get supply for market cap calculation
         supply = 1e9
         try:
@@ -1656,7 +1656,7 @@ async def try_birdeye_fallback(session: aiohttp.ClientSession, token: str) -> Op
                     supply = supply_data.get('circulating_supply') or supply_data.get('total_supply') or 1e9
         except Exception as e:
             logger.warning(f"Could not fetch supply for {token} from API in Birdeye fallback: {e}")
-            
+
         market_cap = price * supply
         logger.info(f"Birdeye fallback success for {token}: price=${price}, market_cap=${market_cap} (using key: {used_key[:10]}...{used_key[-4:]})")
         return TokenPriceResult(
@@ -1668,81 +1668,286 @@ async def try_birdeye_fallback(session: aiohttp.ClientSession, token: str) -> Op
         logger.error(f"Error in Birdeye fallback for {token}: {e}")
         return None
 
+async def try_dexscreener_bulk(session: aiohttp.ClientSession, tokens: List[str]) -> Dict[str, TokenPriceResult]:
+    """
+    Try to get token prices and market caps from DexScreener in bulk.
+    DexScreener supports comma-separated addresses.
+    Returns a dict mapping token address to TokenPriceResult.
+    """
+    if not tokens:
+        return {}
+
+    try:
+        # DexScreener supports up to 30 tokens per request
+        MAX_TOKENS_PER_REQUEST = 30
+        results = {}
+
+        for i in range(0, len(tokens), MAX_TOKENS_PER_REQUEST):
+            batch = tokens[i:i + MAX_TOKENS_PER_REQUEST]
+            addresses = ",".join(batch)
+
+            await asyncio.sleep(REQUEST_DELAY_SECONDS)
+
+            url = f"https://api.dexscreener.com/latest/dex/tokens/{addresses}"
+            logger.info(f"DexScreener bulk request for {len(batch)} tokens")
+
+            async with session.get(
+                url,
+                headers={
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                    'Referer': 'https://dexscreener.com/',
+                    'Accept': 'application/json',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    'Origin': 'https://dexscreener.com',
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache',
+                },
+                timeout=aiohttp.ClientTimeout(total=HTTP_TIMEOUT)
+            ) as response:
+                if not response.ok:
+                    logger.warning(f"DexScreener bulk API error: {response.status}")
+                    continue
+
+                data = await response.json()
+                pairs = data.get('pairs', [])
+
+                if not pairs:
+                    logger.warning(f"No pairs found in DexScreener bulk response")
+                    continue
+
+                # Group pairs by base token address
+                token_pairs = {}
+                for pair in pairs:
+                    base_token = pair.get('baseToken', {})
+                    token_address = base_token.get('address')
+
+                    if token_address and token_address in batch:
+                        if token_address not in token_pairs:
+                            token_pairs[token_address] = []
+                        token_pairs[token_address].append(pair)
+
+                # Extract best pair for each token
+                for token_address, token_pair_list in token_pairs.items():
+                    for pair in token_pair_list:
+                        market_cap = pair.get('marketCap', 0)
+                        fdv = pair.get('fdv', 0)
+                        price_usd = pair.get('priceUsd', '0')
+
+                        if market_cap and market_cap > 0:
+                            price = float(price_usd) if price_usd and price_usd != '0' else 0
+                            logger.info(f"✅ DexScreener bulk success for {token_address}: price=${price}, market_cap=${market_cap}")
+                            results[token_address] = TokenPriceResult(
+                                token=token_address,
+                                price=price,
+                                market_cap=market_cap
+                            )
+                            break
+                        elif fdv and fdv > 0:
+                            price = float(price_usd) if price_usd and price_usd != '0' else 0
+                            logger.info(f"✅ DexScreener bulk success for {token_address}: price=${price}, fdv=${fdv}")
+                            results[token_address] = TokenPriceResult(
+                                token=token_address,
+                                price=price,
+                                market_cap=fdv
+                            )
+                            break
+
+        logger.info(f"DexScreener bulk: found {len(results)}/{len(tokens)} tokens")
+        return results
+
+    except Exception as e:
+        logger.error(f"Error in DexScreener bulk request: {e}")
+        return {}
+
+async def try_birdeye_bulk(session: aiohttp.ClientSession, tokens: List[str]) -> Dict[str, TokenPriceResult]:
+    """
+    Try to get token prices from Birdeye multi_price endpoint in bulk.
+    Returns a dict mapping token address to TokenPriceResult.
+    """
+    if not tokens:
+        return {}
+
+    try:
+        # Birdeye multi_price supports up to 100 tokens per request
+        MAX_TOKENS_PER_REQUEST = 100
+        results = {}
+
+        for i in range(0, len(tokens), MAX_TOKENS_PER_REQUEST):
+            batch = tokens[i:i + MAX_TOKENS_PER_REQUEST]
+
+            await asyncio.sleep(REQUEST_DELAY_SECONDS)
+
+            # Use the defi/multi_price endpoint
+            url = "https://public-api.birdeye.so/defi/multi_price"
+            params = {
+                "list_address": ",".join(batch)
+            }
+
+            logger.info(f"Birdeye bulk request for {len(batch)} tokens")
+
+            # Try first API key only for bulk requests to avoid spamming
+            if not BIRDEYE_API_KEYS:
+                logger.warning("No Birdeye API keys available")
+                return {}
+
+            api_key = BIRDEYE_API_KEYS[0]
+            headers = {
+                'accept': 'application/json',
+                'X-API-KEY': api_key,
+            }
+
+            async with session.get(
+                url,
+                params=params,
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=HTTP_TIMEOUT)
+            ) as response:
+                if not response.ok:
+                    logger.warning(f"Birdeye bulk API error: {response.status}")
+                    # If rate limited, try next key
+                    if response.status == 429 and len(BIRDEYE_API_KEYS) > 1:
+                        logger.info("Trying next Birdeye API key...")
+                        api_key = BIRDEYE_API_KEYS[1]
+                        headers['X-API-KEY'] = api_key
+                        await asyncio.sleep(2)
+
+                        async with session.get(
+                            url,
+                            params=params,
+                            headers=headers,
+                            timeout=aiohttp.ClientTimeout(total=HTTP_TIMEOUT)
+                        ) as retry_response:
+                            if not retry_response.ok:
+                                logger.warning(f"Birdeye bulk retry failed: {retry_response.status}")
+                                continue
+                            response = retry_response
+                    else:
+                        continue
+
+                data = await response.json()
+                price_data = data.get('data', {})
+
+                if not price_data:
+                    logger.warning("No data in Birdeye bulk response")
+                    continue
+
+                # Extract prices for each token
+                for token_address in batch:
+                    token_price_info = price_data.get(token_address)
+
+                    if token_price_info:
+                        price = token_price_info.get('value', 0)
+
+                        if price and price > 0:
+                            # Use default supply for market cap calculation
+                            supply = 1e9
+                            market_cap = price * supply
+
+                            logger.info(f"✅ Birdeye bulk success for {token_address}: price=${price}, market_cap=${market_cap}")
+                            results[token_address] = TokenPriceResult(
+                                token=token_address,
+                                price=price,
+                                market_cap=market_cap
+                            )
+
+        logger.info(f"Birdeye bulk: found {len(results)}/{len(tokens)} tokens")
+        return results
+
+    except Exception as e:
+        logger.error(f"Error in Birdeye bulk request: {e}")
+        return {}
+
 @app.post("/api/bulk-token-prices", response_model=List[TokenPriceResult])
 async def bulk_token_prices(req: BulkPriceRequest):
     """
-    Fetch current prices for multiple tokens using CoinGecko API with DexScreener and Birdeye fallback.
+    Fetch current prices for multiple tokens using bulk APIs:
+    1. DexScreener bulk (best for Solana DEX tokens)
+    2. Birdeye bulk fallback (good for newer tokens)
+    3. CoinGecko bulk fallback (for established tokens)
+    4. Individual API calls only as last resort
     """
     if not req.tokens:
         raise HTTPException(400, "No tokens provided")
-    
-    BATCH_SIZE = 100
-    results = []
-    for i in range(0, len(req.tokens), BATCH_SIZE):
-        batch = req.tokens[i:i + BATCH_SIZE]
-        contract_addresses = ",".join(batch)
-        try:
-            # Add rate limiting delay
-            await asyncio.sleep(REQUEST_DELAY_SECONDS)
-            
-            url = f"https://api.coingecko.com/api/v3/simple/token_price/solana?contract_addresses={contract_addresses}&vs_currencies=usd"
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    url,
-                    headers={
-                        "accept": "application/json",
-                        "x-cg-demo-api-key": COINGECKO_API_KEY
-                    },
-                    timeout=aiohttp.ClientTimeout(total=HTTP_TIMEOUT)
-                ) as response:
-                    if not response.ok:
-                        logger.error(f"CoinGecko API error: {response.status}")
-                        for token in batch:
-                            results.append(TokenPriceResult(
-                                token=token,
-                                price=0,
-                                market_cap=0,
-                                error=f"CoinGecko API error: {response.status}"
-                            ))
-                        continue
-                    price_data = await response.json()
-                    for token in batch:
-                        if token in price_data and "usd" in price_data[token]:
-                            price = price_data[token]["usd"]
-                            market_cap = price * 1e9
-                            results.append(TokenPriceResult(
-                                token=token,
-                                price=price,
-                                market_cap=market_cap
-                            ))
-                        else:
-                            logger.info(f"CoinGecko no data for {token}, trying DexScreener...")
-                            dexscreener_result = await try_dexscreener_fallback(session, token)
-                            if dexscreener_result:
-                                results.append(dexscreener_result)
-                            else:
-                                logger.info(f"DexScreener no data for {token}, trying Birdeye...")
-                                birdeye_result = await try_birdeye_fallback(session, token)
-                                if birdeye_result:
-                                    results.append(birdeye_result)
-                                else:
-                                    results.append(TokenPriceResult(
+
+    logger.info(f"Fetching prices for {len(req.tokens)} tokens using bulk APIs")
+
+    # Track results by token address
+    results_map: Dict[str, TokenPriceResult] = {}
+    remaining_tokens = list(req.tokens)
+
+    async with aiohttp.ClientSession() as session:
+        # Step 1: Try DexScreener bulk first (best for Solana DEX tokens)
+        logger.info(f"Step 1: Trying DexScreener bulk for {len(remaining_tokens)} tokens")
+        dexscreener_results = await try_dexscreener_bulk(session, remaining_tokens)
+        results_map.update(dexscreener_results)
+        remaining_tokens = [t for t in remaining_tokens if t not in results_map]
+        logger.info(f"DexScreener found {len(dexscreener_results)} tokens, {len(remaining_tokens)} remaining")
+
+        # Step 2: Try Birdeye bulk for remaining tokens
+        if remaining_tokens:
+            logger.info(f"Step 2: Trying Birdeye bulk for {len(remaining_tokens)} tokens")
+            birdeye_results = await try_birdeye_bulk(session, remaining_tokens)
+            results_map.update(birdeye_results)
+            remaining_tokens = [t for t in remaining_tokens if t not in results_map]
+            logger.info(f"Birdeye found {len(birdeye_results)} tokens, {len(remaining_tokens)} remaining")
+
+        # Step 3: Try CoinGecko bulk for remaining tokens (in batches of 100)
+        if remaining_tokens:
+            logger.info(f"Step 3: Trying CoinGecko bulk for {len(remaining_tokens)} tokens")
+            BATCH_SIZE = 100
+            for i in range(0, len(remaining_tokens), BATCH_SIZE):
+                batch = remaining_tokens[i:i + BATCH_SIZE]
+                contract_addresses = ",".join(batch)
+
+                try:
+                    await asyncio.sleep(REQUEST_DELAY_SECONDS)
+
+                    url = f"https://api.coingecko.com/api/v3/simple/token_price/solana?contract_addresses={contract_addresses}&vs_currencies=usd"
+                    async with session.get(
+                        url,
+                        headers={
+                            "accept": "application/json",
+                            "x-cg-demo-api-key": COINGECKO_API_KEY
+                        },
+                        timeout=aiohttp.ClientTimeout(total=HTTP_TIMEOUT)
+                    ) as response:
+                        if response.ok:
+                            price_data = await response.json()
+                            for token in batch:
+                                if token in price_data and "usd" in price_data[token]:
+                                    price = price_data[token]["usd"]
+                                    market_cap = price * 1e9
+                                    logger.info(f"✅ CoinGecko bulk success for {token}: price=${price}, market_cap=${market_cap}")
+                                    results_map[token] = TokenPriceResult(
                                         token=token,
-                                        price=0,
-                                        market_cap=0,
-                                        error="Price not available from CoinGecko, DexScreener, or Birdeye"
-                                    ))
-            if i + BATCH_SIZE < len(req.tokens):
-                await asyncio.sleep(1)
-        except Exception as e:
-            logger.error(f"Error processing batch {i}-{i + BATCH_SIZE}: {e}")
-            for token in batch:
-                results.append(TokenPriceResult(
-                    token=token,
-                    price=0,
-                    market_cap=0,
-                    error=f"Batch processing failed: {str(e)}"
-                ))
+                                        price=price,
+                                        market_cap=market_cap
+                                    )
+                        else:
+                            logger.warning(f"CoinGecko bulk API error: {response.status}")
+
+                except Exception as e:
+                    logger.error(f"Error in CoinGecko bulk request: {e}")
+
+            # Update remaining tokens after CoinGecko
+            remaining_tokens = [t for t in remaining_tokens if t not in results_map]
+            logger.info(f"CoinGecko found some tokens, {len(remaining_tokens)} remaining")
+
+        # Step 4: For any remaining tokens, return error results
+        # (We could add individual fallbacks here if needed, but it defeats the purpose of bulk APIs)
+        for token in remaining_tokens:
+            logger.warning(f"No price data found for {token} from any bulk API")
+            results_map[token] = TokenPriceResult(
+                token=token,
+                price=0,
+                market_cap=0,
+                error="Price not available from DexScreener, Birdeye, or CoinGecko bulk APIs"
+            )
+
+    # Convert results_map to list in the same order as input tokens
+    results = [results_map[token] for token in req.tokens]
+
+    logger.info(f"Bulk price fetch complete: {len([r for r in results if r.price > 0])}/{len(req.tokens)} tokens with prices")
     return results
 
 @app.post("/api/simulate/breakdown", response_model=List[TokenBreakdown])

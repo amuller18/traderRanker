@@ -100,7 +100,7 @@ try:
 
     dynamodb = boto3.resource('dynamodb', **dynamodb_kwargs)
 
-    TRADERS_TABLE = os.getenv('DYNAMODB_TRADERS_TABLE', 'officialCalls')
+    TRADERS_TABLE = os.getenv('DYNAMODB_TRADER_STATISTICS', 'officialCalls')
     TRADES_TABLE = os.getenv('DYNAMODB_TRADES_TABLE', 'officialStats')
 
     # Verify tables exist before using them

@@ -41,7 +41,16 @@ export function TraderRankings() {
 
     try {
       const data = await fetchTraderStats()
-      setTraders(data)
+
+      // Deduplicate traders by caller (keep first occurrence of each unique caller)
+      const uniqueTraders = data.reduce((acc: Trader[], trader) => {
+        if (!acc.find(t => t.caller === trader.caller)) {
+          acc.push(trader)
+        }
+        return acc
+      }, [])
+
+      setTraders(uniqueTraders)
       setLastUpdated(new Date())
       setError(null) // Clear errors on success
     } catch (error) {

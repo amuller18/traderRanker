@@ -63,11 +63,34 @@ export default async function RankingsPage(props: RankingsPageProps) {
 
   // Fetch trader stats from API
   const allTraders = await fetchTraderStats()
-  const trader = allTraders.find(t => t.caller === traderId)
+
+  // Deduplicate traders by caller (in case API returns duplicates)
+  const uniqueTraders = allTraders.reduce((acc: any[], trader) => {
+    if (!acc.find(t => t.caller === trader.caller)) {
+      acc.push(trader)
+    }
+    return acc
+  }, [])
+
+  let trader = uniqueTraders.find(t => t.caller === traderId)
 
   if (!trader) {
-    console.error(`Trader ${traderId} not found in stats`)
-    notFound()
+    console.error(`Trader "${traderId}" not found in stats`)
+    console.error(`Available traders (first 10):`, uniqueTraders.slice(0, 10).map(t => t.caller))
+    console.error(`Looking for exact match with: "${traderId}"`)
+    console.error(`Trader ID length: ${traderId.length}`)
+
+    // Try case-insensitive match as fallback
+    const caseInsensitiveMatch = uniqueTraders.find(t =>
+      t.caller.toLowerCase() === traderId.toLowerCase()
+    )
+
+    if (caseInsensitiveMatch) {
+      console.log(`Found case-insensitive match: "${caseInsensitiveMatch.caller}"`)
+      trader = caseInsensitiveMatch
+    } else {
+      notFound()
+    }
   }
 
   console.log(`📊 Loading trader profile: ${traderId}`)

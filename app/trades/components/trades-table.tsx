@@ -423,10 +423,6 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
                     <TableCell>
                       {trade.initial_mc > 0 ? (
                         formatMarketCap(trade.initial_mc)
-                      ) : currentMc && currentMc > 0 ? (
-                        <span className="text-muted-foreground italic" title="Using current MC (initial MC not available)">
-                          {formatMarketCap(currentMc)}
-                        </span>
                       ) : (
                         <span className="text-muted-foreground">N/A</span>
                       )}

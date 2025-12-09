@@ -1670,15 +1670,16 @@ async def try_birdeye_fallback(session: aiohttp.ClientSession, token: str) -> Op
 
 async def try_dexscreener_bulk(session: aiohttp.ClientSession, tokens: List[str]) -> Dict[str, TokenPriceResult]:
     """
-    Try to get token prices and market caps from DexScreener in bulk.
-    DexScreener supports comma-separated addresses.
+    Try to get token prices and market caps from DexScreener v1 API in bulk.
+    Uses the new /tokens/v1/{chainId}/{tokenAddresses} endpoint which supports
+    up to 30 comma-separated addresses with a rate limit of 300 requests/minute.
     Returns a dict mapping token address to TokenPriceResult.
     """
     if not tokens:
         return {}
 
     try:
-        # DexScreener supports up to 30 tokens per request
+        # DexScreener v1 API supports up to 30 tokens per request
         MAX_TOKENS_PER_REQUEST = 30
         results = {}
 
@@ -1686,35 +1687,34 @@ async def try_dexscreener_bulk(session: aiohttp.ClientSession, tokens: List[str]
             batch = tokens[i:i + MAX_TOKENS_PER_REQUEST]
             addresses = ",".join(batch)
 
-            await asyncio.sleep(REQUEST_DELAY_SECONDS)
+            # Use smaller delay since rate limit is 300/min (5 requests/sec)
+            await asyncio.sleep(0.5)
 
-            url = f"https://api.dexscreener.com/latest/dex/tokens/{addresses}"
+            # Use the new v1 API endpoint for Solana tokens
+            url = f"https://api.dexscreener.com/tokens/v1/solana/{addresses}"
 
             async with session.get(
                 url,
                 headers={
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                    'Referer': 'https://dexscreener.com/',
                     'Accept': 'application/json',
-                    'Accept-Language': 'en-US,en;q=0.9',
-                    'Origin': 'https://dexscreener.com',
-                    'Cache-Control': 'no-cache',
-                    'Pragma': 'no-cache',
                 },
                 timeout=aiohttp.ClientTimeout(total=HTTP_TIMEOUT)
             ) as response:
                 if not response.ok:
-                    logger.warning(f"DexScreener bulk API error: {response.status}")
+                    logger.warning(f"DexScreener v1 bulk API error: {response.status}")
                     continue
 
                 data = await response.json()
-                pairs = data.get('pairs', [])
+
+                # v1 API returns array of pairs directly (not wrapped in 'pairs' key)
+                pairs = data if isinstance(data, list) else data.get('pairs', [])
 
                 if not pairs:
-                    logger.warning(f"No pairs found in DexScreener bulk response")
+                    logger.warning(f"No pairs found in DexScreener v1 bulk response")
                     continue
 
-                # Group pairs by base token address
+                # Group pairs by base token address and select the best one (highest liquidity)
                 token_pairs = {}
                 for pair in pairs:
                     base_token = pair.get('baseToken', {})
@@ -1725,9 +1725,16 @@ async def try_dexscreener_bulk(session: aiohttp.ClientSession, tokens: List[str]
                             token_pairs[token_address] = []
                         token_pairs[token_address].append(pair)
 
-                # Extract best pair for each token
+                # Extract best pair for each token (prefer highest liquidity)
                 for token_address, token_pair_list in token_pairs.items():
-                    for pair in token_pair_list:
+                    # Sort by liquidity (highest first)
+                    sorted_pairs = sorted(
+                        token_pair_list,
+                        key=lambda p: p.get('liquidity', {}).get('usd', 0) or 0,
+                        reverse=True
+                    )
+
+                    for pair in sorted_pairs:
                         market_cap = pair.get('marketCap', 0)
                         fdv = pair.get('fdv', 0)
                         price_usd = pair.get('priceUsd', '0')
@@ -1749,11 +1756,11 @@ async def try_dexscreener_bulk(session: aiohttp.ClientSession, tokens: List[str]
                             )
                             break
 
-        logger.info(f"DexScreener bulk: found {len(results)}/{len(tokens)} tokens")
+        logger.info(f"DexScreener v1 bulk: found {len(results)}/{len(tokens)} tokens")
         return results
 
     except Exception as e:
-        logger.error(f"Error in DexScreener bulk request: {e}")
+        logger.error(f"Error in DexScreener v1 bulk request: {e}")
         return {}
 
 async def try_birdeye_bulk(session: aiohttp.ClientSession, tokens: List[str]) -> Dict[str, TokenPriceResult]:
@@ -1855,10 +1862,9 @@ async def try_birdeye_bulk(session: aiohttp.ClientSession, tokens: List[str]) ->
 async def bulk_token_prices(req: BulkPriceRequest):
     """
     Fetch current prices for multiple tokens using bulk APIs:
-    1. DexScreener bulk (best for Solana DEX tokens)
+    1. DexScreener v1 API bulk (/tokens/v1/solana/{addresses}) - primary source
     2. Birdeye bulk fallback (good for newer tokens)
     3. CoinGecko bulk fallback (for established tokens)
-    4. Individual API calls only as last resort
     """
     if not req.tokens:
         raise HTTPException(400, "No tokens provided")
@@ -1872,12 +1878,12 @@ async def bulk_token_prices(req: BulkPriceRequest):
     remaining_tokens = list(req.tokens)
 
     async with aiohttp.ClientSession() as session:
-        # Step 1: Try DexScreener bulk first (best for Solana DEX tokens)
+        # Step 1: Try DexScreener v1 API bulk first (best for Solana DEX tokens)
         step1_start = time.time()
         dexscreener_results = await try_dexscreener_bulk(session, remaining_tokens)
         results_map.update(dexscreener_results)
         remaining_tokens = [t for t in remaining_tokens if t not in results_map]
-        logger.info(f"✓ DexScreener: {len(dexscreener_results)} found in {time.time() - step1_start:.2f}s, {len(remaining_tokens)} remaining")
+        logger.info(f"✓ DexScreener v1: {len(dexscreener_results)} found in {time.time() - step1_start:.2f}s, {len(remaining_tokens)} remaining")
 
         # Step 2: Try Birdeye bulk for remaining tokens
         if remaining_tokens:
@@ -1943,6 +1949,188 @@ async def bulk_token_prices(req: BulkPriceRequest):
     logger.info(f"✅ Bulk API complete: {success_count}/{len(req.tokens)} tokens with prices in {total_time:.2f}s")
 
     return results
+
+
+# ---------------------------------------------------------------------------
+# DexScreener Token Info Models and Endpoints
+# ---------------------------------------------------------------------------
+class DexScreenerTokenInfo(BaseModel):
+    """Token info from DexScreener v1 API"""
+    address: str
+    name: str
+    symbol: str
+    priceUsd: float
+    priceNative: Optional[str] = None
+    marketCap: Optional[float] = None
+    fdv: Optional[float] = None
+    volume24h: Optional[float] = None
+    volume6h: Optional[float] = None
+    volume1h: Optional[float] = None
+    priceChange24h: Optional[float] = None
+    priceChange6h: Optional[float] = None
+    priceChange1h: Optional[float] = None
+    liquidity: Optional[float] = None
+    pairCreatedAt: Optional[int] = None
+    txns24h: Optional[Dict[str, int]] = None
+
+
+class DexScreenerPair(BaseModel):
+    """Full pair info from DexScreener v1 API"""
+    pairAddress: str
+    dexId: str
+    chainId: str
+    baseToken: Dict[str, str]
+    quoteToken: Dict[str, str]
+    priceUsd: Optional[str] = None
+    priceNative: Optional[str] = None
+    marketCap: Optional[float] = None
+    fdv: Optional[float] = None
+    volume: Optional[Dict[str, float]] = None
+    priceChange: Optional[Dict[str, float]] = None
+    liquidity: Optional[Dict[str, float]] = None
+    txns: Optional[Dict[str, Dict[str, int]]] = None
+    pairCreatedAt: Optional[int] = None
+    url: Optional[str] = None
+    info: Optional[Dict[str, Any]] = None
+
+
+@app.get("/api/dexscreener/token/{token_address}")
+async def get_dexscreener_token_info(token_address: str) -> Dict[str, Any]:
+    """
+    Get token information from DexScreener v1 API.
+    Uses the /tokens/v1/solana/{tokenAddress} endpoint.
+    Rate limit: 300 requests per minute.
+
+    Returns all pools/pairs for the token with full market data.
+    """
+    if not is_valid_solana_address(token_address):
+        raise HTTPException(400, f"Invalid Solana address: {token_address}")
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            url = f"https://api.dexscreener.com/tokens/v1/solana/{token_address}"
+
+            async with session.get(
+                url,
+                headers={
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                    'Accept': 'application/json',
+                },
+                timeout=aiohttp.ClientTimeout(total=HTTP_TIMEOUT)
+            ) as response:
+                if not response.ok:
+                    logger.warning(f"DexScreener v1 API error for {token_address}: {response.status}")
+                    raise HTTPException(response.status, f"DexScreener API error: {response.status}")
+
+                data = await response.json()
+
+                # v1 API returns array of pairs directly
+                pairs = data if isinstance(data, list) else data.get('pairs', [])
+
+                if not pairs:
+                    return {
+                        "success": False,
+                        "token": token_address,
+                        "message": "No trading pairs found for this token",
+                        "pairs": []
+                    }
+
+                # Sort pairs by liquidity (highest first)
+                sorted_pairs = sorted(
+                    pairs,
+                    key=lambda p: p.get('liquidity', {}).get('usd', 0) or 0,
+                    reverse=True
+                )
+
+                # Get best pair info for summary
+                best_pair = sorted_pairs[0]
+                base_token = best_pair.get('baseToken', {})
+
+                return {
+                    "success": True,
+                    "token": token_address,
+                    "name": base_token.get('name', 'Unknown'),
+                    "symbol": base_token.get('symbol', 'UNKNOWN'),
+                    "priceUsd": float(best_pair.get('priceUsd', 0) or 0),
+                    "marketCap": best_pair.get('marketCap', 0),
+                    "fdv": best_pair.get('fdv', 0),
+                    "volume": best_pair.get('volume', {}),
+                    "priceChange": best_pair.get('priceChange', {}),
+                    "liquidity": best_pair.get('liquidity', {}),
+                    "txns": best_pair.get('txns', {}),
+                    "pairCreatedAt": best_pair.get('pairCreatedAt'),
+                    "totalPairs": len(sorted_pairs),
+                    "pairs": sorted_pairs[:10]  # Return top 10 pairs by liquidity
+                }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching DexScreener token info for {token_address}: {e}")
+        raise HTTPException(500, f"Error fetching token info: {str(e)}")
+
+
+@app.get("/api/dexscreener/pools/{token_address}")
+async def get_dexscreener_token_pools(token_address: str) -> Dict[str, Any]:
+    """
+    Get token pools from DexScreener v1 API.
+    Uses the /token-pairs/v1/solana/{tokenAddress} endpoint.
+    Rate limit: 300 requests per minute.
+
+    Returns all pools/pairs for the token.
+    """
+    if not is_valid_solana_address(token_address):
+        raise HTTPException(400, f"Invalid Solana address: {token_address}")
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            url = f"https://api.dexscreener.com/token-pairs/v1/solana/{token_address}"
+
+            async with session.get(
+                url,
+                headers={
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                    'Accept': 'application/json',
+                },
+                timeout=aiohttp.ClientTimeout(total=HTTP_TIMEOUT)
+            ) as response:
+                if not response.ok:
+                    logger.warning(f"DexScreener pools API error for {token_address}: {response.status}")
+                    raise HTTPException(response.status, f"DexScreener API error: {response.status}")
+
+                data = await response.json()
+
+                # v1 API returns array of pairs directly
+                pairs = data if isinstance(data, list) else []
+
+                if not pairs:
+                    return {
+                        "success": False,
+                        "token": token_address,
+                        "message": "No pools found for this token",
+                        "pools": []
+                    }
+
+                # Sort pairs by liquidity (highest first)
+                sorted_pairs = sorted(
+                    pairs,
+                    key=lambda p: p.get('liquidity', {}).get('usd', 0) or 0,
+                    reverse=True
+                )
+
+                return {
+                    "success": True,
+                    "token": token_address,
+                    "totalPools": len(sorted_pairs),
+                    "pools": sorted_pairs
+                }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching DexScreener pools for {token_address}: {e}")
+        raise HTTPException(500, f"Error fetching token pools: {str(e)}")
+
 
 @app.post("/api/simulate/breakdown", response_model=List[TokenBreakdown])
 async def simulate_with_breakdown(req: SimulationRequest) -> List[TokenBreakdown]:
@@ -2668,11 +2856,20 @@ async def get_trader_stats(
         return []
 
 @app.get("/api/traders/{caller}/trades")
-async def get_trader_trades(caller: str) -> List[Trade]:
+async def get_trader_trades(
+    caller: str,
+    limit: Optional[int] = None,
+    offset: Optional[int] = None
+) -> List[Trade]:
     """
-    Get all trades for a specific trader.
+    Get trades for a specific trader with optional pagination.
+
+    Args:
+        caller: The trader's identifier
+        limit: Maximum number of trades to return (optional)
+        offset: Number of trades to skip (optional)
     """
-    logger.info(f"GET /api/traders/{caller}/trades")
+    logger.info(f"GET /api/traders/{caller}/trades - limit={limit}, offset={offset}")
 
     if trades_table is None:
         logger.warning("DynamoDB not available, returning empty list")
@@ -2682,14 +2879,14 @@ async def get_trader_trades(caller: str) -> List[Trade]:
         from urllib.parse import unquote
         decoded_caller = unquote(caller)
 
-        # Query with pagination (username is the partition key in DynamoDB)
+        # Query with pagination (caller is the partition key in DynamoDB index)
         response = trades_table.query(
             IndexName='caller',
             KeyConditionExpression=Key('caller').eq(decoded_caller)
         )
         trades = response.get('Items', [])
 
-        # Handle pagination
+        # Handle DynamoDB pagination to get all results
         while 'LastEvaluatedKey' in response:
             response = trades_table.query(
                 IndexName='caller',
@@ -2700,7 +2897,27 @@ async def get_trader_trades(caller: str) -> List[Trade]:
 
         if not trades:
             logger.warning(f"No trades found for caller: {decoded_caller}")
+            return []
 
+        # Sort by date_called descending (most recent first)
+        def get_date_value(trade):
+            date_val = trade.get('date_called', 0)
+            if isinstance(date_val, str):
+                try:
+                    return float(date_val)
+                except ValueError:
+                    return 0
+            return date_val
+
+        trades.sort(key=get_date_value, reverse=True)
+
+        # Apply offset and limit for pagination
+        if offset is not None and offset > 0:
+            trades = trades[offset:]
+        if limit is not None and limit > 0:
+            trades = trades[:limit]
+
+        logger.info(f"Returning {len(trades)} trades for {decoded_caller}")
         return [dynamodb_item_to_trade(t) for t in trades]
     except ClientError as e:
         error_code = e.response['Error']['Code']

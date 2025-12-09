@@ -50,7 +50,7 @@ export default async function RankingsPage(props: RankingsPageProps) {
   // Note: searchParams are already decoded by Next.js, no need to decode again
   const traderId = traderParam
   const page = Number(searchParams.page) || 1
-  const pageSize = 100 // Load 100 trades per page
+  const pageSize = 10 // Load 10 trades per page
   let usingMockData = true
 
   try {

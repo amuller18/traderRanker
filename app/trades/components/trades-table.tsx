@@ -292,12 +292,22 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
                         <ExternalLink className="h-3.5 w-3.5" />
                       </a>
                     </div>
-                    <div className="grid grid-cols-2 gap-3 pt-1">
+                    <div className="grid grid-cols-3 gap-3 pt-1">
                       <div>
                         <p className="text-xs text-muted-foreground mb-0.5">Initial MC</p>
                         <p className="font-medium">
                           {trade.initial_mc > 0 ? formatMarketCap(trade.initial_mc) : 'N/A'}
                         </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-0.5">Current MC</p>
+                        {isLoading ? (
+                          <p className="font-medium text-muted-foreground animate-pulse">Loading...</p>
+                        ) : tokenInfos[trade.ca]?.currentMc ? (
+                          <p className="font-medium">{formatMarketCap(tokenInfos[trade.ca].currentMc)}</p>
+                        ) : (
+                          <p className="font-medium text-muted-foreground">N/A</p>
+                        )}
                       </div>
                       <div>
                         <p className="text-xs text-muted-foreground mb-0.5">ROI</p>
@@ -371,6 +381,7 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
                   )}
                 </Button>
               </TableHead>
+              <TableHead className="w-[140px] text-xs uppercase tracking-wider font-medium">Current MC</TableHead>
               <TableHead className="w-[120px]">
                 <Button
                   variant="ghost"
@@ -391,7 +402,7 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
           <TableBody>
             {paginatedTrades.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
                   No trades found.
                 </TableCell>
               </TableRow>
@@ -423,6 +434,17 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
                     <TableCell>
                       {trade.initial_mc > 0 ? (
                         <span className="font-medium">{formatMarketCap(trade.initial_mc)}</span>
+                      ) : (
+                        <span className="text-muted-foreground">N/A</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {isLoading ? (
+                        <span className="animate-pulse text-muted-foreground">Loading...</span>
+                      ) : hasError ? (
+                        <span className="text-muted-foreground">N/A</span>
+                      ) : tokenInfos[trade.ca]?.currentMc ? (
+                        <span className="font-medium">{formatMarketCap(tokenInfos[trade.ca].currentMc)}</span>
                       ) : (
                         <span className="text-muted-foreground">N/A</span>
                       )}

@@ -2856,11 +2856,20 @@ async def get_trader_stats(
         return []
 
 @app.get("/api/traders/{caller}/trades")
-async def get_trader_trades(caller: str) -> List[Trade]:
+async def get_trader_trades(
+    caller: str,
+    limit: Optional[int] = None,
+    offset: Optional[int] = None
+) -> List[Trade]:
     """
-    Get all trades for a specific trader.
+    Get trades for a specific trader with optional pagination.
+
+    Args:
+        caller: The trader's identifier
+        limit: Maximum number of trades to return (optional)
+        offset: Number of trades to skip (optional)
     """
-    logger.info(f"GET /api/traders/{caller}/trades")
+    logger.info(f"GET /api/traders/{caller}/trades - limit={limit}, offset={offset}")
 
     if trades_table is None:
         logger.warning("DynamoDB not available, returning empty list")
@@ -2870,14 +2879,14 @@ async def get_trader_trades(caller: str) -> List[Trade]:
         from urllib.parse import unquote
         decoded_caller = unquote(caller)
 
-        # Query with pagination (username is the partition key in DynamoDB)
+        # Query with pagination (caller is the partition key in DynamoDB index)
         response = trades_table.query(
             IndexName='caller',
             KeyConditionExpression=Key('caller').eq(decoded_caller)
         )
         trades = response.get('Items', [])
 
-        # Handle pagination
+        # Handle DynamoDB pagination to get all results
         while 'LastEvaluatedKey' in response:
             response = trades_table.query(
                 IndexName='caller',
@@ -2888,7 +2897,27 @@ async def get_trader_trades(caller: str) -> List[Trade]:
 
         if not trades:
             logger.warning(f"No trades found for caller: {decoded_caller}")
+            return []
 
+        # Sort by date_called descending (most recent first)
+        def get_date_value(trade):
+            date_val = trade.get('date_called', 0)
+            if isinstance(date_val, str):
+                try:
+                    return float(date_val)
+                except ValueError:
+                    return 0
+            return date_val
+
+        trades.sort(key=get_date_value, reverse=True)
+
+        # Apply offset and limit for pagination
+        if offset is not None and offset > 0:
+            trades = trades[offset:]
+        if limit is not None and limit > 0:
+            trades = trades[:limit]
+
+        logger.info(f"Returning {len(trades)} trades for {decoded_caller}")
         return [dynamodb_item_to_trade(t) for t in trades]
     except ClientError as e:
         error_code = e.response['Error']['Code']

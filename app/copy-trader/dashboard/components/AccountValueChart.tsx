@@ -6,6 +6,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { useEffect, useState } from 'react';
 import { AccountDataPoint } from '../types';
 import { mockAccountData } from '../data/mock';
+import { TrendingUp, TrendingDown } from 'lucide-react';
 
 type TimePeriod = '1W' | '1M' | 'YTD' | 'ALL';
 
@@ -70,35 +71,48 @@ export function AccountValueChart() {
   const changeAmount = lastValue - firstValue;
   const isPositive = changePercent >= 0;
 
+  const periodLabels: Record<TimePeriod, string> = {
+    '1W': 'past week',
+    '1M': 'past month',
+    'YTD': 'year to date',
+    'ALL': 'all time'
+  };
+
   return (
-    <Card className="shadow-lg border-2">
-      <CardHeader>
-        <div className="flex items-start justify-between">
+    <Card className="overflow-hidden">
+      <CardHeader className="pb-4">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
           <div className="space-y-1">
-            <CardTitle className="text-2xl font-bold">Account Value</CardTitle>
-            <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-bold">
+            <CardTitle className="text-lg font-medium text-muted-foreground">Account Value</CardTitle>
+            <div className="flex items-baseline gap-3">
+              <span className="text-3xl font-bold tracking-tight">
                 {formatCurrency(lastValue)}
               </span>
+              <div className={`flex items-center gap-1 text-sm font-medium ${isPositive ? 'text-success' : 'text-destructive'}`}>
+                {isPositive ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
+                <span>{isPositive ? '+' : ''}{changePercent.toFixed(2)}%</span>
+              </div>
             </div>
-            <CardDescription>
-              <span className={`text-lg font-semibold ${isPositive ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                {isPositive ? '+' : ''}{formatCurrency(changeAmount)} ({isPositive ? '+' : ''}{changePercent.toFixed(2)}%)
+            <CardDescription className="text-sm">
+              <span className={isPositive ? 'text-success' : 'text-destructive'}>
+                {isPositive ? '+' : ''}{formatCurrency(changeAmount)}
               </span>
-              <span className="text-muted-foreground ml-1">
-                {selectedPeriod === '1W' ? 'past week' : selectedPeriod === '1M' ? 'past month' : selectedPeriod === 'YTD' ? 'year to date' : 'all time'}
-              </span>
+              <span className="text-muted-foreground ml-1.5">{periodLabels[selectedPeriod]}</span>
             </CardDescription>
           </div>
 
-          <div className="flex gap-1 bg-muted p-1 rounded-lg">
+          <div className="flex gap-1 p-1 rounded-lg bg-muted/50 border border-border/40">
             {(['1W', '1M', 'YTD', 'ALL'] as TimePeriod[]).map((period) => (
               <Button
                 key={period}
                 variant={selectedPeriod === period ? 'default' : 'ghost'}
                 size="sm"
                 onClick={() => setSelectedPeriod(period)}
-                className="min-w-[50px] h-8 text-xs font-semibold"
+                className={`min-w-[48px] h-8 text-xs font-medium ${
+                  selectedPeriod === period
+                    ? 'shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
               >
                 {period}
               </Button>
@@ -106,56 +120,78 @@ export function AccountValueChart() {
           </div>
         </div>
       </CardHeader>
-      <CardContent>
-        <ResponsiveContainer width="100%" height={400}>
-          <AreaChart data={filteredData}>
-            <defs>
-              <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor={isPositive ? "hsl(142, 76%, 36%)" : "hsl(0, 84%, 60%)"} stopOpacity={0.3}/>
-                <stop offset="95%" stopColor={isPositive ? "hsl(142, 76%, 36%)" : "hsl(0, 84%, 60%)"} stopOpacity={0}/>
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" className="stroke-muted" opacity={0.3} />
-            <XAxis
-              dataKey="timestamp"
-              tickFormatter={formatDate}
-              className="text-xs"
-              stroke="hsl(var(--muted-foreground))"
-              tick={{ fill: 'hsl(var(--muted-foreground))' }}
-            />
-            <YAxis
-              tickFormatter={formatCurrency}
-              className="text-xs"
-              stroke="hsl(var(--muted-foreground))"
-              tick={{ fill: 'hsl(var(--muted-foreground))' }}
-              domain={['auto', 'auto']}
-            />
-            <Tooltip
-              formatter={(value: number) => [formatCurrency(value), 'Account Value']}
-              labelFormatter={formatDate}
-              contentStyle={{
-                backgroundColor: 'hsl(var(--background))',
-                border: '1px solid hsl(var(--border))',
-                borderRadius: '8px',
-                boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
-              }}
-              labelStyle={{
-                color: 'hsl(var(--foreground))',
-                fontWeight: 600,
-              }}
-            />
-            <Area
-              type="monotone"
-              dataKey="value"
-              stroke={isPositive ? "hsl(142, 76%, 36%)" : "hsl(0, 84%, 60%)"}
-              strokeWidth={3}
-              fill="url(#colorValue)"
-              fillOpacity={1}
-              dot={false}
-              activeDot={{ r: 6, strokeWidth: 2 }}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
+      <CardContent className="pt-0 pb-4">
+        <div className="h-[320px] w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={filteredData} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
+              <defs>
+                <linearGradient id="colorValuePositive" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="hsl(142, 76%, 46%)" stopOpacity={0.25}/>
+                  <stop offset="100%" stopColor="hsl(142, 76%, 46%)" stopOpacity={0}/>
+                </linearGradient>
+                <linearGradient id="colorValueNegative" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="hsl(0, 84%, 60%)" stopOpacity={0.25}/>
+                  <stop offset="100%" stopColor="hsl(0, 84%, 60%)" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid
+                strokeDasharray="3 3"
+                stroke="hsl(var(--border))"
+                strokeOpacity={0.3}
+                vertical={false}
+              />
+              <XAxis
+                dataKey="timestamp"
+                tickFormatter={formatDate}
+                axisLine={false}
+                tickLine={false}
+                tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+                dy={8}
+              />
+              <YAxis
+                tickFormatter={formatCurrency}
+                axisLine={false}
+                tickLine={false}
+                tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+                domain={['auto', 'auto']}
+                width={70}
+              />
+              <Tooltip
+                formatter={(value: number) => [formatCurrency(value), 'Value']}
+                labelFormatter={formatDate}
+                contentStyle={{
+                  backgroundColor: 'hsl(var(--card))',
+                  border: '1px solid hsl(var(--border))',
+                  borderRadius: '8px',
+                  boxShadow: '0 4px 12px hsl(var(--background) / 0.5)',
+                  padding: '8px 12px',
+                }}
+                labelStyle={{
+                  color: 'hsl(var(--foreground))',
+                  fontWeight: 500,
+                  marginBottom: '4px',
+                }}
+                itemStyle={{
+                  color: 'hsl(var(--foreground))',
+                }}
+              />
+              <Area
+                type="monotone"
+                dataKey="value"
+                stroke={isPositive ? "hsl(142, 76%, 46%)" : "hsl(0, 84%, 60%)"}
+                strokeWidth={2}
+                fill={isPositive ? "url(#colorValuePositive)" : "url(#colorValueNegative)"}
+                dot={false}
+                activeDot={{
+                  r: 5,
+                  strokeWidth: 2,
+                  stroke: 'hsl(var(--background))',
+                  fill: isPositive ? 'hsl(142, 76%, 46%)' : 'hsl(0, 84%, 60%)'
+                }}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
       </CardContent>
     </Card>
   );

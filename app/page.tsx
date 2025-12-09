@@ -1,101 +1,117 @@
 import Link from "next/link"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
-import { ArrowRight, BarChart3, Trophy, Copy, TrendingUp, Shield, Zap, Users, Star, Sparkles, Target, Activity } from "lucide-react"
+import { ArrowRight, BarChart3, Trophy, Copy, TrendingUp, Shield, Zap, Users, Target, Activity, Sparkles, ChevronRight } from "lucide-react"
 import { PageHeader } from "./page-header"
-import { Card, CardContent } from "@/components/ui/card"
 
 export default function LandingPage() {
   return (
-    <div className="flex flex-col min-h-[100dvh]">
+    <div className="flex flex-col min-h-[100dvh] bg-background">
       <PageHeader />
       <main className="flex-1">
         {/* Hero Section */}
-        <section className="w-full py-12 md:py-24 lg:py-32 xl:py-40 gradient-background relative overflow-hidden">
-          {/* Background decorative elements */}
-          <div className="absolute inset-0 bg-grid-white/[0.02] bg-[size:40px_40px] [mask-image:radial-gradient(white,transparent_85%)]" />
-          <div className="absolute top-0 right-0 -translate-y-12 translate-x-12 w-[600px] h-[600px] bg-primary/10 rounded-full blur-3xl animate-pulse" style={{ animationDuration: "4s" }} />
-          <div className="absolute bottom-0 left-0 translate-y-12 -translate-x-12 w-[500px] h-[500px] bg-chart-2/10 rounded-full blur-3xl animate-pulse" style={{ animationDuration: "5s" }} />
+        <section className="relative w-full py-20 md:py-28 lg:py-36 overflow-hidden">
+          {/* Background effects */}
+          <div className="absolute inset-0 bg-grid [mask-image:radial-gradient(ellipse_80%_80%_at_50%_20%,black,transparent)]" />
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[600px] bg-primary/20 rounded-full blur-[120px] animate-pulse-glow opacity-40" />
+          <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-chart-2/20 rounded-full blur-[100px] opacity-30" />
+          <div className="absolute top-1/2 right-0 w-[300px] h-[300px] bg-chart-4/20 rounded-full blur-[80px] opacity-30" />
 
-          <div className="container px-4 md:px-6 relative">
-
-            <div className="grid gap-8 lg:grid-cols-2 lg:gap-12 items-center">
-              <div className="flex flex-col justify-center space-y-6 animate-fade-in">
-                <div className="inline-flex items-center rounded-full border glass px-4 py-1.5 text-sm w-fit shadow-elevated">
-                  <Sparkles className="h-4 w-4 mr-2 text-primary animate-pulse" />
-                  <span className="font-semibold">Powered by On-Chain Data</span>
+          <div className="container relative px-4 md:px-6">
+            <div className="grid gap-12 lg:grid-cols-2 lg:gap-16 items-center">
+              <div className="flex flex-col justify-center space-y-8">
+                {/* Badge */}
+                <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-4 py-1.5 text-sm w-fit animate-fade-in">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+                  </span>
+                  <span className="text-primary font-medium">Live On-Chain Analytics</span>
                 </div>
+
+                {/* Headline */}
                 <div className="space-y-4">
-                  <h1 className="text-4xl font-extrabold tracking-tight sm:text-5xl xl:text-6xl/none text-gradient">
-                    Discover & Follow Top Solana Traders
+                  <h1 className="text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl animate-fade-in" style={{ animationDelay: "0.1s" }}>
+                    Discover Elite
+                    <span className="block text-gradient">Solana Traders</span>
                   </h1>
-                  <p className="max-w-[600px] text-muted-foreground text-lg md:text-xl leading-relaxed">
-                    Analyze real-time on-chain data to identify elite traders. Track performance, assess risk management,
-                    and benchmark your trading strategy against the best.
+                  <p className="max-w-[540px] text-muted-foreground text-lg leading-relaxed animate-fade-in" style={{ animationDelay: "0.2s" }}>
+                    Real-time on-chain intelligence to identify top performers. Track strategies,
+                    analyze risk metrics, and benchmark against the best traders.
                   </p>
                 </div>
-                <div className="flex flex-col gap-3 sm:flex-row">
+
+                {/* CTAs */}
+                <div className="flex flex-col sm:flex-row gap-3 animate-fade-in" style={{ animationDelay: "0.3s" }}>
                   <Link href="/rankings">
-                    <Button size="lg" className="px-8 text-base font-semibold shadow-elevated-lg hover:shadow-elevated-xl transition-all hover-lift">
-                      View Top Rankings <ArrowRight className="ml-2 h-5 w-5" />
+                    <Button size="lg" className="w-full sm:w-auto px-6 shadow-glow hover:shadow-glow-lg transition-all duration-300">
+                      View Rankings
+                      <ArrowRight className="ml-2 h-4 w-4" />
                     </Button>
                   </Link>
                   <Link href="/copy-trader">
-                    <Button size="lg" variant="outline" className="px-8 text-base font-semibold border-2 hover-lift">
-                      Start Copy Trading
+                    <Button size="lg" variant="outline" className="w-full sm:w-auto px-6 border-border/60 hover:bg-accent/50 transition-all">
+                      Copy Trading
+                      <ChevronRight className="ml-1 h-4 w-4" />
                     </Button>
                   </Link>
                 </div>
 
-                {/* Social Proof Stats */}
-                <div className="flex flex-wrap gap-6 pt-4">
-                  <div className="flex flex-col">
-                    <div className="text-3xl font-bold">10K+</div>
+                {/* Stats */}
+                <div className="flex flex-wrap gap-8 pt-4 animate-fade-in" style={{ animationDelay: "0.4s" }}>
+                  <div className="space-y-1">
+                    <div className="text-3xl font-bold tracking-tight">10K+</div>
                     <div className="text-sm text-muted-foreground">Traders Tracked</div>
                   </div>
-                  <div className="flex flex-col">
-                    <div className="text-3xl font-bold">$50M+</div>
+                  <div className="space-y-1">
+                    <div className="text-3xl font-bold tracking-tight">$50M+</div>
                     <div className="text-sm text-muted-foreground">Volume Analyzed</div>
                   </div>
-                  <div className="flex flex-col">
-                    <div className="text-3xl font-bold">99.9%</div>
+                  <div className="space-y-1">
+                    <div className="text-3xl font-bold tracking-tight text-success">99.9%</div>
                     <div className="text-sm text-muted-foreground">Uptime</div>
                   </div>
                 </div>
               </div>
 
-              <div className="flex items-center justify-center lg:justify-end">
-                <div className="relative w-full max-w-[600px] animate-fade-in" style={{ animationDelay: "0.2s", opacity: 0, animationFillMode: "forwards" }}>
-                  <div className="relative aspect-square rounded-2xl overflow-hidden shadow-elevated-xl border glass-card">
+              {/* Hero visual */}
+              <div className="relative lg:ml-auto animate-fade-in" style={{ animationDelay: "0.2s" }}>
+                <div className="relative max-w-[560px] mx-auto">
+                  {/* Main card */}
+                  <div className="relative rounded-2xl border border-border/40 bg-card/50 backdrop-blur-sm shadow-elevated-xl overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-chart-4/5" />
                     <Image
                       src="/trading-dashboard.jpg"
                       alt="TraderRanker Dashboard"
-                      width={600}
-                      height={600}
-                      className="rounded-2xl object-cover"
+                      width={560}
+                      height={400}
+                      className="rounded-2xl object-cover relative"
                       priority
                     />
-                    {/* Floating stat cards */}
-                    <div className="absolute -bottom-4 -left-4 glass-card rounded-xl shadow-elevated-lg p-4 border-2 border-warning/30 animate-scale-in" style={{ animationDelay: "0.4s" }}>
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-warning/10 rounded-lg">
-                          <Trophy className="h-6 w-6 text-warning" />
-                        </div>
-                        <div>
-                          <div className="text-sm text-muted-foreground">Elite Trader</div>
-                          <div className="font-bold text-lg">Top 5%</div>
-                        </div>
+                  </div>
+
+                  {/* Floating stat card - top */}
+                  <div className="absolute -top-6 -right-6 md:-top-8 md:-right-8 glass-card rounded-xl shadow-elevated-lg p-4 animate-float border-border/40" style={{ animationDelay: "1s" }}>
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-success/10">
+                        <TrendingUp className="h-5 w-5 text-success" />
+                      </div>
+                      <div>
+                        <div className="text-xs text-muted-foreground">Top Return</div>
+                        <div className="text-lg font-bold text-success">+243%</div>
                       </div>
                     </div>
-                    <div className="absolute -top-4 -right-4 glass-card rounded-xl shadow-elevated-lg p-4 border-2 border-success/30 animate-scale-in" style={{ animationDelay: "0.6s" }}>
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-success/10 rounded-lg">
-                          <TrendingUp className="h-6 w-6 text-success" />
-                        </div>
-                        <div>
-                          <div className="text-sm text-muted-foreground">Total Returns</div>
-                          <div className="font-bold text-lg text-success">+243%</div>
-                        </div>
+                  </div>
+
+                  {/* Floating stat card - bottom */}
+                  <div className="absolute -bottom-6 -left-6 md:-bottom-8 md:-left-8 glass-card rounded-xl shadow-elevated-lg p-4 animate-float" style={{ animationDelay: "1.5s" }}>
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-warning/10">
+                        <Trophy className="h-5 w-5 text-warning" />
+                      </div>
+                      <div>
+                        <div className="text-xs text-muted-foreground">Elite Status</div>
+                        <div className="text-lg font-bold">Top 5%</div>
                       </div>
                     </div>
                   </div>
@@ -106,204 +122,168 @@ export default function LandingPage() {
         </section>
 
         {/* Features Section */}
-        <section className="w-full py-12 md:py-24 lg:py-32 bg-background">
+        <section className="w-full py-20 md:py-28 border-t border-border/40 bg-gradient-to-b from-background to-accent/20">
           <div className="container px-4 md:px-6">
-            <div className="text-center mb-12">
-              <h2 className="text-3xl font-bold tracking-tight md:text-4xl mb-4">
-                Why Choose TraderRanker?
+            <div className="text-center mb-16 space-y-4">
+              <h2 className="text-3xl font-bold tracking-tight md:text-4xl">
+                Built for Serious Traders
               </h2>
               <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-                Advanced analytics and transparent metrics to help you make informed trading decisions
+                Professional-grade analytics and transparent metrics for data-driven decisions
               </p>
             </div>
 
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              <Card className="border shadow-elevated hover:shadow-elevated-lg hover-lift transition-all group">
-                <CardContent className="pt-6">
-                  <div className="flex flex-col gap-4">
-                    <div className="p-3 bg-primary/10 rounded-xl w-fit group-hover:scale-110 transition-transform">
-                      <BarChart3 className="h-8 w-8 text-primary" />
+              {[
+                {
+                  icon: BarChart3,
+                  title: "Real-Time Analytics",
+                  description: "Track performance metrics updated in real-time from on-chain data. Monitor profits, win rates, and risk-adjusted returns.",
+                  color: "primary"
+                },
+                {
+                  icon: Shield,
+                  title: "Risk Management",
+                  description: "Comprehensive risk metrics including max drawdown, Sharpe ratio, and portfolio volatility analysis.",
+                  color: "chart-1"
+                },
+                {
+                  icon: Trophy,
+                  title: "Leaderboards",
+                  description: "Compete with top traders and see how your strategy ranks. Filter by timeframe, asset, and trading style.",
+                  color: "success"
+                },
+                {
+                  icon: Zap,
+                  title: "Instant Insights",
+                  description: "Get actionable insights on trader strategies, position sizing, and market timing patterns.",
+                  color: "chart-4"
+                },
+                {
+                  icon: Users,
+                  title: "Community Driven",
+                  description: "Join a community of serious traders. Share strategies, learn from the best, and grow together.",
+                  color: "warning"
+                },
+                {
+                  icon: Activity,
+                  title: "Backtesting Tools",
+                  description: "Test strategies against historical data. Validate your approach before risking real capital.",
+                  color: "chart-5"
+                }
+              ].map((feature, index) => (
+                <div
+                  key={feature.title}
+                  className="group relative p-6 rounded-xl border border-border/40 bg-card/30 backdrop-blur-sm hover:bg-card/50 hover:border-border/60 transition-all duration-300 hover:-translate-y-1"
+                  style={{ animationDelay: `${index * 0.1}s` }}
+                >
+                  <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-primary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <div className="relative space-y-4">
+                    <div className={`inline-flex p-2.5 rounded-lg bg-${feature.color}/10 text-${feature.color} group-hover:scale-110 transition-transform`}>
+                      <feature.icon className="h-5 w-5" />
                     </div>
-                    <h3 className="text-xl font-bold">Real-Time Analytics</h3>
-                    <p className="text-muted-foreground leading-relaxed">
-                      Track performance metrics updated in real-time from on-chain data. Monitor profits, win rates, and risk-adjusted returns.
+                    <h3 className="text-lg font-semibold">{feature.title}</h3>
+                    <p className="text-muted-foreground text-sm leading-relaxed">
+                      {feature.description}
                     </p>
                   </div>
-                </CardContent>
-              </Card>
-
-              <Card className="border shadow-elevated hover:shadow-elevated-lg hover-lift transition-all group">
-                <CardContent className="pt-6">
-                  <div className="flex flex-col gap-4">
-                    <div className="p-3 bg-chart-1/10 rounded-xl w-fit group-hover:scale-110 transition-transform">
-                      <Shield className="h-8 w-8 text-chart-1" />
-                    </div>
-                    <h3 className="text-xl font-bold">Risk Management</h3>
-                    <p className="text-muted-foreground leading-relaxed">
-                      Comprehensive risk metrics including max drawdown, Sharpe ratio, and portfolio volatility analysis.
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="border shadow-elevated hover:shadow-elevated-lg hover-lift transition-all group">
-                <CardContent className="pt-6">
-                  <div className="flex flex-col gap-4">
-                    <div className="p-3 bg-success/10 rounded-xl w-fit group-hover:scale-110 transition-transform">
-                      <Trophy className="h-8 w-8 text-success" />
-                    </div>
-                    <h3 className="text-xl font-bold">Leaderboards</h3>
-                    <p className="text-muted-foreground leading-relaxed">
-                      Compete with top traders and see how your strategy ranks. Filter by timeframe, asset, and trading style.
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="border shadow-elevated hover:shadow-elevated-lg hover-lift transition-all group">
-                <CardContent className="pt-6">
-                  <div className="flex flex-col gap-4">
-                    <div className="p-3 bg-chart-4/10 rounded-xl w-fit group-hover:scale-110 transition-transform">
-                      <Zap className="h-8 w-8 text-chart-4" />
-                    </div>
-                    <h3 className="text-xl font-bold">Instant Insights</h3>
-                    <p className="text-muted-foreground leading-relaxed">
-                      Get actionable insights on trader strategies, position sizing, and market timing patterns.
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="border shadow-elevated hover:shadow-elevated-lg hover-lift transition-all group">
-                <CardContent className="pt-6">
-                  <div className="flex flex-col gap-4">
-                    <div className="p-3 bg-warning/10 rounded-xl w-fit group-hover:scale-110 transition-transform">
-                      <Users className="h-8 w-8 text-warning" />
-                    </div>
-                    <h3 className="text-xl font-bold">Community Driven</h3>
-                    <p className="text-muted-foreground leading-relaxed">
-                      Join a community of serious traders. Share strategies, learn from the best, and grow together.
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="border shadow-elevated hover:shadow-elevated-lg hover-lift transition-all group">
-                <CardContent className="pt-6">
-                  <div className="flex flex-col gap-4">
-                    <div className="p-3 bg-chart-5/10 rounded-xl w-fit group-hover:scale-110 transition-transform">
-                      <Activity className="h-8 w-8 text-chart-5" />
-                    </div>
-                    <h3 className="text-xl font-bold">Backtesting Tools</h3>
-                    <p className="text-muted-foreground leading-relaxed">
-                      Test strategies against historical data. Validate your approach before risking real capital.
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            <div className="text-center mt-12">
-              <Link href="/rankings">
-                <Button size="lg" variant="outline" className="text-base font-semibold border-2 hover-lift shadow-elevated">
-                  Explore All Features <ArrowRight className="ml-2 h-5 w-5" />
-                </Button>
-              </Link>
+                </div>
+              ))}
             </div>
           </div>
         </section>
 
-        {/* Copy Trading CTA Section */}
-        <section className="w-full py-12 md:py-24 lg:py-32 gradient-background" id="copy-trader">
+        {/* Copy Trading Section */}
+        <section className="w-full py-20 md:py-28 border-t border-border/40" id="copy-trader">
           <div className="container px-4 md:px-6">
-            <div className="grid gap-8 lg:grid-cols-2 lg:gap-12 items-center">
-              <div className="order-2 lg:order-1 flex justify-center">
-                <div className="relative w-full max-w-[550px]">
-                  <div className="relative rounded-2xl overflow-hidden shadow-elevated-xl border glass-card">
+            <div className="grid gap-12 lg:grid-cols-2 lg:gap-16 items-center">
+              <div className="order-2 lg:order-1">
+                <div className="relative max-w-[500px] mx-auto lg:mx-0">
+                  <div className="relative rounded-2xl border border-border/40 bg-card/50 backdrop-blur-sm shadow-elevated-xl overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-br from-chart-1/5 via-transparent to-primary/5" />
                     <Image
                       src="/copy-trading.jpg"
                       alt="Copy Trading Feature"
-                      width={550}
-                      height={450}
-                      className="rounded-2xl object-cover"
+                      width={500}
+                      height={380}
+                      className="rounded-2xl object-cover relative"
                     />
-                    {/* Overlay badge */}
-                    <div className="absolute -bottom-4 -right-4 glass-card rounded-xl shadow-elevated-lg p-5 border-2 border-chart-1/30">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-chart-1/10 rounded-lg">
-                          <Copy className="h-6 w-6 text-chart-1" />
-                        </div>
-                        <div>
-                          <div className="text-sm text-muted-foreground">Auto-Sync</div>
-                          <div className="font-bold text-lg">Copy Trades</div>
-                        </div>
+                  </div>
+
+                  {/* Floating card */}
+                  <div className="absolute -bottom-6 -right-6 md:-bottom-8 md:-right-8 glass-card rounded-xl shadow-elevated-lg p-4 animate-float border-border/40">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-chart-1/10">
+                        <Copy className="h-5 w-5 text-chart-1" />
+                      </div>
+                      <div>
+                        <div className="text-xs text-muted-foreground">Auto-Execute</div>
+                        <div className="text-lg font-bold">Copy Trades</div>
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div className="order-1 lg:order-2 flex flex-col justify-center space-y-6">
-                <div className="inline-flex items-center rounded-full border glass px-4 py-1.5 text-sm w-fit shadow-elevated">
-                  <Sparkles className="h-4 w-4 mr-2 text-chart-1 animate-pulse" />
-                  <span className="font-semibold">Coming Soon</span>
+              <div className="order-1 lg:order-2 space-y-8">
+                <div className="inline-flex items-center gap-2 rounded-full border border-chart-1/20 bg-chart-1/5 px-4 py-1.5 text-sm w-fit">
+                  <Sparkles className="h-4 w-4 text-chart-1" />
+                  <span className="text-chart-1 font-medium">Coming Soon</span>
                 </div>
+
                 <div className="space-y-4">
-                  <h2 className="text-3xl font-extrabold tracking-tight md:text-4xl xl:text-5xl">
-                    Automatically Copy Top Traders
+                  <h2 className="text-3xl font-bold tracking-tight md:text-4xl">
+                    Copy Top Traders
+                    <span className="block text-muted-foreground text-2xl md:text-3xl font-normal mt-1">Automatically</span>
                   </h2>
                   <p className="text-muted-foreground text-lg leading-relaxed">
-                    Mirror the trades of elite performers in real-time. Set your risk parameters, select your traders,
-                    and let our advanced system handle the execution.
+                    Mirror the trades of elite performers in real-time. Set your risk parameters,
+                    select your traders, and let our system handle execution.
                   </p>
                 </div>
 
                 <div className="space-y-4">
-                  <div className="flex items-start gap-4 p-5 rounded-xl glass-card shadow-elevated hover-lift transition-all">
-                    <div className="p-2 bg-primary/10 rounded-lg mt-1">
-                      <Copy className="h-5 w-5 text-primary" />
+                  {[
+                    {
+                      icon: Copy,
+                      title: "Automated Execution",
+                      description: "Trades execute automatically in your wallet based on selected traders.",
+                      color: "primary"
+                    },
+                    {
+                      icon: Target,
+                      title: "Smart Risk Controls",
+                      description: "Configure position limits, stop-losses, and take-profit levels.",
+                      color: "success"
+                    },
+                    {
+                      icon: Shield,
+                      title: "Verified Traders Only",
+                      description: "Choose from curated traders with proven track records.",
+                      color: "chart-1"
+                    }
+                  ].map((item) => (
+                    <div key={item.title} className="flex gap-4 p-4 rounded-xl bg-card/30 border border-border/40 hover:bg-card/50 transition-colors">
+                      <div className={`p-2 rounded-lg bg-${item.color}/10 h-fit`}>
+                        <item.icon className={`h-4 w-4 text-${item.color}`} />
+                      </div>
+                      <div>
+                        <h3 className="font-medium mb-1">{item.title}</h3>
+                        <p className="text-sm text-muted-foreground">{item.description}</p>
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="font-bold text-lg mb-1">Automated Execution</h3>
-                      <p className="text-muted-foreground leading-relaxed">
-                        Trades execute automatically in your wallet based on your selected traders. No manual intervention needed.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-4 p-5 rounded-xl glass-card shadow-elevated hover-lift transition-all">
-                    <div className="p-2 bg-success/10 rounded-lg mt-1">
-                      <Target className="h-5 w-5 text-success" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-lg mb-1">Smart Risk Controls</h3>
-                      <p className="text-muted-foreground leading-relaxed">
-                        Configure position limits, stop-losses, and take-profit levels to protect your capital.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-4 p-5 rounded-xl glass-card shadow-elevated hover-lift transition-all">
-                    <div className="p-2 bg-chart-1/10 rounded-lg mt-1">
-                      <Star className="h-5 w-5 text-chart-1" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-lg mb-1">Verified Traders Only</h3>
-                      <p className="text-muted-foreground leading-relaxed">
-                        Choose from curated traders with proven track records and transparent performance data.
-                      </p>
-                    </div>
-                  </div>
+                  ))}
                 </div>
 
-                <div className="flex flex-col sm:flex-row gap-3 pt-4">
+                <div className="flex flex-col sm:flex-row gap-3 pt-2">
                   <Link href="/copy-trader">
-                    <Button size="lg" className="px-8 text-base font-semibold shadow-elevated-lg hover:shadow-elevated-xl transition-all hover-lift">
-                      Get Early Access <ArrowRight className="ml-2 h-5 w-5" />
+                    <Button size="lg" className="w-full sm:w-auto px-6 shadow-glow hover:shadow-glow-lg transition-all">
+                      Get Early Access
+                      <ArrowRight className="ml-2 h-4 w-4" />
                     </Button>
                   </Link>
                   <Link href="/rankings">
-                    <Button size="lg" variant="outline" className="px-8 text-base font-semibold border-2 hover-lift">
+                    <Button size="lg" variant="outline" className="w-full sm:w-auto px-6 border-border/60 hover:bg-accent/50">
                       View Top Traders
                     </Button>
                   </Link>
@@ -313,25 +293,29 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* Final CTA Section */}
-        <section className="w-full py-16 md:py-24 gradient-primary relative overflow-hidden">
-          <div className="absolute inset-0 bg-grid-white/[0.05] bg-[size:30px_30px]" />
-          <div className="container px-4 md:px-6 relative">
-            <div className="flex flex-col items-center text-center space-y-6 max-w-3xl mx-auto">
-              <h2 className="text-3xl font-extrabold tracking-tight md:text-4xl xl:text-5xl text-primary-foreground animate-fade-in">
-                Ready to Elevate Your Trading?
+        {/* CTA Section */}
+        <section className="w-full py-20 md:py-24 border-t border-border/40 relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-b from-primary/5 via-primary/10 to-primary/5" />
+          <div className="absolute inset-0 bg-grid opacity-30" />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[400px] bg-primary/20 rounded-full blur-[100px] opacity-50" />
+
+          <div className="container relative px-4 md:px-6">
+            <div className="flex flex-col items-center text-center space-y-6 max-w-2xl mx-auto">
+              <h2 className="text-3xl font-bold tracking-tight md:text-4xl">
+                Ready to Trade Smarter?
               </h2>
-              <p className="text-primary-foreground/90 text-lg md:text-xl max-w-2xl leading-relaxed">
-                Join thousands of traders using TraderRanker to discover opportunities, analyze performance, and learn from the best.
+              <p className="text-muted-foreground text-lg max-w-xl">
+                Join thousands of traders using TraderRanker to discover opportunities and learn from the best.
               </p>
               <div className="flex flex-col sm:flex-row gap-4 pt-4">
                 <Link href="/rankings">
-                  <Button size="lg" variant="secondary" className="px-10 text-base font-semibold shadow-elevated-xl hover-lift">
-                    Start Exploring Now <ArrowRight className="ml-2 h-5 w-5" />
+                  <Button size="lg" className="px-8 shadow-glow hover:shadow-glow-lg transition-all">
+                    Start Exploring
+                    <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
                 </Link>
                 <Link href="/copy-trader">
-                  <Button size="lg" variant="outline" className="px-10 text-base font-semibold border-2 border-primary-foreground text-primary-foreground hover:bg-primary-foreground hover:text-primary hover-lift">
+                  <Button size="lg" variant="outline" className="px-8 border-border/60 hover:bg-accent/50">
                     Join Waitlist
                   </Button>
                 </Link>
@@ -341,29 +325,33 @@ export default function LandingPage() {
         </section>
       </main>
 
-      <footer className="flex flex-col gap-4 sm:flex-row py-10 w-full shrink-0 items-center px-4 md:px-6 border-t bg-muted/30 backdrop-blur-sm">
-        <div className="flex items-center gap-2">
-          <div className="p-2 bg-primary/10 rounded-lg">
-            <TrendingUp className="h-5 w-5 text-primary" />
+      {/* Footer */}
+      <footer className="border-t border-border/40 bg-card/30 backdrop-blur-sm">
+        <div className="container px-4 md:px-6 py-8">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
+                <BarChart3 className="h-4 w-4 text-primary" />
+              </div>
+              <span className="font-semibold">TraderRanker</span>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              &copy; {new Date().getFullYear()} TraderRanker. All rights reserved.
+            </p>
+            <nav className="flex gap-6">
+              <Link href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                Terms
+              </Link>
+              <Link href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                Privacy
+              </Link>
+              <Link href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                Contact
+              </Link>
+            </nav>
           </div>
-          <span className="font-bold text-lg">TraderRanker</span>
         </div>
-        <p className="text-sm text-muted-foreground">
-          &copy; {new Date().getFullYear()} TraderRanker. All rights reserved.
-        </p>
-        <nav className="sm:ml-auto flex gap-6">
-          <Link href="#" className="text-sm hover:text-primary transition-colors font-medium">
-            Terms of Service
-          </Link>
-          <Link href="#" className="text-sm hover:text-primary transition-colors font-medium">
-            Privacy Policy
-          </Link>
-          <Link href="#" className="text-sm hover:text-primary transition-colors font-medium">
-            Contact
-          </Link>
-        </nav>
       </footer>
     </div>
   )
 }
-

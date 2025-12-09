@@ -52,47 +52,46 @@ export interface TokenInfo {
 }
 
 /**
- * Fetches token information from DexScreener API
+ * Fetches token information from DexScreener v1 API
+ * Uses the new /tokens/v1/{chainId}/{tokenAddresses} endpoint
+ * Rate limit: 300 requests per minute
  */
 export async function getTokenInfo(contractAddress: string): Promise<TokenInfo[] | null> {
   try {
     console.log(`Fetching token info for: ${contractAddress}`)
 
-    // Try DexScreener first
-    const url = `https://api.dexscreener.com/latest/dex/tokens/${contractAddress}`
+    // Use DexScreener v1 API for Solana tokens
+    const url = `https://api.dexscreener.com/tokens/v1/solana/${contractAddress}`
     const response = await fetch(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
-        'Referer': 'https://dexscreener.com/',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         'Accept': 'application/json',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Origin': 'https://dexscreener.com',
-        'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache',
       },
       cache: 'no-store',
     })
 
     if (!response.ok) {
-      console.log(`DexScreener failed for ${contractAddress} - trying CoinGecko fallback`)
+      console.log(`DexScreener v1 API failed for ${contractAddress} - trying CoinGecko fallback`)
       return await getCoinGeckoTokenInfo(contractAddress)
     }
 
     const data = await response.json()
-    const pairs = data.pairs
+
+    // v1 API returns array of pairs directly (not wrapped in 'pairs' key)
+    const pairs = Array.isArray(data) ? data : data.pairs
 
     if (!pairs || pairs.length === 0) {
-      console.log(`No trading pairs found in DexScreener for ${contractAddress} - trying CoinGecko fallback`)
+      console.log(`No trading pairs found in DexScreener v1 for ${contractAddress} - trying CoinGecko fallback`)
       return await getCoinGeckoTokenInfo(contractAddress)
     }
 
     // Check if we have valid market cap data
-    const hasValidMarketCap = pairs.some((pair: any) => 
+    const hasValidMarketCap = pairs.some((pair: any) =>
       pair.marketCap && pair.marketCap > 0 || pair.fdv && pair.fdv > 0
     )
 
     if (!hasValidMarketCap) {
-      console.log(`No valid market cap data in DexScreener for ${contractAddress} - trying CoinGecko fallback`)
+      console.log(`No valid market cap data in DexScreener v1 for ${contractAddress} - trying CoinGecko fallback`)
       return await getCoinGeckoTokenInfo(contractAddress)
     }
 
@@ -489,17 +488,19 @@ export async function getTokenSupply(contractAddress: string): Promise<number> {
 
     console.log('=== TOKEN SUPPLY DEBUG ===')
     console.log(`Token Address: ${contractAddress}`)
-    
-    // First try DexScreener
-    console.log('\n1. Trying DexScreener...')
-    const dexScreenerResponse = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${contractAddress}`)
+
+    // First try DexScreener v1 API
+    console.log('\n1. Trying DexScreener v1 API...')
+    const dexScreenerResponse = await fetch(`https://api.dexscreener.com/tokens/v1/solana/${contractAddress}`)
     const dexData = await dexScreenerResponse.json()
-    
-    if (dexData.pairs && dexData.pairs.length > 0) {
-      const pair = dexData.pairs[0]
+
+    // v1 API returns array directly
+    const pairs = Array.isArray(dexData) ? dexData : dexData.pairs
+    if (pairs && pairs.length > 0) {
+      const pair = pairs[0]
       const supply = pair.marketInfo?.supply || pair.liquidity?.usd || pair.priceUsd
       if (supply) {
-        console.log('\nFound supply from DexScreener:', supply)
+        console.log('\nFound supply from DexScreener v1:', supply)
         const finalSupply = Number(supply)
         cache.set(cacheKey, {
           data: finalSupply,

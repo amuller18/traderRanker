@@ -225,15 +225,32 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
     try {
       console.log("Fetching trades from DynamoDB for backtesting...");
       const fetchedTrades = await fetchAllTrades();
-      console.log(`Loaded ${fetchedTrades.length} trades for backtesting`);
+      console.log(`Loaded ${fetchedTrades.length} trades from API`);
+
       // Convert to the simple Trade format expected by backtest
-      const backtestTrades: Trade[] = fetchedTrades.map(t => ({
-        ca: t.ca,
-        caller: t.caller,
-        date_called: t.date_called,
-        initial_mc: t.initial_mc,
-        current_mc: t.current_mc,
-      }));
+      // Filter out trades with missing/invalid data
+      const backtestTrades: Trade[] = fetchedTrades
+        .filter(t => {
+          // Validate: must have valid token address (44 chars for Solana), caller, and date
+          const hasValidCa = typeof t.ca === 'string' && t.ca.length >= 32 && t.ca.length <= 44;
+          const hasCaller = typeof t.caller === 'string' && t.caller.trim().length > 0;
+          const hasDate = typeof t.date_called === 'string' && t.date_called.length > 0;
+
+          if (!hasValidCa) console.log(`Skipping trade with invalid ca: ${t.ca}`);
+          if (!hasCaller) console.log(`Skipping trade with missing caller`);
+          if (!hasDate) console.log(`Skipping trade with missing date_called`);
+
+          return hasValidCa && hasCaller && hasDate;
+        })
+        .map(t => ({
+          ca: t.ca,
+          caller: t.caller,
+          date_called: t.date_called,
+          initial_mc: t.initial_mc,
+          current_mc: t.current_mc,
+        }));
+
+      console.log(`${backtestTrades.length} valid trades for backtesting`);
       setTrades(backtestTrades);
     } catch (error) {
       console.error("Error loading trades for backtesting:", error);

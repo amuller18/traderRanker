@@ -364,13 +364,20 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
     } as const;
 
     try {
+      // Debug: Log the payload being sent
+      console.log("Sending trades payload:", JSON.stringify(tradesPayload, null, 2));
+
       // First get the detailed breakdown using trade-based endpoint
       const breakdownRes = await fetch(`${pythonApiUrl}/api/simulate/breakdown/trades`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(tradesPayload)
       });
-      if (!breakdownRes.ok) throw new Error(`Breakdown API ${breakdownRes.status}`);
+      if (!breakdownRes.ok) {
+        const errorText = await breakdownRes.text();
+        console.error("Breakdown API error:", errorText);
+        throw new Error(`Breakdown API ${breakdownRes.status}: ${errorText}`);
+      }
       const breakdowns: TokenBreakdown[] = await breakdownRes.json();
       
       // Debug: Log the breakdown data

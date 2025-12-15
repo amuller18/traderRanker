@@ -250,7 +250,8 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
 
   /* ─────────────────────── memo ──────────────────────── */
   const callers = useMemo(
-    () => Array.from(new Set(trades.map((t) => t.caller))).filter(Boolean),
+    () => Array.from(new Set(trades.map((t) => t.caller)))
+      .filter((c): c is string => typeof c === 'string' && c.trim().length > 0),
     [trades]
   );
 
@@ -637,8 +638,8 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All</SelectItem>
-                      {callers.map((c) => (
-                        <SelectItem key={c} value={c}>
+                      {callers.map((c, idx) => (
+                        <SelectItem key={`caller-${idx}-${c}`} value={c}>
                           {c}
                         </SelectItem>
                       ))}

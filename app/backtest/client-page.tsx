@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import {
   Card,
   CardContent,
@@ -30,7 +30,8 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Plus, Minus, RefreshCw, Play } from "lucide-react";
+import { Plus, Minus, RefreshCw, Play, Loader2 } from "lucide-react";
+import { fetchAllTrades } from "@/lib/api-client";
 import {
   LineChart,
   Line,
@@ -180,6 +181,11 @@ const ladderToString = (arr: (TakeProfitLevel | StopLossLevel)[]) => {
  * -------------------------------------------------------------------*/
 export default function ModernBacktestPage({ initialTrades }: BacktestModernPageProps) {
   /* ─────────────────────── state ─────────────────────── */
+  // Trades loaded from DynamoDB
+  const [trades, setTrades] = useState<Trade[]>(initialTrades);
+  const [tradesLoading, setTradesLoading] = useState(true);
+  const [tradesError, setTradesError] = useState<string | null>(null);
+
   const [takeProfits, setTakeProfits] = useState<TakeProfitLevel[]>([
     { percentage: 20, sellPercentage: 50 },  // 20% gain, sell 50% of position
     { percentage: 50, sellPercentage: 30 },  // 50% gain, sell 30% of position
@@ -212,26 +218,56 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
   const pythonApiUrl =
     process.env.NEXT_PUBLIC_PYTHON_API_URL || "http://localhost:8000";
 
+  /* ─────────────────────── load trades from DynamoDB ─────────────────────── */
+  const loadTrades = useCallback(async () => {
+    setTradesLoading(true);
+    setTradesError(null);
+    try {
+      console.log("Fetching trades from DynamoDB for backtesting...");
+      const fetchedTrades = await fetchAllTrades();
+      console.log(`Loaded ${fetchedTrades.length} trades for backtesting`);
+      // Convert to the simple Trade format expected by backtest
+      const backtestTrades: Trade[] = fetchedTrades.map(t => ({
+        ca: t.ca,
+        caller: t.caller,
+        date_called: t.date_called,
+        initial_mc: t.initial_mc,
+        current_mc: t.current_mc,
+      }));
+      setTrades(backtestTrades);
+    } catch (error) {
+      console.error("Error loading trades for backtesting:", error);
+      setTradesError(error instanceof Error ? error.message : "Failed to load trades");
+    } finally {
+      setTradesLoading(false);
+    }
+  }, []);
+
+  // Load trades on mount
+  useEffect(() => {
+    loadTrades();
+  }, [loadTrades]);
+
   /* ─────────────────────── memo ──────────────────────── */
   const callers = useMemo(
-    () => Array.from(new Set(initialTrades.map((t) => t.caller))).filter(Boolean),
-    [initialTrades]
+    () => Array.from(new Set(trades.map((t) => t.caller))).filter(Boolean),
+    [trades]
   );
 
   const filteredTrades = useMemo(
     () => {
-      let trades = selectedCaller === "all"
-        ? initialTrades
-        : initialTrades.filter((t) => t.caller === selectedCaller);
-      
+      let filtered = selectedCaller === "all"
+        ? trades
+        : trades.filter((t) => t.caller === selectedCaller);
+
       // Limit to max backtests
-      if (maxBacktests > 0 && trades.length > maxBacktests) {
-        trades = trades.slice(0, maxBacktests);
+      if (maxBacktests > 0 && filtered.length > maxBacktests) {
+        filtered = filtered.slice(0, maxBacktests);
       }
-      
-      return trades;
+
+      return filtered;
     },
-    [initialTrades, selectedCaller, maxBacktests]
+    [trades, selectedCaller, maxBacktests]
   );
 
   /* ─────────────────────── effects ───────────────────── */
@@ -485,6 +521,24 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
   /* ─────────────────────── UI render ────────────────── */
   return (
     <div className="container mx-auto py-10 space-y-10">
+      {/* Loading/Error state */}
+      {tradesLoading && (
+        <div className="flex items-center justify-center gap-3 p-4 bg-muted/50 rounded-lg">
+          <Loader2 className="w-5 h-5 animate-spin" />
+          <span className="text-muted-foreground">Loading trades from database...</span>
+        </div>
+      )}
+
+      {tradesError && (
+        <div className="flex items-center justify-between p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
+          <span className="text-destructive">{tradesError}</span>
+          <Button variant="outline" size="sm" onClick={loadTrades}>
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Retry
+          </Button>
+        </div>
+      )}
+
       {/* Top bar */}
       <div className="flex flex-wrap items-center gap-4 text-sm">
         <span
@@ -504,7 +558,13 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
             : "API offline"}
         </span>
         <span className="text-muted-foreground">
+          • {tradesLoading ? "Loading..." : `${trades.length} trades loaded`}
+        </span>
+        <span className="text-muted-foreground">
           • {filteredTrades.length} trades selected
+        </span>
+        <span className="text-muted-foreground">
+          • {callers.length} callers available
         </span>
         <span className="text-muted-foreground">
           • Position size: ${positionSizing.type === "percentage" ? ((initialCapital * positionSizing.value) / 100).toFixed(2) : positionSizing.value.toFixed(2)} per trade
@@ -517,20 +577,30 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
             • ROI: {((summary.totalProfit / initialCapital) * 100).toFixed(1)}%
           </span>
         )}
-        <Button
-          className="ml-auto flex items-center gap-2"
-          onClick={runBacktest}
-          disabled={
-            apiStatus !== "connected" || isRunning || filteredTrades.length === 0
-          }
-        >
-          {isRunning ? (
-            <RefreshCw className="w-4 h-4 animate-spin" />
-          ) : (
-            <Play className="w-4 h-4" />
-          )}
-          {isRunning ? "Running…" : "Run Backtest"}
-        </Button>
+        <div className="ml-auto flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={loadTrades}
+            disabled={tradesLoading}
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${tradesLoading ? 'animate-spin' : ''}`} />
+            Refresh Trades
+          </Button>
+          <Button
+            onClick={runBacktest}
+            disabled={
+              apiStatus !== "connected" || isRunning || filteredTrades.length === 0 || tradesLoading
+            }
+          >
+            {isRunning ? (
+              <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+            ) : (
+              <Play className="w-4 h-4 mr-2" />
+            )}
+            {isRunning ? "Running…" : "Run Backtest"}
+          </Button>
+        </div>
       </div>
 
       {/* Tabs */}

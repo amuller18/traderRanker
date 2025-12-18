@@ -1,7 +1,7 @@
 "use client"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import type { TraderStats } from "@/lib/mock-data-provider"
+import type { TraderStats } from "@/lib/trader-data"
 import { Progress } from "@/components/ui/progress"
 
 interface MarketCapPerformanceProps {
@@ -10,11 +10,11 @@ interface MarketCapPerformanceProps {
 
 export function MarketCapPerformance({ trader }: MarketCapPerformanceProps) {
   const marketCaps = [
-    { name: "Micro Cap", roi: trader.micro_cap_roi, winRate: trader.micro_cap_winrate, range: "< $1M" },
-    { name: "Small Cap", roi: trader.small_cap_roi, winRate: trader.small_cap_winrate, range: "$1M - $5M" },
-    { name: "Mid Cap", roi: trader.mid_cap_roi, winRate: trader.mid_cap_winrate, range: "$5M - $25M" },
-    { name: "Large Cap", roi: trader.large_cap_roi, winRate: trader.large_cap_winrate, range: "$25M - $100M" },
-    { name: "Mega Cap", roi: trader.mega_cap_roi, winRate: trader.mega_cap_winrate, range: "> $100M" },
+    { name: "Micro Cap", roi: trader.micro_cap_roi || 0, winRate: trader.micro_cap_winrate || 0, range: "< $1M" },
+    { name: "Small Cap", roi: trader.small_cap_roi || 0, winRate: trader.small_cap_winrate || 0, range: "$1M - $10M" },
+    { name: "Mid Cap", roi: trader.mid_cap_roi || 0, winRate: trader.mid_cap_winrate || 0, range: "$10M - $100M" },
+    { name: "Large Cap", roi: trader.large_cap_roi || 0, winRate: trader.large_cap_winrate || 0, range: "$100M - $1B" },
+    { name: "Mega Cap", roi: trader.mega_cap_roi || 0, winRate: trader.mega_cap_winrate || 0, range: "> $1B" },
   ]
 
   const getProgressColor = (value: number) => {

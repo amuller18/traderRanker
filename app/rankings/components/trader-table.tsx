@@ -178,14 +178,14 @@ export function TraderTable({ traders }: TraderTableProps) {
                 <TableCell>
                   <div className="font-semibold text-foreground">{trader.caller}</div>
                 </TableCell>
-                <TableCell className="font-medium">{trader.win_rate_pct.toFixed(1)}%</TableCell>
+                <TableCell className="font-medium">{(trader.win_rate_pct ?? 0).toFixed(1)}%</TableCell>
                 <TableCell className="font-medium">{trader.n_calls}</TableCell>
-                <TableCell className={getPerformanceClass(trader.mean_ath_roi_pct)}>
-                  {trader.mean_ath_roi_pct >= 0 ? "+" : ""}{trader.mean_ath_roi_pct.toFixed(1)}%
+                <TableCell className={getPerformanceClass(trader.mean_ath_roi_pct ?? 0)}>
+                  {(trader.mean_ath_roi_pct ?? 0) >= 0 ? "+" : ""}{(trader.mean_ath_roi_pct ?? 0).toFixed(1)}%
                 </TableCell>
-                <TableCell className="font-medium">{trader.hit_10x_pct.toFixed(1)}%</TableCell>
-                <TableCell className={getPerformanceClass(trader.ev)}>
-                  {trader.ev >= 0 ? "+" : ""}{trader.ev.toFixed(1)}%
+                <TableCell className="font-medium">{(trader.hit_10x_pct ?? 0).toFixed(1)}%</TableCell>
+                <TableCell className={getPerformanceClass(trader.ev ?? 0)}>
+                  {(trader.ev ?? 0) >= 0 ? "+" : ""}{(trader.ev ?? 0).toFixed(1)}%
                 </TableCell>
                 <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                   <Link href={`/rankings?trader=${encodeURIComponent(trader.caller)}`}>

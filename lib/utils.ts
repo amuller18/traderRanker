@@ -15,13 +15,14 @@ export const formatDate = (dateString: string): string => {
   }
 }
 
-export const formatMarketCap = (mc: number): string => {
-  if (mc >= 1_000_000_000) return `$${(mc / 1_000_000_000).toFixed(2)}B`
-  if (mc >= 1_000_000) return `$${(mc / 1_000_000).toFixed(2)}M`
-  if (mc >= 1_000) return `$${(mc / 1_000).toFixed(2)}K`
-  return `$${mc.toFixed(2)}`
+export const formatMarketCap = (mc: number | undefined | null): string => {
+  const value = mc ?? 0
+  if (value >= 1_000_000_000) return `$${(value / 1_000_000_000).toFixed(2)}B`
+  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(2)}M`
+  if (value >= 1_000) return `$${(value / 1_000).toFixed(2)}K`
+  return `$${value.toFixed(2)}`
 }
 
-export const formatROI = (roi: number): string => {
-  return `${(roi * 100).toFixed(1)}%`
+export const formatROI = (roi: number | undefined | null): string => {
+  return `${((roi ?? 0) * 100).toFixed(1)}%`
 }

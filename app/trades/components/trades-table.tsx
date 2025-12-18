@@ -307,95 +307,8 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
         </div>
       </div>
 
-<<<<<<< HEAD
-      {/* Mobile Card View */}
-      <div className="md:hidden space-y-3">
-        {paginatedTrades.length === 0 ? (
-          <Card className="p-8 text-center text-muted-foreground">
-            No trades found.
-          </Card>
-        ) : (
-          paginatedTrades.map((trade) => {
-            const roi = calculateRoi(trade)
-            const isLoading = loadingStates[trade.ca]
-
-            return (
-              <Card key={`${trade.caller}-${trade.ca}-${trade.date_called}`} className="hover:border-border/60 transition-colors">
-                <CardContent className="pt-5 pb-4">
-                  <div className="space-y-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <Link
-                        href={`/rankings?trader=${encodeURIComponent(trade.caller)}`}
-                        className="text-primary hover:underline font-medium truncate"
-                      >
-                        {trade.caller}
-                      </Link>
-                      <span className="text-xs text-muted-foreground whitespace-nowrap">
-                        {formatDate(trade.date_called)}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Link
-                        href={`/token-analysis?token=${encodeURIComponent(trade.ca)}`}
-                        className="text-xs text-muted-foreground hover:text-primary font-mono truncate"
-                      >
-                        {trade.ca.substring(0, 8)}...{trade.ca.substring(trade.ca.length - 6)}
-                      </Link>
-                      <a
-                        href={`https://solscan.io/token/${trade.ca}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-muted-foreground hover:text-foreground"
-                      >
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </a>
-                    </div>
-                    <div className="grid grid-cols-3 gap-3 pt-1">
-                      <div>
-                        <p className="text-xs text-muted-foreground mb-0.5">Initial MC</p>
-                        <p className="font-medium">
-                          {trade.initial_mc > 0 ? formatMarketCap(trade.initial_mc) : 'N/A'}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground mb-0.5">Current MC</p>
-                        {isLoading ? (
-                          <p className="font-medium text-muted-foreground animate-pulse">Loading...</p>
-                        ) : tokenInfos[trade.ca]?.currentMc ? (
-                          <p className="font-medium">{formatMarketCap(tokenInfos[trade.ca].currentMc)}</p>
-                        ) : (
-                          <p className="font-medium text-muted-foreground">N/A</p>
-                        )}
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground mb-0.5">ROI</p>
-                        {isLoading ? (
-                          <p className="font-medium text-muted-foreground animate-pulse">Loading...</p>
-                        ) : roi !== null ? (
-                          <div className={`font-semibold flex items-center gap-1 ${
-                            roi >= 0 ? "text-success" : "text-destructive"
-                          }`}>
-                            {roi >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                            {roi.toFixed(1)}%
-                          </div>
-                        ) : (
-                          <p className="font-medium text-muted-foreground">N/A</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )
-          })
-        )}
-      </div>
-
-      {/* Desktop Table View */}
-      <Card className="hidden md:block overflow-hidden">
-=======
+      {/* Table View */}
       <div className="rounded-md border">
->>>>>>> parent of 73ad15c (Merge pull request #50 from amuller18/claude/redesign-professional-ui-01YDX5MJadNVXxj859TAZ8jT)
         <Table>
           <TableHeader>
             <TableRow>
@@ -479,11 +392,7 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
           <TableBody>
             {paginatedTrades.length === 0 ? (
               <TableRow>
-<<<<<<< HEAD
                 <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
-=======
-                <TableCell colSpan={6} className="h-24 text-center">
->>>>>>> parent of 73ad15c (Merge pull request #50 from amuller18/claude/redesign-professional-ui-01YDX5MJadNVXxj859TAZ8jT)
                   No trades found.
                 </TableCell>
               </TableRow>

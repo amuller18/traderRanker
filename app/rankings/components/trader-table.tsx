@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
-import type { TraderStats } from "@/lib/mock-data-provider"
+import type { TraderStats } from "@/lib/trader-data"
 import { ArrowUpDown, ChevronDown, ChevronUp, Trophy } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -12,11 +12,11 @@ interface TraderTableProps {
   traders: TraderStats[]
 }
 
-type SortField = "win_rate" | "total_calls" | "average_roi" | "winning_calls"
+type SortField = "win_rate_pct" | "n_calls" | "mean_ath_roi_pct" | "ev" | "sharpe_ratio" | "hit_10x_pct"
 type SortDirection = "asc" | "desc"
 
 export function TraderTable({ traders }: TraderTableProps) {
-  const [sortField, setSortField] = useState<SortField>("average_roi")
+  const [sortField, setSortField] = useState<SortField>("mean_ath_roi_pct")
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc")
   const router = useRouter()
 
@@ -30,8 +30,8 @@ export function TraderTable({ traders }: TraderTableProps) {
   }
 
   const sortedTraders = [...traders].sort((a, b) => {
-    const aValue = a[sortField]
-    const bValue = b[sortField]
+    const aValue = a[sortField] || 0
+    const bValue = b[sortField] || 0
 
     if (sortDirection === "asc") {
       return aValue - bValue
@@ -41,9 +41,9 @@ export function TraderTable({ traders }: TraderTableProps) {
   })
 
   const getPerformanceClass = (roi: number) => {
-    if (roi >= 1) return "text-success font-semibold"
+    if (roi >= 100) return "text-success font-semibold"
     if (roi >= 0) return "text-success font-medium"
-    if (roi >= -0.5) return "text-warning font-medium"
+    if (roi >= -50) return "text-warning font-medium"
     return "text-destructive font-medium"
   }
 
@@ -61,11 +61,11 @@ export function TraderTable({ traders }: TraderTableProps) {
             <TableHead className="w-[120px]">
               <Button
                 variant="ghost"
-                onClick={() => handleSort("win_rate")}
+                onClick={() => handleSort("win_rate_pct")}
                 className="flex items-center gap-1 p-0 h-auto font-medium"
               >
                 Win Rate
-                {sortField === "win_rate" ? (
+                {sortField === "win_rate_pct" ? (
                   sortDirection === "asc" ? (
                     <ChevronUp className="h-4 w-4" />
                   ) : (
@@ -79,11 +79,11 @@ export function TraderTable({ traders }: TraderTableProps) {
             <TableHead className="w-[120px]">
               <Button
                 variant="ghost"
-                onClick={() => handleSort("total_calls")}
+                onClick={() => handleSort("n_calls")}
                 className="flex items-center gap-1 p-0 h-auto font-medium"
               >
                 Total Calls
-                {sortField === "total_calls" ? (
+                {sortField === "n_calls" ? (
                   sortDirection === "asc" ? (
                     <ChevronUp className="h-4 w-4" />
                   ) : (
@@ -97,11 +97,11 @@ export function TraderTable({ traders }: TraderTableProps) {
             <TableHead className="w-[120px]">
               <Button
                 variant="ghost"
-                onClick={() => handleSort("winning_calls")}
+                onClick={() => handleSort("mean_ath_roi_pct")}
                 className="flex items-center gap-1 p-0 h-auto font-medium"
               >
-                Winning Calls
-                {sortField === "winning_calls" ? (
+                Mean ATH ROI
+                {sortField === "mean_ath_roi_pct" ? (
                   sortDirection === "asc" ? (
                     <ChevronUp className="h-4 w-4" />
                   ) : (
@@ -115,11 +115,29 @@ export function TraderTable({ traders }: TraderTableProps) {
             <TableHead className="w-[120px]">
               <Button
                 variant="ghost"
-                onClick={() => handleSort("average_roi")}
+                onClick={() => handleSort("hit_10x_pct")}
                 className="flex items-center gap-1 p-0 h-auto font-medium"
               >
-                Avg. ROI
-                {sortField === "average_roi" ? (
+                10x Hit %
+                {sortField === "hit_10x_pct" ? (
+                  sortDirection === "asc" ? (
+                    <ChevronUp className="h-4 w-4" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4" />
+                  )
+                ) : (
+                  <ArrowUpDown className="h-4 w-4" />
+                )}
+              </Button>
+            </TableHead>
+            <TableHead className="w-[120px]">
+              <Button
+                variant="ghost"
+                onClick={() => handleSort("ev")}
+                className="flex items-center gap-1 p-0 h-auto font-medium"
+              >
+                EV
+                {sortField === "ev" ? (
                   sortDirection === "asc" ? (
                     <ChevronUp className="h-4 w-4" />
                   ) : (
@@ -136,7 +154,7 @@ export function TraderTable({ traders }: TraderTableProps) {
         <TableBody>
           {sortedTraders.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={6} className="h-24 text-center">
+              <TableCell colSpan={8} className="h-24 text-center">
                 No traders found.
               </TableCell>
             </TableRow>
@@ -160,11 +178,14 @@ export function TraderTable({ traders }: TraderTableProps) {
                 <TableCell>
                   <div className="font-semibold text-foreground">{trader.caller}</div>
                 </TableCell>
-                <TableCell className="font-medium">{(trader.win_rate * 100).toFixed(1)}%</TableCell>
-                <TableCell className="font-medium">{trader.total_calls}</TableCell>
-                <TableCell className="font-medium">{trader.winning_calls}</TableCell>
-                <TableCell className={getPerformanceClass(trader.average_roi)}>
-                  {trader.average_roi >= 0 ? "+" : ""}{(trader.average_roi * 100).toFixed(1)}%
+                <TableCell className="font-medium">{trader.win_rate_pct.toFixed(1)}%</TableCell>
+                <TableCell className="font-medium">{trader.n_calls}</TableCell>
+                <TableCell className={getPerformanceClass(trader.mean_ath_roi_pct)}>
+                  {trader.mean_ath_roi_pct >= 0 ? "+" : ""}{trader.mean_ath_roi_pct.toFixed(1)}%
+                </TableCell>
+                <TableCell className="font-medium">{trader.hit_10x_pct.toFixed(1)}%</TableCell>
+                <TableCell className={getPerformanceClass(trader.ev)}>
+                  {trader.ev >= 0 ? "+" : ""}{trader.ev.toFixed(1)}%
                 </TableCell>
                 <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                   <Link href={`/rankings?trader=${encodeURIComponent(trader.caller)}`}>

@@ -3,20 +3,53 @@ import { scanTable, queryTable, putItem, deleteItem, type DynamoDBItem } from ".
 // Type definitions for our data
 export interface TraderStats {
   caller: string
-  win_rate: number
-  total_calls: number
-  winning_calls: number
-  average_roi: number
-  micro_cap_roi: number
-  micro_cap_winrate: number
-  small_cap_roi: number
-  small_cap_winrate: number
-  mid_cap_roi: number
-  mid_cap_winrate: number
-  large_cap_roi: number
-  large_cap_winrate: number
-  mega_cap_roi: number
-  mega_cap_winrate: number
+  n_calls: number
+  first_call_date: string
+  last_call_date: string
+  mean_ath_roi_pct: number
+  median_ath_roi_pct: number
+  std_ath_roi_pct: number
+  mean_atl_roi_pct: number
+  best_roi_pct: number
+  worst_roi_pct: number
+  win_rate_pct: number
+  win_threshold_pct: number
+  win_rate_mc_p5: number
+  win_rate_mc_p50: number
+  win_rate_mc_p95: number
+  hit_2x_pct: number
+  hit_3x_pct: number
+  hit_5x_pct: number
+  hit_10x_pct: number
+  hit_20x_pct: number
+  hit_50x_pct: number
+  hit_100x_pct: number
+  sharpe_ratio: number
+  sortino_ratio: number
+  max_drawdown_pct: number
+  ev: number
+  ev_weighted: number
+  avg_days_to_ath: number
+  median_days_to_ath: number
+  avg_correlation_with_others: number
+  risk_score: number
+  consistency_score: number
+  computed_at: string
+  // Deprecated fields - kept for backwards compatibility
+  win_rate?: number
+  total_calls?: number
+  winning_calls?: number
+  average_roi?: number
+  micro_cap_roi?: number
+  micro_cap_winrate?: number
+  small_cap_roi?: number
+  small_cap_winrate?: number
+  mid_cap_roi?: number
+  mid_cap_winrate?: number
+  large_cap_roi?: number
+  large_cap_winrate?: number
+  mega_cap_roi?: number
+  mega_cap_winrate?: number
 }
 
 export interface Trade {
@@ -237,10 +270,43 @@ function safeParseInt(value: any): number {
 function convertToTraderStats(item: DynamoDBItem): TraderStats {
   return {
     caller: String(item.caller || "Unknown"),
-    win_rate: safeParseFloat(item.win_rate || 0),
-    total_calls: safeParseInt(item.total_calls || 0),
-    winning_calls: safeParseInt(item.winning_calls || 0),
-    average_roi: safeParseFloat(item.average_roi || 0),
+    n_calls: safeParseInt(item.n_calls || item.total_calls || 0),
+    first_call_date: String(item.first_call_date || ""),
+    last_call_date: String(item.last_call_date || ""),
+    mean_ath_roi_pct: safeParseFloat(item.mean_ath_roi_pct || 0),
+    median_ath_roi_pct: safeParseFloat(item.median_ath_roi_pct || 0),
+    std_ath_roi_pct: safeParseFloat(item.std_ath_roi_pct || 0),
+    mean_atl_roi_pct: safeParseFloat(item.mean_atl_roi_pct || 0),
+    best_roi_pct: safeParseFloat(item.best_roi_pct || 0),
+    worst_roi_pct: safeParseFloat(item.worst_roi_pct || 0),
+    win_rate_pct: safeParseFloat(item.win_rate_pct || item.win_rate || 0),
+    win_threshold_pct: safeParseFloat(item.win_threshold_pct || 25),
+    win_rate_mc_p5: safeParseFloat(item.win_rate_mc_p5 || 0),
+    win_rate_mc_p50: safeParseFloat(item.win_rate_mc_p50 || 0),
+    win_rate_mc_p95: safeParseFloat(item.win_rate_mc_p95 || 0),
+    hit_2x_pct: safeParseFloat(item.hit_2x_pct || 0),
+    hit_3x_pct: safeParseFloat(item.hit_3x_pct || 0),
+    hit_5x_pct: safeParseFloat(item.hit_5x_pct || 0),
+    hit_10x_pct: safeParseFloat(item.hit_10x_pct || 0),
+    hit_20x_pct: safeParseFloat(item.hit_20x_pct || 0),
+    hit_50x_pct: safeParseFloat(item.hit_50x_pct || 0),
+    hit_100x_pct: safeParseFloat(item.hit_100x_pct || 0),
+    sharpe_ratio: safeParseFloat(item.sharpe_ratio || 0),
+    sortino_ratio: safeParseFloat(item.sortino_ratio || 0),
+    max_drawdown_pct: safeParseFloat(item.max_drawdown_pct || 0),
+    ev: safeParseFloat(item.ev || 0),
+    ev_weighted: safeParseFloat(item.ev_weighted || 0),
+    avg_days_to_ath: safeParseFloat(item.avg_days_to_ath || 0),
+    median_days_to_ath: safeParseFloat(item.median_days_to_ath || 0),
+    avg_correlation_with_others: safeParseFloat(item.avg_correlation_with_others || 0),
+    risk_score: safeParseFloat(item.risk_score || 0),
+    consistency_score: safeParseFloat(item.consistency_score || 0),
+    computed_at: String(item.computed_at || ""),
+    // Backwards compatibility - populate old fields from new ones
+    win_rate: safeParseFloat(item.win_rate_pct || item.win_rate || 0) / 100,
+    total_calls: safeParseInt(item.n_calls || item.total_calls || 0),
+    winning_calls: Math.round((safeParseFloat(item.win_rate_pct || item.win_rate || 0) / 100) * safeParseInt(item.n_calls || item.total_calls || 0)),
+    average_roi: safeParseFloat(item.mean_ath_roi_pct || item.average_roi || 0) / 100,
     micro_cap_roi: safeParseFloat(item.micro_cap_roi || 0),
     micro_cap_winrate: safeParseFloat(item.micro_cap_winrate || 0),
     small_cap_roi: safeParseFloat(item.small_cap_roi || 0),
@@ -352,6 +418,39 @@ function calculateTraderStats(trades: Trade[]): TraderStats {
   if (trades.length === 0) {
     return {
       caller: "",
+      n_calls: 0,
+      first_call_date: "",
+      last_call_date: "",
+      mean_ath_roi_pct: 0,
+      median_ath_roi_pct: 0,
+      std_ath_roi_pct: 0,
+      mean_atl_roi_pct: 0,
+      best_roi_pct: 0,
+      worst_roi_pct: 0,
+      win_rate_pct: 0,
+      win_threshold_pct: 25,
+      win_rate_mc_p5: 0,
+      win_rate_mc_p50: 0,
+      win_rate_mc_p95: 0,
+      hit_2x_pct: 0,
+      hit_3x_pct: 0,
+      hit_5x_pct: 0,
+      hit_10x_pct: 0,
+      hit_20x_pct: 0,
+      hit_50x_pct: 0,
+      hit_100x_pct: 0,
+      sharpe_ratio: 0,
+      sortino_ratio: 0,
+      max_drawdown_pct: 0,
+      ev: 0,
+      ev_weighted: 0,
+      avg_days_to_ath: 0,
+      median_days_to_ath: 0,
+      avg_correlation_with_others: 0,
+      risk_score: 0,
+      consistency_score: 0,
+      computed_at: new Date().toISOString(),
+      // Backwards compatibility
       win_rate: 0,
       total_calls: 0,
       winning_calls: 0,
@@ -370,10 +469,34 @@ function calculateTraderStats(trades: Trade[]): TraderStats {
   }
 
   const caller = trades[0].caller
-  const total_calls = trades.length
+  const n_calls = trades.length
+  const rois = trades.map(t => t.roi_at_high)
   const winning_calls = trades.filter(trade => trade.is_winner).length
-  const win_rate = total_calls > 0 ? winning_calls / total_calls : 0
-  const average_roi = trades.reduce((sum, trade) => sum + trade.roi_at_high, 0) / total_calls
+  const win_rate_pct = n_calls > 0 ? (winning_calls / n_calls) * 100 : 0
+
+  // Calculate ROI statistics
+  const mean_ath_roi_pct = rois.reduce((sum, roi) => sum + roi, 0) / n_calls
+  const sortedRois = [...rois].sort((a, b) => a - b)
+  const median_ath_roi_pct = sortedRois[Math.floor(sortedRois.length / 2)]
+  const variance = rois.reduce((sum, roi) => sum + Math.pow(roi - mean_ath_roi_pct, 2), 0) / n_calls
+  const std_ath_roi_pct = Math.sqrt(variance)
+  const mean_atl_roi_pct = trades.reduce((sum, t) => sum + t.roi_at_low, 0) / n_calls
+  const best_roi_pct = Math.max(...rois)
+  const worst_roi_pct = Math.min(...rois)
+
+  // Calculate hit rates
+  const hit_2x_pct = (trades.filter(t => t.roi_at_high >= 100).length / n_calls) * 100
+  const hit_3x_pct = (trades.filter(t => t.roi_at_high >= 200).length / n_calls) * 100
+  const hit_5x_pct = (trades.filter(t => t.roi_at_high >= 400).length / n_calls) * 100
+  const hit_10x_pct = (trades.filter(t => t.roi_at_high >= 900).length / n_calls) * 100
+  const hit_20x_pct = (trades.filter(t => t.roi_at_high >= 1900).length / n_calls) * 100
+  const hit_50x_pct = (trades.filter(t => t.roi_at_high >= 4900).length / n_calls) * 100
+  const hit_100x_pct = (trades.filter(t => t.roi_at_high >= 9900).length / n_calls) * 100
+
+  // Date range
+  const dates = trades.map(t => new Date(t.date_called)).sort((a, b) => a.getTime() - b.getTime())
+  const first_call_date = dates[0]?.toISOString() || ""
+  const last_call_date = dates[dates.length - 1]?.toISOString() || ""
 
   // Calculate market cap performance
   const microCapTrades = trades.filter(trade => trade.initial_mc < 1_000_000)
@@ -397,10 +520,43 @@ function calculateTraderStats(trades: Trade[]): TraderStats {
 
   return {
     caller,
-    win_rate,
-    total_calls,
+    n_calls,
+    first_call_date,
+    last_call_date,
+    mean_ath_roi_pct,
+    median_ath_roi_pct,
+    std_ath_roi_pct,
+    mean_atl_roi_pct,
+    best_roi_pct,
+    worst_roi_pct,
+    win_rate_pct,
+    win_threshold_pct: 25,
+    win_rate_mc_p5: 0, // Not calculated from trades
+    win_rate_mc_p50: 0, // Not calculated from trades
+    win_rate_mc_p95: 0, // Not calculated from trades
+    hit_2x_pct,
+    hit_3x_pct,
+    hit_5x_pct,
+    hit_10x_pct,
+    hit_20x_pct,
+    hit_50x_pct,
+    hit_100x_pct,
+    sharpe_ratio: 0, // Not calculated from trades
+    sortino_ratio: 0, // Not calculated from trades
+    max_drawdown_pct: 0, // Not calculated from trades
+    ev: mean_ath_roi_pct, // Approximation
+    ev_weighted: mean_ath_roi_pct, // Approximation
+    avg_days_to_ath: 0, // Not calculated from trades
+    median_days_to_ath: 0, // Not calculated from trades
+    avg_correlation_with_others: 0, // Not calculated from trades
+    risk_score: 0, // Not calculated from trades
+    consistency_score: 0, // Not calculated from trades
+    computed_at: new Date().toISOString(),
+    // Backwards compatibility
+    win_rate: win_rate_pct / 100,
+    total_calls: n_calls,
     winning_calls,
-    average_roi,
+    average_roi: mean_ath_roi_pct / 100,
     micro_cap_roi: microCapStats.roi,
     micro_cap_winrate: microCapStats.winrate,
     small_cap_roi: smallCapStats.roi,
@@ -607,17 +763,39 @@ export async function getTraderStats(filters?: FilterOptions): Promise<TraderSta
 
     // Calculate stats for each trader
     const stats = Object.entries(tradesByTrader).map(([caller, trades]) => {
-      const total_calls = trades.length
-      
+      const n_calls = trades.length
+
       // Calculate ROI for each trade using current market cap
       const tradeRois = trades.map(trade => {
         const currentMc = tokenMarketCaps[trade.ca] || trade.current_mc
         return calculateRoi(trade.initial_mc, currentMc)
       })
-      
+
       const winning_calls = tradeRois.filter(roi => roi > 0).length
-      const win_rate = total_calls > 0 ? winning_calls / total_calls : 0
-      const average_roi = total_calls > 0 ? tradeRois.reduce((sum, roi) => sum + roi, 0) / total_calls : 0
+      const win_rate_pct = n_calls > 0 ? (winning_calls / n_calls) * 100 : 0
+      const mean_ath_roi_pct = n_calls > 0 ? tradeRois.reduce((sum, roi) => sum + roi, 0) / n_calls : 0
+
+      // Calculate ROI statistics
+      const sortedRois = [...tradeRois].sort((a, b) => a - b)
+      const median_ath_roi_pct = sortedRois.length > 0 ? sortedRois[Math.floor(sortedRois.length / 2)] : 0
+      const variance = n_calls > 0 ? tradeRois.reduce((sum, roi) => sum + Math.pow(roi - mean_ath_roi_pct, 2), 0) / n_calls : 0
+      const std_ath_roi_pct = Math.sqrt(variance)
+      const best_roi_pct = tradeRois.length > 0 ? Math.max(...tradeRois) : 0
+      const worst_roi_pct = tradeRois.length > 0 ? Math.min(...tradeRois) : 0
+
+      // Calculate hit rates
+      const hit_2x_pct = (trades.filter(t => t.roi_at_high >= 100).length / n_calls) * 100
+      const hit_3x_pct = (trades.filter(t => t.roi_at_high >= 200).length / n_calls) * 100
+      const hit_5x_pct = (trades.filter(t => t.roi_at_high >= 400).length / n_calls) * 100
+      const hit_10x_pct = (trades.filter(t => t.roi_at_high >= 900).length / n_calls) * 100
+      const hit_20x_pct = (trades.filter(t => t.roi_at_high >= 1900).length / n_calls) * 100
+      const hit_50x_pct = (trades.filter(t => t.roi_at_high >= 4900).length / n_calls) * 100
+      const hit_100x_pct = (trades.filter(t => t.roi_at_high >= 9900).length / n_calls) * 100
+
+      // Date range
+      const dates = trades.map(t => new Date(t.date_called)).sort((a, b) => a.getTime() - b.getTime())
+      const first_call_date = dates[0]?.toISOString() || ""
+      const last_call_date = dates[dates.length - 1]?.toISOString() || ""
 
       // Calculate market cap performance
       const microCapTrades = trades.filter(trade => trade.initial_mc < 1_000_000)
@@ -628,12 +806,12 @@ export async function getTraderStats(filters?: FilterOptions): Promise<TraderSta
 
       const calculateCapStats = (capTrades: Trade[]) => {
         if (capTrades.length === 0) return { roi: 0, winrate: 0 }
-        
+
         const capRois = capTrades.map(trade => {
           const currentMc = tokenMarketCaps[trade.ca] || trade.current_mc
           return calculateRoi(trade.initial_mc, currentMc)
         })
-        
+
         const roi = capRois.reduce((sum, roi) => sum + roi, 0) / capTrades.length
         const winrate = capRois.filter(roi => roi > 0).length / capTrades.length
         return { roi, winrate }
@@ -647,10 +825,43 @@ export async function getTraderStats(filters?: FilterOptions): Promise<TraderSta
 
       return {
         caller,
-        total_calls,
+        n_calls,
+        first_call_date,
+        last_call_date,
+        mean_ath_roi_pct,
+        median_ath_roi_pct,
+        std_ath_roi_pct,
+        mean_atl_roi_pct: 0, // Not calculated from current data
+        best_roi_pct,
+        worst_roi_pct,
+        win_rate_pct,
+        win_threshold_pct: 25,
+        win_rate_mc_p5: 0, // Not calculated
+        win_rate_mc_p50: 0, // Not calculated
+        win_rate_mc_p95: 0, // Not calculated
+        hit_2x_pct,
+        hit_3x_pct,
+        hit_5x_pct,
+        hit_10x_pct,
+        hit_20x_pct,
+        hit_50x_pct,
+        hit_100x_pct,
+        sharpe_ratio: 0, // Not calculated
+        sortino_ratio: 0, // Not calculated
+        max_drawdown_pct: 0, // Not calculated
+        ev: mean_ath_roi_pct,
+        ev_weighted: mean_ath_roi_pct,
+        avg_days_to_ath: 0, // Not calculated
+        median_days_to_ath: 0, // Not calculated
+        avg_correlation_with_others: 0, // Not calculated
+        risk_score: 0, // Not calculated
+        consistency_score: 0, // Not calculated
+        computed_at: new Date().toISOString(),
+        // Backwards compatibility
+        total_calls: n_calls,
         winning_calls,
-        win_rate,
-        average_roi,
+        win_rate: win_rate_pct / 100,
+        average_roi: mean_ath_roi_pct / 100,
         micro_cap_roi: microCapStats.roi,
         micro_cap_winrate: microCapStats.winrate,
         small_cap_roi: smallCapStats.roi,

@@ -1,24 +1,33 @@
 "use client"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import type { TraderStats } from "@/lib/dynamodb-client"
-import { BarChart, LineChart, PieChart } from "lucide-react"
+import type { TraderStats } from "@/lib/trader-data"
+import { BarChart, LineChart, PieChart, TrendingUp } from "lucide-react"
 
 interface PerformanceMetricsProps {
   trader: TraderStats
 }
 
 export function PerformanceMetrics({ trader }: PerformanceMetricsProps) {
-  // Calculate risk score (simple algorithm based on win rate and ROI)
-  const calculateRiskScore = (winRate: number, roi: number) => {
+  // Use new fields with backwards compatibility
+  const winRate = trader.win_rate_pct / 100
+  const avgRoi = trader.mean_ath_roi_pct / 100
+  const totalCalls = trader.n_calls || trader.total_calls || 0
+  const winningCalls = Math.round((trader.win_rate_pct / 100) * totalCalls)
+
+  // Calculate risk score using new fields
+  const calculateRiskScore = (winRatePct: number, roiPct: number) => {
+    const winRate = winRatePct / 100
+    const roi = roiPct / 100
+
     // Win rate contributes 60% to the score
     const winRateScore = winRate * 6 // 0-6 points
-    
+
     // ROI contributes 40% to the score
     // Cap ROI at 200% to prevent extreme values from skewing the score
     const cappedRoi = Math.min(Math.max(roi, -1), 2)
     const roiScore = (cappedRoi + 1) * 2 // -1 to 2 ROI becomes 0 to 6 points
-    
+
     const totalScore = winRateScore + roiScore
 
     if (totalScore >= 10) return { grade: "A+", color: "text-green-500" }
@@ -35,44 +44,57 @@ export function PerformanceMetrics({ trader }: PerformanceMetricsProps) {
     return { grade: "F", color: "text-red-600" }
   }
 
-  const riskScore = calculateRiskScore(trader.win_rate, trader.average_roi)
+  const riskScore = calculateRiskScore(trader.win_rate_pct, trader.mean_ath_roi_pct)
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium">Win Rate</CardTitle>
           <BarChart className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold">{(trader.win_rate * 100).toFixed(1)}%</div>
+          <div className="text-2xl font-bold">{trader.win_rate_pct.toFixed(1)}%</div>
           <p className="text-xs text-muted-foreground">
-            {trader.winning_calls} winning calls out of {trader.total_calls} total
+            {winningCalls} winning calls out of {totalCalls} total
           </p>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">Average ROI</CardTitle>
+          <CardTitle className="text-sm font-medium">Mean ATH ROI</CardTitle>
           <LineChart className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
-          <div className={`text-2xl font-bold ${trader.average_roi >= 0 ? "text-green-500" : "text-red-500"}`}>
-            {(trader.average_roi * 100).toFixed(1)}%
+          <div className={`text-2xl font-bold ${trader.mean_ath_roi_pct >= 0 ? "text-green-500" : "text-red-500"}`}>
+            {trader.mean_ath_roi_pct.toFixed(1)}%
           </div>
-          <p className="text-xs text-muted-foreground">Average return on investment per trade</p>
+          <p className="text-xs text-muted-foreground">Average return at all-time high</p>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">Risk Score</CardTitle>
+          <CardTitle className="text-sm font-medium">Expected Value</CardTitle>
+          <TrendingUp className="h-4 w-4 text-muted-foreground" />
+        </CardHeader>
+        <CardContent>
+          <div className={`text-2xl font-bold ${trader.ev >= 0 ? "text-green-500" : "text-red-500"}`}>
+            {trader.ev.toFixed(1)}%
+          </div>
+          <p className="text-xs text-muted-foreground">Expected value per trade</p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-sm font-medium">10x Hit Rate</CardTitle>
           <PieChart className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
-          <div className={`text-2xl font-bold ${riskScore.color}`}>{riskScore.grade}</div>
-          <p className="text-xs text-muted-foreground">Based on win rate and ROI consistency</p>
+          <div className="text-2xl font-bold">{trader.hit_10x_pct.toFixed(1)}%</div>
+          <p className="text-xs text-muted-foreground">Trades that hit 10x or more</p>
         </CardContent>
       </Card>
 
@@ -82,7 +104,7 @@ export function PerformanceMetrics({ trader }: PerformanceMetricsProps) {
           <BarChart className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold">{trader.total_calls}</div>
+          <div className="text-2xl font-bold">{totalCalls}</div>
           <p className="text-xs text-muted-foreground">Total number of trading calls made</p>
         </CardContent>
       </Card>

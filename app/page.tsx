@@ -66,7 +66,7 @@ export default function LandingPage() {
 
               <div className="flex items-center justify-center lg:justify-end">
                 <div className="relative w-full max-w-[600px] animate-fade-in" style={{ animationDelay: "0.2s", opacity: 0, animationFillMode: "forwards" }}>
-                  <div className="relative aspect-square rounded-2xl overflow-hidden shadow-elevated-xl border glass-card">
+                  <div className="relative rounded-2xl overflow-hidden shadow-elevated-xl border glass-card">
                     <Image
                       src="/trading-dashboard.jpg"
                       alt="TraderRanker Dashboard"
@@ -75,29 +75,7 @@ export default function LandingPage() {
                       className="rounded-2xl object-cover"
                       priority
                     />
-                    {/* Floating stat cards */}
-                    <div className="absolute -bottom-4 -left-4 glass-card rounded-xl shadow-elevated-lg p-4 border-2 border-warning/30 animate-scale-in" style={{ animationDelay: "0.4s" }}>
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-warning/10 rounded-lg">
-                          <Trophy className="h-6 w-6 text-warning" />
-                        </div>
-                        <div>
-                          <div className="text-sm text-muted-foreground">Elite Trader</div>
-                          <div className="font-bold text-lg">Top 5%</div>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="absolute -top-4 -right-4 glass-card rounded-xl shadow-elevated-lg p-4 border-2 border-success/30 animate-scale-in" style={{ animationDelay: "0.6s" }}>
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-success/10 rounded-lg">
-                          <TrendingUp className="h-6 w-6 text-success" />
-                        </div>
-                        <div>
-                          <div className="text-sm text-muted-foreground">Total Returns</div>
-                          <div className="font-bold text-lg text-success">+243%</div>
-                        </div>
-                      </div>
-                    </div>
+                    
                   </div>
                 </div>
               </div>
@@ -227,18 +205,7 @@ export default function LandingPage() {
                       height={450}
                       className="rounded-2xl object-cover"
                     />
-                    {/* Overlay badge */}
-                    <div className="absolute -bottom-4 -right-4 glass-card rounded-xl shadow-elevated-lg p-5 border-2 border-chart-1/30">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-chart-1/10 rounded-lg">
-                          <Copy className="h-6 w-6 text-chart-1" />
-                        </div>
-                        <div>
-                          <div className="text-sm text-muted-foreground">Auto-Sync</div>
-                          <div className="font-bold text-lg">Copy Trades</div>
-                        </div>
-                      </div>
-                    </div>
+                    
                   </div>
                 </div>
               </div>

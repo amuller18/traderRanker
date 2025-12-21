@@ -16,9 +16,16 @@ import {
   Calendar,
   Award,
   AlertTriangle,
+  Info,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 interface TraderDetailDashboardProps {
   trader: TraderStats
@@ -190,7 +197,19 @@ export function TraderDetailDashboard({ trader, trades = [] }: TraderDetailDashb
 
                 {/* Win Rate */}
                 <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground uppercase tracking-wide">Win Rate</p>
+                  <div className="flex items-center gap-1">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Win Rate</p>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>A trade is counted as a win if it reaches 25% gain at any point</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
                   <div className="flex items-center gap-1">
                     <Target className="h-5 w-5 text-primary" />
                     <span className="text-2xl font-bold">{formatPercent(winRatePct)}</span>

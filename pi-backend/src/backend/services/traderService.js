@@ -8,15 +8,18 @@
  */
 
 import * as traderRepository from '../repositories/traderRepository.js'
+import * as officialStatsRepository from '../repositories/officialStatsRepository.js'
 import { applyTraderFilters } from '../utils/filters.js'
 
 /**
  * Get all traders with optional filtering
+ * Uses the officialStats table for pre-computed statistics
  * @param {Object} [filters] - Optional filter criteria
  * @returns {Promise<Array>} Filtered trader statistics
  */
 export async function getTraders(filters = {}) {
-  const traders = await traderRepository.findAll()
+  // Use officialStats table for trader rankings
+  const traders = await officialStatsRepository.findAll()
   return applyTraderFilters(traders, filters)
 }
 

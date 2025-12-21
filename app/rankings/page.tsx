@@ -138,7 +138,11 @@ export default async function RankingsPage(props: RankingsPageProps) {
         <DataSourceStatus usingMockData={usingMockData} />
 
         <div className="space-y-8">
-          
+          {/* Performance Metrics from Official Stats */}
+          <div className="animate-fade-in" style={{ animationDelay: "0.1s" }}>
+            <PerformanceMetrics trader={trader} />
+          </div>
+
           {/* Trade History */}
           <div className="space-y-4 animate-fade-in" style={{ animationDelay: "0.3s" }}>
             <div className="flex items-center justify-end gap-3">

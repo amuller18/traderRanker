@@ -32,3 +32,4 @@ export const docClient = DynamoDBDocumentClient.from(dynamoClient)
  */
 export const TRADERS_TABLE = process.env.DYNAMODB_TRADERS_TABLE || 'CallerStatistics'
 export const TRADES_TABLE = process.env.DYNAMODB_TRADES_TABLE || 'Trades'
+export const OFFICIAL_STATS_TABLE = process.env.DYNAMODB_TRADER_STATISTICS || 'officialStats'

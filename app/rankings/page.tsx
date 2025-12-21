@@ -122,6 +122,19 @@ export default async function RankingsPage(props: RankingsPageProps) {
   return (
     <div className="min-h-screen gradient-background">
       <div className="container py-10 px-4">
+        <div className="mb-8 animate-fade-in">
+          <Link href="/rankings">
+            <Button variant="ghost" className="gap-2 pl-0 hover-lift mb-4">
+              <ArrowLeft className="h-4 w-4" />
+              Back to Rankings
+            </Button>
+          </Link>
+          <h1 className="text-4xl font-bold mb-2 text-gradient">{traderId}</h1>
+          <p className="text-muted-foreground text-lg">
+            Comprehensive performance analysis and trading history
+          </p>
+        </div>
+
         <DataSourceStatus usingMockData={usingMockData} />
 
         <div className="space-y-8">

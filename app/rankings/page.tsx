@@ -3,16 +3,10 @@ import { TraderRankings } from "./components/trader-rankings"
 import { TraderRankingsSkeleton } from "./components/trader-rankings-skeleton"
 import { PageLayout } from "@/app/components/page-layout"
 import { fetchTraderStats, fetchTraderTrades } from "@/lib/api-client"
-import { isUsingMockData } from "@/lib/trader-data"
-import { PerformanceMetrics } from "./components/performance-metrics"
-import { MarketCapPerformance } from "./components/market-cap-performance"
 import { TraderTrades } from "./components/trader-trades"
 import { TraderDetailDashboard } from "./components/trader-detail-dashboard"
 import { BulkPriceUpdateButton } from "./components/bulk-price-update-button"
-import { Button } from "@/components/ui/button"
-import { ArrowLeft } from "lucide-react"
 import { DataSourceStatus } from "@/app/components/data-source-status"
-import Link from "next/link"
 import { notFound } from "next/navigation"
 import { PageHeader } from "@/app/page-header";
 
@@ -54,18 +48,12 @@ export default async function RankingsPage(props: RankingsPageProps) {
   const traderId = traderParam
   const page = Number(searchParams.page) || 1
   const pageSize = 10 // Load 10 trades per page
-  let usingMockData = true
 
-  try {
-    // Check if we're using mock data
-    usingMockData = await isUsingMockData()
-  } catch (error) {
-    console.error("Error checking if using mock data:", error)
-    // Continue with assumption of mock data
-  }
-
-  // Fetch trader stats from API
+  // Fetch trader stats from API (Pi backend)
   const allTraders = await fetchTraderStats()
+
+  // Determine if using mock data based on API response
+  const usingMockData = allTraders.length === 0
 
   // Deduplicate traders by caller (in case API returns duplicates)
   const uniqueTraders = allTraders.reduce((acc: any[], trader) => {

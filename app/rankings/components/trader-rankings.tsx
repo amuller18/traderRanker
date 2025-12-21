@@ -161,16 +161,16 @@ export function TraderRankings() {
                 <div className="grid grid-cols-3 gap-3">
                   <div>
                     <div className="text-sm text-muted-foreground mb-1">Win Rate</div>
-                    <div className="font-semibold">{(trader.win_rate * 100).toFixed(1)}%</div>
+                    <div className="font-semibold">{((trader.win_rate ?? 0) * 100).toFixed(1)}%</div>
                   </div>
                   <div>
                     <div className="text-sm text-muted-foreground mb-1">Total Calls</div>
-                    <div className="font-semibold">{trader.total_calls}</div>
+                    <div className="font-semibold">{trader.total_calls ?? 0}</div>
                   </div>
                   <div>
                     <div className="text-sm text-muted-foreground mb-1">Avg ROI</div>
-                    <div className={`font-semibold ${trader.average_roi >= 0 ? "text-green-500" : "text-red-500"}`}>
-                      {formatROI(trader.average_roi)}
+                    <div className={`font-semibold ${(trader.average_roi ?? 0) >= 0 ? "text-green-500" : "text-red-500"}`}>
+                      {formatROI(trader.average_roi ?? 0)}
                     </div>
                   </div>
                 </div>
@@ -226,10 +226,10 @@ export function TraderRankings() {
                   {trader.caller}
                 </Link>
               </TableCell>
-              <TableCell>{(trader.win_rate * 100).toFixed(1)}%</TableCell>
-              <TableCell>{trader.total_calls}</TableCell>
-              <TableCell className={trader.average_roi >= 0 ? "text-green-500" : "text-red-500"}>
-                {formatROI(trader.average_roi)}
+              <TableCell>{((trader.win_rate ?? 0) * 100).toFixed(1)}%</TableCell>
+              <TableCell>{trader.total_calls ?? 0}</TableCell>
+              <TableCell className={(trader.average_roi ?? 0) >= 0 ? "text-green-500" : "text-red-500"}>
+                {formatROI(trader.average_roi ?? 0)}
               </TableCell>
             </TableRow>
           ))}

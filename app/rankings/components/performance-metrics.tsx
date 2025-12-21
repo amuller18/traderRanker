@@ -10,10 +10,14 @@ interface PerformanceMetricsProps {
 
 export function PerformanceMetrics({ trader }: PerformanceMetricsProps) {
   // Use new fields with backwards compatibility
-  const winRate = trader.win_rate_pct / 100
-  const avgRoi = trader.mean_ath_roi_pct / 100
+  const winRatePct = trader.win_rate_pct ?? 0
+  const meanAthRoiPct = trader.mean_ath_roi_pct ?? 0
+  const evPct = trader.ev ?? 0
+  const hit10xPct = trader.hit_10x_pct ?? 0
+  const winRate = winRatePct / 100
+  const avgRoi = meanAthRoiPct / 100
   const totalCalls = trader.n_calls || trader.total_calls || 0
-  const winningCalls = Math.round((trader.win_rate_pct / 100) * totalCalls)
+  const winningCalls = Math.round((winRatePct / 100) * totalCalls)
 
   // Calculate risk score using new fields
   const calculateRiskScore = (winRatePct: number, roiPct: number) => {
@@ -44,7 +48,7 @@ export function PerformanceMetrics({ trader }: PerformanceMetricsProps) {
     return { grade: "F", color: "text-red-600" }
   }
 
-  const riskScore = calculateRiskScore(trader.win_rate_pct, trader.mean_ath_roi_pct)
+  const riskScore = calculateRiskScore(winRatePct, meanAthRoiPct)
 
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
@@ -54,7 +58,7 @@ export function PerformanceMetrics({ trader }: PerformanceMetricsProps) {
           <BarChart className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold">{trader.win_rate_pct.toFixed(1)}%</div>
+          <div className="text-2xl font-bold">{winRatePct.toFixed(1)}%</div>
           <p className="text-xs text-muted-foreground">
             {winningCalls} winning calls out of {totalCalls} total
           </p>
@@ -67,8 +71,8 @@ export function PerformanceMetrics({ trader }: PerformanceMetricsProps) {
           <LineChart className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
-          <div className={`text-2xl font-bold ${trader.mean_ath_roi_pct >= 0 ? "text-green-500" : "text-red-500"}`}>
-            {trader.mean_ath_roi_pct.toFixed(1)}%
+          <div className={`text-2xl font-bold ${meanAthRoiPct >= 0 ? "text-green-500" : "text-red-500"}`}>
+            {meanAthRoiPct.toFixed(1)}%
           </div>
           <p className="text-xs text-muted-foreground">Average return at all-time high</p>
         </CardContent>
@@ -80,8 +84,8 @@ export function PerformanceMetrics({ trader }: PerformanceMetricsProps) {
           <TrendingUp className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
-          <div className={`text-2xl font-bold ${trader.ev >= 0 ? "text-green-500" : "text-red-500"}`}>
-            {trader.ev.toFixed(1)}%
+          <div className={`text-2xl font-bold ${evPct >= 0 ? "text-green-500" : "text-red-500"}`}>
+            {evPct.toFixed(1)}%
           </div>
           <p className="text-xs text-muted-foreground">Expected value per trade</p>
         </CardContent>
@@ -93,7 +97,7 @@ export function PerformanceMetrics({ trader }: PerformanceMetricsProps) {
           <PieChart className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold">{trader.hit_10x_pct.toFixed(1)}%</div>
+          <div className="text-2xl font-bold">{hit10xPct.toFixed(1)}%</div>
           <p className="text-xs text-muted-foreground">Trades that hit 10x or more</p>
         </CardContent>
       </Card>

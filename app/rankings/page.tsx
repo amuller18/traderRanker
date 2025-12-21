@@ -138,29 +138,11 @@ export default async function RankingsPage(props: RankingsPageProps) {
         <DataSourceStatus usingMockData={usingMockData} />
 
         <div className="space-y-8">
-          {/* Performance Metrics */}
-          <div className="animate-fade-in" style={{ animationDelay: "0.1s" }}>
-            <PerformanceMetrics trader={trader} />
-          </div>
-
-          {/* Market Cap Performance */}
-          <div className="animate-fade-in" style={{ animationDelay: "0.2s" }}>
-            <MarketCapPerformance trader={trader} />
-          </div>
-
+          
           {/* Trade History */}
           <div className="space-y-4 animate-fade-in" style={{ animationDelay: "0.3s" }}>
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <div>
-                <h2 className="text-2xl font-bold tracking-tight">Trade History</h2>
-                <p className="text-muted-foreground">Recent trading activity and performance</p>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-muted-foreground font-medium">
-                  Showing {startIndex + 1}-{Math.min(endIndex, totalTrades)} of {totalTrades} trades
-                </span>
-                <BulkPriceUpdateButton traderId={traderId} totalTrades={totalTrades} />
-              </div>
+            <div className="flex items-center justify-end gap-3">
+              <BulkPriceUpdateButton traderId={traderId} totalTrades={totalTrades} />
             </div>
             <TraderTrades
               trades={paginatedTrades}

@@ -144,12 +144,22 @@ export function TraderDetailDashboard({ trader, trades = [] }: TraderDetailDashb
   // Hit rate percentages for the performance quality section
   const hitRates = [
     { label: "2x Rate", value: trader.hit_2x_pct || 0, description: "Trades that hit 2x" },
+    { label: "3x Rate", value: trader.hit_3x_pct || 0, description: "Trades that hit 3x" },
     { label: "5x Rate", value: trader.hit_5x_pct || 0, description: "Trades that hit 5x" },
     { label: "10x Rate", value: trader.hit_10x_pct || 0, description: "Trades that hit 10x" },
     { label: "20x Rate", value: trader.hit_20x_pct || 0, description: "Trades that hit 20x" },
     { label: "50x Rate", value: trader.hit_50x_pct || 0, description: "Trades that hit 50x" },
     { label: "100x Rate", value: trader.hit_100x_pct || 0, description: "Trades that hit 100x" },
   ]
+
+  // Additional stats
+  const riskScore = trader.risk_score || 0
+  const evWeighted = trader.ev_weighted || 0
+  const stdRoi = trader.std_ath_roi_pct || 0
+  const meanAtlRoi = trader.mean_atl_roi_pct || 0
+  const avgDaysToAth = trader.avg_days_to_ath || 0
+  const medianDaysToAth = trader.median_days_to_ath || 0
+  const correlation = trader.avg_correlation_with_others || 0
 
   return (
     <div className="space-y-6">
@@ -360,16 +370,16 @@ export function TraderDetailDashboard({ trader, trades = [] }: TraderDetailDashb
         </CardContent>
       </Card>
 
-      {/* Additional Stats */}
+      {/* ROI Statistics */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <BarChart3 className="h-5 w-5 text-primary" />
-            Detailed Statistics
+            ROI Statistics
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+          <div className="grid gap-4 grid-cols-2 md:grid-cols-4 lg:grid-cols-6">
             <div className="space-y-1 p-3 rounded-lg bg-muted/50">
               <p className="text-xs text-muted-foreground">Median ROI</p>
               <p className={`text-lg font-semibold ${getValueColor(trader.median_ath_roi_pct || 0)}`}>
@@ -389,10 +399,128 @@ export function TraderDetailDashboard({ trader, trades = [] }: TraderDetailDashb
               </p>
             </div>
             <div className="space-y-1 p-3 rounded-lg bg-muted/50">
+              <p className="text-xs text-muted-foreground">ROI Std Dev</p>
+              <p className="text-lg font-semibold text-muted-foreground">
+                {formatPercent(stdRoi)}
+              </p>
+            </div>
+            <div className="space-y-1 p-3 rounded-lg bg-muted/50">
+              <p className="text-xs text-muted-foreground">Mean ATL ROI</p>
+              <p className={`text-lg font-semibold ${getValueColor(meanAtlRoi)}`}>
+                {formatPercent(meanAtlRoi)}
+              </p>
+            </div>
+            <div className="space-y-1 p-3 rounded-lg bg-muted/50">
+              <p className="text-xs text-muted-foreground">EV Weighted</p>
+              <p className={`text-lg font-semibold ${getValueColor(evWeighted)}`}>
+                {formatPercent(evWeighted)}
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Risk & Timing Metrics */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-primary" />
+            Risk & Timing Metrics
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 grid-cols-2 md:grid-cols-4 lg:grid-cols-6">
+            <div className="space-y-1 p-3 rounded-lg bg-muted/50">
+              <p className="text-xs text-muted-foreground">Risk Score</p>
+              <p className={`text-lg font-semibold ${riskScore <= 30 ? 'text-green-500' : riskScore <= 60 ? 'text-yellow-500' : 'text-red-500'}`}>
+                {riskScore.toFixed(1)}
+              </p>
+            </div>
+            <div className="space-y-1 p-3 rounded-lg bg-muted/50">
               <p className="text-xs text-muted-foreground">Sortino Ratio</p>
               <p className={`text-lg font-semibold ${(trader.sortino_ratio || 0) >= 1 ? 'text-green-500' : 'text-muted-foreground'}`}>
                 {(trader.sortino_ratio || 0).toFixed(2)}
               </p>
+            </div>
+            <div className="space-y-1 p-3 rounded-lg bg-muted/50">
+              <p className="text-xs text-muted-foreground">Avg Days to ATH</p>
+              <p className="text-lg font-semibold">
+                {avgDaysToAth.toFixed(1)}
+              </p>
+            </div>
+            <div className="space-y-1 p-3 rounded-lg bg-muted/50">
+              <p className="text-xs text-muted-foreground">Median Days to ATH</p>
+              <p className="text-lg font-semibold">
+                {medianDaysToAth.toFixed(1)}
+              </p>
+            </div>
+            <div className="space-y-1 p-3 rounded-lg bg-muted/50">
+              <p className="text-xs text-muted-foreground">Correlation</p>
+              <p className={`text-lg font-semibold ${Math.abs(correlation) < 0.3 ? 'text-green-500' : 'text-yellow-500'}`}>
+                {correlation.toFixed(3)}
+              </p>
+            </div>
+            <div className="space-y-1 p-3 rounded-lg bg-muted/50">
+              <p className="text-xs text-muted-foreground">Win Threshold</p>
+              <p className="text-lg font-semibold">
+                {formatPercent(trader.win_threshold_pct || 25)}
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Market Cap Percentile Win Rates */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Target className="h-5 w-5 text-primary" />
+            Win Rate by Market Cap Percentile
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Win rates at different initial market cap percentiles
+          </p>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 grid-cols-1 md:grid-cols-3">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">P5 (Bottom 5%)</span>
+                <span className="text-sm font-bold">{formatPercent(trader.win_rate_mc_p5 || 0)}</span>
+              </div>
+              <div className="relative h-3 w-full overflow-hidden rounded-full bg-secondary">
+                <div
+                  className={`h-full transition-all duration-500 ease-out rounded-full ${getProgressColor(trader.win_rate_mc_p5 || 0)}`}
+                  style={{ width: `${Math.min(trader.win_rate_mc_p5 || 0, 100)}%` }}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">Smallest market caps</p>
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">P50 (Median)</span>
+                <span className="text-sm font-bold">{formatPercent(trader.win_rate_mc_p50 || 0)}</span>
+              </div>
+              <div className="relative h-3 w-full overflow-hidden rounded-full bg-secondary">
+                <div
+                  className={`h-full transition-all duration-500 ease-out rounded-full ${getProgressColor(trader.win_rate_mc_p50 || 0)}`}
+                  style={{ width: `${Math.min(trader.win_rate_mc_p50 || 0, 100)}%` }}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">Median market caps</p>
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">P95 (Top 5%)</span>
+                <span className="text-sm font-bold">{formatPercent(trader.win_rate_mc_p95 || 0)}</span>
+              </div>
+              <div className="relative h-3 w-full overflow-hidden rounded-full bg-secondary">
+                <div
+                  className={`h-full transition-all duration-500 ease-out rounded-full ${getProgressColor(trader.win_rate_mc_p95 || 0)}`}
+                  style={{ width: `${Math.min(trader.win_rate_mc_p95 || 0, 100)}%` }}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">Largest market caps</p>
             </div>
           </div>
         </CardContent>

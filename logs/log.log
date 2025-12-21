@@ -532,3 +532,13 @@
 2025-12-21 17:05:57,357 - INFO - Request Delay: 2 seconds
 2025-12-21 17:05:57,357 - INFO - ============================================================
 2025-12-21 17:05:57,385 - INFO - Wallet authentication routes loaded successfully
+2025-12-21 17:22:11,669 - INFO - GET /api/trades/filtered - Raw params: roiMin=-1000.0, roiMax=1000.0, mcMin=0.0, mcMax=1000000000.0, dateFrom=0, dateTo=1766355731, search='None', trader='None', timeframe='all'
+2025-12-21 17:22:12,419 - INFO - Applying date filter: from=0, to=1766355731
+2025-12-21 17:22:12,419 - INFO - After date filter: 6095 trades (from 6095)
+2025-12-21 17:22:12,419 - INFO - Returning 6095 filtered trades
+2025-12-21 17:22:12,738 - INFO - GET /api/trades/filtered - Raw params: roiMin=-1000.0, roiMax=1000.0, mcMin=0.0, mcMax=1000000000.0, dateFrom=0, dateTo=1766355731, search='None', trader='None', timeframe='all'
+2025-12-21 17:22:13,153 - INFO - Applying date filter: from=0, to=1766355731
+2025-12-21 17:22:13,153 - INFO - After date filter: 6095 trades (from 6095)
+2025-12-21 17:22:13,153 - INFO - Returning 6095 filtered trades
+2025-12-21 17:40:54,888 - INFO - GET /api/traders/stats
+2025-12-21 17:40:55,039 - INFO - GET /api/traders/stats

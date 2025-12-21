@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { TokenInfo } from "@/lib/token-data"
 import type { JSX } from "react"
+import { PageHeader } from "@/app/page-header";
 import {
   ArrowLeft,
   ExternalLink,
@@ -184,7 +185,9 @@ export default async function TokenAnalysisPage(props: TokenAnalysisPageProps) {
 
   if (!response || !response.ok) {
     return (
+      
       <div className="container mx-auto p-4">
+        <PageHeader/>
         <h1 className="text-2xl font-bold mb-4">Token Data Unavailable</h1>
         <p>The requested token data could not be fetched. This might be due to:</p>
         <ul className="list-disc list-inside mt-2">
@@ -203,9 +206,12 @@ export default async function TokenAnalysisPage(props: TokenAnalysisPageProps) {
 
   if (!tokenInfo) {
     return (
-      <div className="container mx-auto p-4">
-        <h1 className="text-2xl font-bold mb-4">Token Not Found</h1>
-        <p>The requested token could not be found.</p>
+      <div>
+        <PageHeader/>
+        <div className="container mx-auto p-4">
+          <h1 className="text-2xl font-bold mb-4">Token Not Found</h1>
+          <p>The requested token could not be found.</p>
+        </div>
       </div>
     )
   }
@@ -364,10 +370,11 @@ export default async function TokenAnalysisPage(props: TokenAnalysisPageProps) {
 
   return (
     <div className="min-h-screen">
-      <SidebarProvider className="pt-16">
+      <PageHeader/>
+      <SidebarProvider className="container py-10 px-4 ">
         <div className="relative">
           {/* Main Content */}
-          <div className="transition-all duration-300 ease-in-out">
+          <div className="container py-10 px-4 ">
             <div id="main-content" className="container py-8 transition-all duration-300 ease-in-out">
               <div className="mb-8 flex justify-between items-center">
                 <Link href="/token-analysis">

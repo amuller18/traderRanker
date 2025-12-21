@@ -77,3 +77,309 @@
 2025-12-21 16:01:49,864 - INFO - Birdeye bulk: found 0/7 tokens
 2025-12-21 16:05:48,311 - WARNING - No pairs found in DexScreener v1 bulk response
 2025-12-21 16:05:48,311 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:05:50,362 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:05:50,362 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:05:50,695 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:05:50,695 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:05:52,499 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:05:52,499 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:05:59,177 - INFO - DexScreener v1 bulk: found 2/9 tokens
+2025-12-21 16:05:59,185 - INFO - DexScreener v1 bulk: found 2/9 tokens
+2025-12-21 16:06:01,307 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:06:01,307 - INFO - Birdeye bulk: found 0/7 tokens
+2025-12-21 16:06:01,355 - WARNING - Birdeye bulk API error: 429
+2025-12-21 16:06:01,355 - INFO - Birdeye bulk: found 0/7 tokens
+2025-12-21 16:06:17,079 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:06:17,079 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:06:18,012 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:06:18,012 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:06:19,303 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:06:19,303 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:06:20,228 - WARNING - Birdeye bulk API error: 429
+2025-12-21 16:06:20,228 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:06:28,528 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:06:28,528 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:06:30,631 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:06:30,631 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:06:38,880 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:06:38,880 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:06:41,983 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:06:41,983 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:06:42,845 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:06:42,845 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:06:45,181 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:06:45,181 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:06:49,888 - INFO - ============================================================
+2025-12-21 16:06:49,888 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-12-21 16:06:49,888 - INFO - ============================================================
+2025-12-21 16:06:49,889 - INFO - Using explicit AWS credentials from environment variables
+2025-12-21 16:06:50,858 - INFO - Loaded 1 Birdeye API keys
+2025-12-21 16:06:50,858 - INFO -   Key 1: 0c96b594d3...466c
+2025-12-21 16:06:50,858 - INFO - CoinGecko API Key: CG-8jAASUa...gjNr
+2025-12-21 16:06:50,858 - INFO - Development Mode: True
+2025-12-21 16:06:50,858 - INFO - Request Delay: 2 seconds
+2025-12-21 16:06:50,858 - INFO - ============================================================
+2025-12-21 16:06:51,276 - WARNING - SUPABASE_SERVICE_ROLE_KEY not set in environment
+2025-12-21 16:06:51,295 - INFO - Wallet authentication routes loaded successfully
+2025-12-21 16:06:51,395 - INFO - ============================================================
+2025-12-21 16:06:51,395 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-12-21 16:06:51,395 - INFO - ============================================================
+2025-12-21 16:06:51,395 - INFO - Using explicit AWS credentials from environment variables
+2025-12-21 16:06:53,206 - INFO - Loaded 1 Birdeye API keys
+2025-12-21 16:06:53,206 - INFO -   Key 1: 0c96b594d3...466c
+2025-12-21 16:06:53,206 - INFO - CoinGecko API Key: CG-8jAASUa...gjNr
+2025-12-21 16:06:53,206 - INFO - Development Mode: True
+2025-12-21 16:06:53,206 - INFO - Request Delay: 2 seconds
+2025-12-21 16:06:53,206 - INFO - ============================================================
+2025-12-21 16:06:53,241 - INFO - Wallet authentication routes loaded successfully
+2025-12-21 16:06:55,312 - INFO - ============================================================
+2025-12-21 16:06:55,312 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-12-21 16:06:55,312 - INFO - ============================================================
+2025-12-21 16:06:55,312 - INFO - Using explicit AWS credentials from environment variables
+2025-12-21 16:06:56,101 - INFO - Loaded 1 Birdeye API keys
+2025-12-21 16:06:56,101 - INFO -   Key 1: 0c96b594d3...466c
+2025-12-21 16:06:56,101 - INFO - CoinGecko API Key: CG-8jAASUa...gjNr
+2025-12-21 16:06:56,101 - INFO - Development Mode: True
+2025-12-21 16:06:56,101 - INFO - Request Delay: 2 seconds
+2025-12-21 16:06:56,101 - INFO - ============================================================
+2025-12-21 16:06:56,547 - WARNING - SUPABASE_SERVICE_ROLE_KEY not set in environment
+2025-12-21 16:06:56,578 - INFO - Wallet authentication routes loaded successfully
+2025-12-21 16:06:56,707 - INFO - ============================================================
+2025-12-21 16:06:56,707 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-12-21 16:06:56,707 - INFO - ============================================================
+2025-12-21 16:06:56,708 - INFO - Using explicit AWS credentials from environment variables
+2025-12-21 16:06:56,867 - INFO - Loaded 1 Birdeye API keys
+2025-12-21 16:06:56,867 - INFO -   Key 1: 0c96b594d3...466c
+2025-12-21 16:06:56,867 - INFO - CoinGecko API Key: CG-8jAASUa...gjNr
+2025-12-21 16:06:56,867 - INFO - Development Mode: True
+2025-12-21 16:06:56,867 - INFO - Request Delay: 2 seconds
+2025-12-21 16:06:56,867 - INFO - ============================================================
+2025-12-21 16:06:56,900 - INFO - Wallet authentication routes loaded successfully
+2025-12-21 16:06:57,553 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:06:57,554 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:06:57,581 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:06:57,581 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:06:57,903 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:06:57,903 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:06:58,185 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:06:58,186 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:06:59,198 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:06:59,198 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:06:59,529 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:06:59,529 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:06:59,712 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:06:59,712 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:06:59,738 - WARNING - Birdeye bulk API error: 429
+2025-12-21 16:06:59,738 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:07:00,004 - WARNING - Birdeye bulk API error: 429
+2025-12-21 16:07:00,005 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:07:00,284 - WARNING - Birdeye bulk API error: 429
+2025-12-21 16:07:00,284 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:07:03,462 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:07:03,462 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:07:03,627 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:07:03,627 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:07:04,023 - WARNING - Birdeye bulk API error: 429
+2025-12-21 16:07:04,023 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:07:05,829 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:07:05,829 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:08:10,459 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:08:10,459 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:08:12,817 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:08:12,817 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:08:47,098 - INFO - GET /api/traders/stats
+2025-12-21 16:08:47,276 - INFO - GET /api/traders/stats
+2025-12-21 16:08:48,112 - INFO - GET /api/traders/stats
+2025-12-21 16:08:48,158 - INFO - GET /api/traders/shahlito/trades - limit=10, offset=None
+2025-12-21 16:08:48,240 - INFO - Returning 10 trades for shahlito
+2025-12-21 16:08:49,202 - INFO - DexScreener v1 bulk: found 2/6 tokens
+2025-12-21 16:08:49,219 - INFO - DexScreener v1 bulk: found 2/6 tokens
+2025-12-21 16:08:51,597 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:08:51,597 - INFO - Birdeye bulk: found 0/4 tokens
+2025-12-21 16:08:52,336 - WARNING - Birdeye bulk API error: 429
+2025-12-21 16:08:52,336 - INFO - Birdeye bulk: found 0/4 tokens
+2025-12-21 16:09:46,788 - INFO - GET /api/traders/stats
+2025-12-21 16:09:46,814 - INFO - GET /api/traders/stats
+2025-12-21 16:09:47,934 - INFO - GET /api/traders/stats
+2025-12-21 16:09:47,976 - INFO - GET /api/traders/shahlito/trades - limit=10, offset=None
+2025-12-21 16:09:48,046 - INFO - Returning 10 trades for shahlito
+2025-12-21 16:09:48,797 - INFO - DexScreener v1 bulk: found 2/6 tokens
+2025-12-21 16:09:48,803 - INFO - DexScreener v1 bulk: found 2/6 tokens
+2025-12-21 16:09:51,157 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:09:51,157 - INFO - Birdeye bulk: found 0/4 tokens
+2025-12-21 16:09:51,202 - WARNING - Birdeye bulk API error: 429
+2025-12-21 16:09:51,202 - INFO - Birdeye bulk: found 0/4 tokens
+2025-12-21 16:12:13,147 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:12:13,147 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:12:15,689 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:12:15,690 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:12:16,003 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:12:16,003 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:12:18,112 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:12:18,112 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:12:18,610 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:12:18,610 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:12:19,263 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:12:19,263 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:12:19,580 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:12:19,580 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:12:20,711 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:12:20,711 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:12:21,806 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:12:21,806 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:12:21,923 - WARNING - Birdeye bulk API error: 429
+2025-12-21 16:12:21,923 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:12:22,670 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:12:22,670 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:12:22,850 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:12:22,850 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:12:24,814 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:12:24,814 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:12:25,165 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:12:25,165 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:12:25,230 - WARNING - Birdeye bulk API error: 429
+2025-12-21 16:12:25,230 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:12:27,347 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:12:27,347 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:12:30,017 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:12:30,017 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:12:32,130 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:12:32,130 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:12:36,184 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:12:36,184 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:12:38,297 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:12:38,297 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:12:40,212 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:12:40,212 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:12:42,330 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:12:42,330 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:12:45,445 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:12:45,445 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:12:47,664 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:12:47,664 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:12:50,437 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:12:50,437 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:12:52,546 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:12:52,546 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:12:55,799 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:12:55,799 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:12:58,045 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:12:58,046 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:12:59,739 - INFO - GET /api/traders/stats
+2025-12-21 16:12:59,954 - INFO - GET /api/traders/shahlito/trades - limit=10, offset=None
+2025-12-21 16:13:00,066 - INFO - Returning 10 trades for shahlito
+2025-12-21 16:13:02,080 - INFO - DexScreener v1 bulk: found 2/6 tokens
+2025-12-21 16:13:04,349 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:13:04,349 - INFO - Birdeye bulk: found 0/4 tokens
+2025-12-21 16:13:20,832 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:13:20,832 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:13:22,969 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:13:22,969 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:13:24,165 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:13:24,165 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:13:26,053 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:13:26,053 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:13:26,398 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:13:26,398 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:13:28,197 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:13:28,197 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:13:31,064 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:13:31,064 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:13:33,293 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:13:33,294 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:13:50,764 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:13:50,764 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:13:54,230 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:13:54,231 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:13:56,631 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:13:56,631 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:13:59,039 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:13:59,039 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:14:02,926 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:14:02,926 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:14:05,284 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:14:05,284 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:14:06,799 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:14:06,799 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:14:08,927 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:14:08,928 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:14:09,525 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:14:09,525 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:14:10,185 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:14:10,185 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:14:10,587 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:14:10,587 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:14:11,156 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:14:11,156 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:14:11,635 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:14:11,635 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:14:11,728 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:14:11,728 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:14:12,248 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:14:12,248 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:14:12,799 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:14:12,799 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:14:13,359 - WARNING - Birdeye bulk API error: 429
+2025-12-21 16:14:13,360 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:14:13,384 - WARNING - Birdeye bulk API error: 429
+2025-12-21 16:14:13,384 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:14:14,157 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:14:14,157 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:14:14,372 - WARNING - Birdeye bulk API error: 429
+2025-12-21 16:14:14,372 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:14:14,859 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:14:14,859 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:14:15,665 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:14:15,665 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:14:16,240 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:14:16,241 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:14:16,620 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:14:16,620 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:14:17,234 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:14:17,234 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:14:17,240 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:14:17,240 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:14:17,755 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:14:17,756 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:14:17,848 - WARNING - Birdeye bulk API error: 429
+2025-12-21 16:14:17,848 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:14:18,500 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:14:18,501 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:14:18,764 - WARNING - Birdeye bulk API error: 429
+2025-12-21 16:14:18,764 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:14:19,378 - WARNING - Birdeye bulk API error: 429
+2025-12-21 16:14:19,378 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:14:19,870 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:14:19,870 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:14:20,654 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:14:20,654 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:14:21,175 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:14:21,176 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:14:21,769 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:14:21,770 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:14:22,292 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:14:22,292 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:14:22,876 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:14:22,876 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:14:22,905 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:14:22,905 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:14:23,389 - WARNING - Birdeye bulk API error: 429
+2025-12-21 16:14:23,390 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:14:23,444 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:14:23,444 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:14:23,921 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:14:23,922 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:14:24,460 - WARNING - Birdeye bulk API error: 429
+2025-12-21 16:14:24,461 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:14:25,105 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:14:25,105 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:14:25,556 - WARNING - Birdeye bulk API error: 429
+2025-12-21 16:14:25,557 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:14:26,746 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:14:26,746 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:14:28,285 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:14:28,285 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:14:28,859 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:14:28,859 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:14:30,536 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:14:30,536 - INFO - Birdeye bulk: found 0/6 tokens

@@ -63,7 +63,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
-        logging.StreamHandler(sys.stdout),  # Only console output to avoid file conflicts
+        logging.FileHandler("logs/log.log", mode="a"),
     ],
 )
 logger = logging.getLogger(__name__)

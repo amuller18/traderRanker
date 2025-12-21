@@ -1,0 +1,79 @@
+2025-12-21 16:00:43,659 - INFO - ============================================================
+2025-12-21 16:00:43,659 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-12-21 16:00:43,659 - INFO - ============================================================
+2025-12-21 16:00:43,659 - INFO - Using explicit AWS credentials from environment variables
+2025-12-21 16:00:44,360 - INFO - Loaded 1 Birdeye API keys
+2025-12-21 16:00:44,360 - INFO -   Key 1: 0c96b594d3...466c
+2025-12-21 16:00:44,360 - INFO - CoinGecko API Key: CG-8jAASUa...gjNr
+2025-12-21 16:00:44,360 - INFO - Development Mode: True
+2025-12-21 16:00:44,360 - INFO - Request Delay: 2 seconds
+2025-12-21 16:00:44,360 - INFO - ============================================================
+2025-12-21 16:00:44,794 - WARNING - SUPABASE_SERVICE_ROLE_KEY not set in environment
+2025-12-21 16:00:44,824 - INFO - Wallet authentication routes loaded successfully
+2025-12-21 16:00:44,949 - INFO - ============================================================
+2025-12-21 16:00:44,949 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-12-21 16:00:44,949 - INFO - ============================================================
+2025-12-21 16:00:44,951 - INFO - Using explicit AWS credentials from environment variables
+2025-12-21 16:00:45,112 - INFO - Loaded 1 Birdeye API keys
+2025-12-21 16:00:45,112 - INFO -   Key 1: 0c96b594d3...466c
+2025-12-21 16:00:45,112 - INFO - CoinGecko API Key: CG-8jAASUa...gjNr
+2025-12-21 16:00:45,112 - INFO - Development Mode: True
+2025-12-21 16:00:45,112 - INFO - Request Delay: 2 seconds
+2025-12-21 16:00:45,112 - INFO - ============================================================
+2025-12-21 16:00:45,148 - INFO - Wallet authentication routes loaded successfully
+2025-12-21 16:00:45,955 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:00:45,955 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:00:46,161 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:00:46,161 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:00:46,167 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:00:46,167 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:00:46,922 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:00:46,923 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:00:47,194 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:00:47,194 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:00:47,541 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:00:47,541 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:00:48,498 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:00:48,498 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:00:48,728 - WARNING - Birdeye bulk API error: 429
+2025-12-21 16:00:48,728 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:00:49,057 - WARNING - Birdeye bulk API error: 429
+2025-12-21 16:00:49,057 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:00:49,109 - WARNING - Birdeye bulk API error: 429
+2025-12-21 16:00:49,109 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:00:49,757 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:00:49,757 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:00:49,839 - WARNING - Birdeye bulk API error: 429
+2025-12-21 16:00:49,839 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:00:53,244 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:00:53,244 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:00:55,812 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:00:55,812 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:01:02,095 - INFO - GET /api/traders/stats
+2025-12-21 16:01:04,649 - INFO - GET /api/traders/BossmanCallsOfficial/trades - limit=10, offset=None
+2025-12-21 16:01:04,770 - INFO - Returning 10 trades for BossmanCallsOfficial
+2025-12-21 16:01:07,493 - INFO - DexScreener v1 bulk: found 2/9 tokens
+2025-12-21 16:01:09,760 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:01:09,760 - INFO - Birdeye bulk: found 0/7 tokens
+2025-12-21 16:01:33,560 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:01:33,561 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:01:38,910 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:01:38,910 - INFO - DexScreener v1 bulk: found 0/6 tokens
+2025-12-21 16:01:40,441 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:01:40,441 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:01:41,110 - WARNING - Birdeye bulk API error: 429
+2025-12-21 16:01:41,110 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 16:01:42,536 - INFO - GET /api/traders/stats
+2025-12-21 16:01:42,583 - INFO - GET /api/traders/BossmanCallsOfficial/trades - limit=10, offset=None
+2025-12-21 16:01:42,680 - INFO - Returning 10 trades for BossmanCallsOfficial
+2025-12-21 16:01:45,604 - INFO - GET /api/traders/stats
+2025-12-21 16:01:45,645 - INFO - GET /api/traders/BossmanCallsOfficial/trades - limit=10, offset=None
+2025-12-21 16:01:45,744 - INFO - Returning 10 trades for BossmanCallsOfficial
+2025-12-21 16:01:46,060 - INFO - DexScreener v1 bulk: found 2/9 tokens
+2025-12-21 16:01:47,630 - INFO - DexScreener v1 bulk: found 2/9 tokens
+2025-12-21 16:01:48,196 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:01:48,196 - INFO - Birdeye bulk: found 0/7 tokens
+2025-12-21 16:01:49,864 - WARNING - Birdeye bulk API error: 401
+2025-12-21 16:01:49,864 - INFO - Birdeye bulk: found 0/7 tokens
+2025-12-21 16:05:48,311 - WARNING - No pairs found in DexScreener v1 bulk response
+2025-12-21 16:05:48,311 - INFO - DexScreener v1 bulk: found 0/6 tokens

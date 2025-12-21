@@ -461,3 +461,74 @@
 2025-12-21 16:15:48,124 - INFO - DexScreener v1 bulk: found 0/6 tokens
 2025-12-21 16:15:49,277 - WARNING - Birdeye bulk API error: 401
 2025-12-21 16:15:49,277 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 17:02:05,271 - INFO - ============================================================
+2025-12-21 17:02:05,272 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-12-21 17:02:05,272 - INFO - ============================================================
+2025-12-21 17:02:05,273 - INFO - Using explicit AWS credentials from environment variables
+2025-12-21 17:02:05,819 - INFO - Loaded 1 Birdeye API keys
+2025-12-21 17:02:05,819 - INFO -   Key 1: 0c96b594d3...466c
+2025-12-21 17:02:05,819 - INFO - CoinGecko API Key: CG-8jAASUa...gjNr
+2025-12-21 17:02:05,819 - INFO - Development Mode: True
+2025-12-21 17:02:05,819 - INFO - Request Delay: 2 seconds
+2025-12-21 17:02:05,819 - INFO - ============================================================
+2025-12-21 17:02:06,345 - WARNING - SUPABASE_SERVICE_ROLE_KEY not set in environment
+2025-12-21 17:02:06,352 - INFO - Wallet authentication routes loaded successfully
+2025-12-21 17:02:06,501 - INFO - ============================================================
+2025-12-21 17:02:06,501 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-12-21 17:02:06,501 - INFO - ============================================================
+2025-12-21 17:02:06,501 - INFO - Using explicit AWS credentials from environment variables
+2025-12-21 17:02:06,690 - INFO - Loaded 1 Birdeye API keys
+2025-12-21 17:02:06,690 - INFO -   Key 1: 0c96b594d3...466c
+2025-12-21 17:02:06,690 - INFO - CoinGecko API Key: CG-8jAASUa...gjNr
+2025-12-21 17:02:06,690 - INFO - Development Mode: True
+2025-12-21 17:02:06,690 - INFO - Request Delay: 2 seconds
+2025-12-21 17:02:06,690 - INFO - ============================================================
+2025-12-21 17:02:06,730 - INFO - Wallet authentication routes loaded successfully
+2025-12-21 17:02:06,788 - INFO - GET /api/traders/stats
+2025-12-21 17:03:22,816 - INFO - GET /api/trades/filtered - Raw params: roiMin=-1000.0, roiMax=1000.0, mcMin=0.0, mcMax=1000000000.0, dateFrom=0, dateTo=1766354602, search='None', trader='None', timeframe='all'
+2025-12-21 17:03:23,449 - INFO - Applying date filter: from=0, to=1766354602
+2025-12-21 17:03:23,451 - INFO - After date filter: 6095 trades (from 6095)
+2025-12-21 17:03:23,452 - INFO - Returning 6095 filtered trades
+2025-12-21 17:03:23,749 - INFO - GET /api/trades/filtered - Raw params: roiMin=-1000.0, roiMax=1000.0, mcMin=0.0, mcMax=1000000000.0, dateFrom=0, dateTo=1766354602, search='None', trader='None', timeframe='all'
+2025-12-21 17:03:24,295 - INFO - Applying date filter: from=0, to=1766354602
+2025-12-21 17:03:24,298 - INFO - After date filter: 6095 trades (from 6095)
+2025-12-21 17:03:24,298 - INFO - Returning 6095 filtered trades
+2025-12-21 17:03:25,222 - INFO - DexScreener v1 bulk: found 4/10 tokens
+2025-12-21 17:03:25,964 - INFO - GET /api/traders/stats
+2025-12-21 17:03:26,004 - INFO - GET /api/traders/stats
+2025-12-21 17:03:27,799 - WARNING - Birdeye bulk API error: 401
+2025-12-21 17:03:27,799 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-21 17:03:54,201 - INFO - GET /api/trades
+2025-12-21 17:03:55,133 - INFO - GET /api/trades
+2025-12-21 17:04:31,362 - INFO - === TRADE-BASED SIMULATION BREAKDOWN REQUEST START ===
+2025-12-21 17:04:31,362 - INFO - Request trades: 100
+2025-12-21 17:04:31,362 - INFO - Request amount_usd: 10.0
+2025-12-21 17:04:31,362 - INFO - Request timeframe_minutes: 15
+2025-12-21 17:04:31,362 - INFO - Request tp: ['10:0.5', '100:0.25', '50:0.25']
+2025-12-21 17:04:31,362 - INFO - Request sl: ['0:0']
+2025-12-21 17:04:31,395 - ERROR - Invalid Solana address(es): BwbZ992sMqabbBYnEj4tfNBmtdYtjRkSqgAGCyCRpump, BEBE1rJyjF5k83Ejnhjrsm3fz1H5QHdUhXYEYGjRSvBG, HWeZgfKdPWRkLBGnmze5YokeZg9tQ2MYceYUChDNpump, 3Wp5z1GtPqKwyiaicXa7nyXhBVJJ5JgAwzWXuPXqpump, 7oHfZhekm5b9CLCctVanKjeFh7Yem4ek75dtep5Hpump, HtCqD3o5aF1RXcyGi6AW11PoB3bZmFdA8kvVyhJrpump, JByzAidDNKxx2Z257uMge17AomzRuHP7U4EK52Vfpump, httpsxcommeowmeowctostatus18459365113611267, 6JoH8vJCJeJQyP8BtJfzKmtifisHrF5Nwy3oqRwjpump, 3wka7mLJyAWfQYzcpT54VGpPkJAKNgT4cyjbqGpXBAGS, 9FUbhTkjXBP43y1eLLQa12WsM9CW1BPkTNUzWbSVpump, B9pmGiVoXPyPKFViY6se32qtRGX85qv4mYB7Gp1os4w4, APwMS7bEvhGL7GRUfqSMJaNTBtNusgw4hu78DiMepump, DS1siYy2VYXGoeSJtRFCUNN3KQzfoecwPtZ2L4MVpump, DR8TKPs72FLzr1brpiF3GRJcy8K9pH8hJAh9LCRmpump, Bzu1nWVKRFEn7FRumTNrTC4qqxtBaMCMBNY1z7ejpump, 2GHRFfQDc5pqkzHF6GGAfamSyG1MRgvd2Q7PAhSmc2AK, 2qEHjDLDLbuBgRYvsxhc5D6uDWAivNFZGan56P1tpump, 7GzT54V4jN5u5SsWeFmbUwYFkqCRUxafAS14bvVJpump, FeiEDFwX4p2uLBwGLWv8pfgNz97nPtPX5xM3unrLpump, HVoZT5bju1pbruM8ryKgqjzCC82sfkbWaDsTtHBEpump, 6FyyiQjePWPXWkrVGJzgTysp9MswbHKQZpccyeh4pump, BwueUsPm2r4V81qoRptW31KBasWohPzN6XnrN5Avpump, AR93GKHVzGKsY5MVUur8S9yq2KucVL62job4qsdhpump, 6AH9xWmRkjsKL3wnMTixhWrht6ZgCsngfUCwt8pDpump, 9MFCSTMXCg8JNeMfzcULYBujpnwARWuxE83mmRTcpump, AnVLi7Cqb93DK7Z1jtNVyhvWhnJQiGt5pgwfymdUpump, 6wGFokvWrVeiUAoQp5gAKFQe7b4GSnZk19D4Btxtpump, 8oAiUkC1gpr4Tuz3ZA7YUntWE47sop1fYmGWo4Zrpump, 9bNUjxEvygayUE2ZRN5zh9Hhjh6cN6GPK4zoHzXXpump, 43SXvpf4c41t2uErsw7aL6w5qhnie6BXSSPqiTcTpump, AH9oMYaNWwwh93rthazxXcJB7kyFsLgZMxDJxbwpump, 58jybKeFt8ATt8CZBRKg7CPenH2fQkdXQq3fYJpMwrVW, 566FjhKsg1xtqFLoTuKNvhb6wwRaeqWQCgTDw6WTpump, 14h6AkD5uSNzprMKm4yoQuQTymuYVMmmWo8EADEtTNUT, 3tU9kFcvG9RAdZUDykRqe1whZv6yvUNgCXMhg5Xzpump, 8Gacq9jRQbydoFFhD6feFga61XwzUuwfyqRnHp1Wpump, AhdriVFckrSmt6xfXVdNcKA545bKvKgJQuk1LAnApump, 3JQR4DRn9ao1fPtj7Kzr4Xs864H96HVeQh2D17WUpump, EG1Y8goUGa7y4iRYRgLgwBmSHc4Lxc91qL35cdDNBiRc, BJowxCMNHdXzchdKJaVWHUrQAZekpWMqUUgMMHqopump, H5pXgGpG92iyzUWUffCNZxZNknU6xWKBXUDLEW5dpump, 8NfK7b9u1RvMpHJnAnZki4mNQwjhvzrVZs7bRQatpump, 7HSiceXdTvqsvZiXUqbZs6LLK9xaPmhqHMDKBrKdpump, AR93GKHVzGKsY5MVUur8S9yq2KucVL62job4qsdhpump, zZRRHGndBuUsbn4VM47RuagdYt57hBbskQ2Ba6K5775, G3sP3NDmxzac8DPFJjZofxAhCRTkPQrhPM1UY7czMfnT, DFwxYdmfLJsPTyrNJCapGadF58Y74e2TFpVAyhbgpump, 8V6pDEmXV3iKC3nVjDUeDqMPBrTq8y69EovCxTokyyFd, 2RfqfvmPYoJYdhcd5xYmcpaJN9ywwckc3Jn8382Lbonk, GjbLHUmyUo6JFczvaTbsj9p1LjsXmvR8Vk9gRPNLBAGS, FEFwYgVvKaNUMxKaUB7vpoQ9dZkoHAzfHa1p4joXEaKA, GJtJuWD9qYcCkrwMBmtY1tpapV1sKfB2zUv9Q4aqpump, 8gsPhwLeVNQe6NNi42T6Q2n2q3ZPFwiaJwrk7CzaKhLC, C9NYVmxzUb3VRcNkvY18aqNpvZYdLD7cjiEbkb9pump, 2cBwLnG1jwm4B6yFGJ13mKJcUFvuZS8v3bq6JwVmpump, 9Bh7uCLVVWNK8akjY2SuqiM3mhc9KuLQPzCdSfKojPed, 6RTHVBGHs4heaU498xyfH6hU6HHrG4YhtsQRS8Vfpump, 3He53vyEdBSD3Pxx5vAJ4AzQz3GXLXYBvKcYiTJ2pump, GqmEdRD3zGUZdYPeuDeXxCc8Cj1DBmGSYK97TCwSpump, CjEVksca5je516R2FNsAHTLvkduCwqKYzYfFS1nQpump, gHktYWXmHEfNraKe6pUxbMxVNgWCEZDWLRoctCfpump, 2CzW1Z6zGqvVHTfF9yeKFsgR5Swq6D2ySETXHTiWpump, 7aVzugS2SB4K53ppV9JecoxycCYkZhghaemLARK4pump, AHyxrbDaL3MErAiHnhpeUKLriKFszs346UPxv5gZpump, FAJW358HjJ2mHXSHbHyxghfVGzX5SBoupdjRr2y9pump, 8cNmp9T2CMQRNZhNRoeSvr57LDf1kbZ42SvgsSWfpump, 3NMK55CqJXh6YnZJ4W1g4yHqEjSQtNK79sfKoGsPpump, GJtJuWD9qYcCkrwMBmtY1tpapV1sKfB2zUv9Q4aqpump, eL5fUxj2J4CiQsmW85k5FG9DvuQjjUoBHoQBi2Kpump, E4qzn7o7P5SR13Sd1X1JKiw6yBGXVPat6JNUuX7ypump, G5kT5pqLYwM9EQH8bABuMr5NPC6QLm1qPQ2wS76Lpump, E6L9YxLdB2MkKMZXYc9aziSV4EUPp4G1bbYqA2TTpump, 4iVXoa1zeaQT7ySV86YNKfxP4QhDiicYrvZAUmBABAGS, 2RSRPHueUn2FFYSHhnAdX8gwddZBhzCwpuNtiw59pump, JCuYnjhoKHdHNgaQJ2xqANxj5Fndte2MhgvR411npump, 3wka7mLJyAWfQYzcpT54VGpPkJAKNgT4cyjbqGpXBAGS, FBqkYSAKi2ZKxqh8i9nMtsgnzGwPyEjdtLYmXpKvpump, Dv4FD3WksCDjF8W5r2wU5onnPQzRgpb2hJ3gpQx4pump, BLVtBvs65UGa2sCGrSJ4oequP8GNw3VW7CyjSVZ7pump, 2qEHjDLDLbuBgRYvsxhc5D6uDWAivNFZGan56P1tpump, G8r2Yf7dVrcpyfCgmowgoNY3v7KuxcrGR5EENRkepump, 2jzjpDc5xkMpYUoWWupYgS3kRdQYsjgxxvdWDptUpump, 8bdhP1UQMevciC9oJ7NrvgDfoW8XPXPfbkkm6vKtMS7N, ETPhr7zEqULN9Rd5wgAPdaJHPxvSSskWsH1cjP5boop, 8NrAzg558TYtwdGYcwomsLHfdQ5dwEYckXqgfL6tpump, AQQg4MDZUNhportScwoSLKZyg2d59uJNiw7Bp58fbonk, 9K6jn2usb1YJGcTpFVLwkUvsroKyDLVY6amgDEoMpump, ARyMXvnjPEUZcdqCfr5Qb9tk6jZwh9YvNTQt2CAcpump, 526d8UxmsTQJKN9bbsZsjaYShzRMnPBPQuniBnC1K3Ao, GEKjZKJZgQTCbi9evTW2GmhyamH3sq6Lid9dQMWqEcCY, BDRMoQ3KfHqKoRocAbwKpBgJxMwjJcX6JrDPpmFWpump, C7ewikNVbXoH54cVvPFUp39XfTFAhMJTsQLmwDsjpump, 9PP58VWp8pSySZb6MXuKpxQtBRyyvJsSpqioWt3dpump, 8NrAzg558TYtwdGYcwomsLHfdQ5dwEYckXqgfL6tpump, FzNYEEKgRppHbZf9yHLdP9W5j2X6nAvJzd6Lhy7spump, CVZerPXEoByyLbvs93eALtjMB6wG6TKWBXR411Copump, JByzAidDNKxx2Z257uMge17AomzRuHP7U4EK52Vfpump, 7iGEQS6YdhhjRFtDkAQem58knuKimnoHGJ2pnoijBAGS, shMZAwY3xsKcenhvJkAyp8w1LU4YBYT5GZ412ropump
+2025-12-21 17:05:38,871 - INFO - GET /api/traders/stats
+2025-12-21 17:05:39,017 - INFO - GET /api/traders/stats
+2025-12-21 17:05:56,084 - INFO - ============================================================
+2025-12-21 17:05:56,084 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-12-21 17:05:56,084 - INFO - ============================================================
+2025-12-21 17:05:56,084 - INFO - Using explicit AWS credentials from environment variables
+2025-12-21 17:05:56,599 - INFO - Loaded 1 Birdeye API keys
+2025-12-21 17:05:56,599 - INFO -   Key 1: 0c96b594d3...466c
+2025-12-21 17:05:56,599 - INFO - CoinGecko API Key: CG-8jAASUa...gjNr
+2025-12-21 17:05:56,599 - INFO - Development Mode: True
+2025-12-21 17:05:56,599 - INFO - Request Delay: 2 seconds
+2025-12-21 17:05:56,599 - INFO - ============================================================
+2025-12-21 17:05:57,049 - WARNING - SUPABASE_SERVICE_ROLE_KEY not set in environment
+2025-12-21 17:05:57,067 - INFO - Wallet authentication routes loaded successfully
+2025-12-21 17:05:57,185 - INFO - ============================================================
+2025-12-21 17:05:57,185 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-12-21 17:05:57,185 - INFO - ============================================================
+2025-12-21 17:05:57,187 - INFO - Using explicit AWS credentials from environment variables
+2025-12-21 17:05:57,356 - INFO - Loaded 1 Birdeye API keys
+2025-12-21 17:05:57,357 - INFO -   Key 1: 0c96b594d3...466c
+2025-12-21 17:05:57,357 - INFO - CoinGecko API Key: CG-8jAASUa...gjNr
+2025-12-21 17:05:57,357 - INFO - Development Mode: True
+2025-12-21 17:05:57,357 - INFO - Request Delay: 2 seconds
+2025-12-21 17:05:57,357 - INFO - ============================================================
+2025-12-21 17:05:57,385 - INFO - Wallet authentication routes loaded successfully

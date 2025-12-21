@@ -142,9 +142,6 @@ export default async function RankingsPage(props: RankingsPageProps) {
           {/* Trade History */}
           <div className="space-y-4 animate-fade-in" style={{ animationDelay: "0.3s" }}>
             <div className="flex items-center justify-end gap-3">
-              <span className="text-sm text-muted-foreground font-medium">
-                Page {page} loaded
-              </span>
               <BulkPriceUpdateButton traderId={traderId} totalTrades={totalTrades} />
             </div>
             <TraderTrades

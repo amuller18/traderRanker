@@ -303,7 +303,7 @@ export function TraderTrades({ trades, currentPage, totalPages, totalTrades, tra
 
       <div className="flex items-center justify-between">
         <div className="text-sm text-muted-foreground">
-          Page {currentPage} of {Math.max(totalPages, 1)} total batches
+          Page {currentPage} of {totalPages} total pages
         </div>
         <div className="flex items-center gap-2">
           <Button

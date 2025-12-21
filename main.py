@@ -875,10 +875,45 @@ class Trade(BaseModel):
 
 class TraderStats(BaseModel):
     caller: str
-    win_rate: float = 0
-    total_calls: int = 0
-    winning_calls: int = 0
-    average_roi: float = 0
+    # Core stats (mapped from DynamoDB fields for backwards compatibility)
+    win_rate: float = 0  # Mapped from win_rate_pct / 100
+    total_calls: int = 0  # Mapped from n_calls
+    winning_calls: int = 0  # Calculated from win_rate_pct * n_calls
+    average_roi: float = 0  # Mapped from mean_ath_roi_pct / 100
+    # New fields from officialStats table
+    n_calls: int = 0
+    win_rate_pct: float = 0
+    mean_ath_roi_pct: float = 0
+    median_ath_roi_pct: float = 0
+    std_ath_roi_pct: float = 0
+    mean_atl_roi_pct: float = 0
+    best_roi_pct: float = 0
+    worst_roi_pct: float = 0
+    win_threshold_pct: float = 25
+    win_rate_mc_p5: float = 0
+    win_rate_mc_p50: float = 0
+    win_rate_mc_p95: float = 0
+    hit_2x_pct: float = 0
+    hit_3x_pct: float = 0
+    hit_5x_pct: float = 0
+    hit_10x_pct: float = 0
+    hit_20x_pct: float = 0
+    hit_50x_pct: float = 0
+    hit_100x_pct: float = 0
+    sharpe_ratio: float = 0
+    sortino_ratio: float = 0
+    max_drawdown_pct: float = 0
+    ev: float = 0
+    ev_weighted: float = 0
+    avg_days_to_ath: float = 0
+    median_days_to_ath: float = 0
+    avg_correlation_with_others: float = 0
+    risk_score: float = 0
+    consistency_score: float = 0
+    first_call_date: str = ""
+    last_call_date: str = ""
+    computed_at: str = ""
+    # Legacy fields for backwards compatibility
     micro_cap_roi: float = 0
     micro_cap_winrate: float = 0
     small_cap_roi: float = 0
@@ -2811,34 +2846,108 @@ async def get_trader_stats(
             )
             traders.extend(response.get('Items', []))
 
-        # Apply filters
+        # Apply filters using DynamoDB field names
+        def get_float(item, key, default=0):
+            val = item.get(key, default)
+            try:
+                return float(val)
+            except (TypeError, ValueError):
+                return default
+
+        def get_int(item, key, default=0):
+            val = item.get(key, default)
+            try:
+                return int(val)
+            except (TypeError, ValueError):
+                return default
+
         if winRateMin is not None:
-            traders = [t for t in traders if t.get('win_rate', 0) >= winRateMin]
+            traders = [t for t in traders if get_float(t, 'win_rate_pct', 0) >= winRateMin]
         if winRateMax is not None:
-            traders = [t for t in traders if t.get('win_rate', 0) <= winRateMax]
+            traders = [t for t in traders if get_float(t, 'win_rate_pct', 0) <= winRateMax]
         if totalCallsMin is not None:
-            traders = [t for t in traders if t.get('total_calls', 0) >= totalCallsMin]
+            traders = [t for t in traders if get_int(t, 'n_calls', 0) >= totalCallsMin]
         if totalCallsMax is not None:
-            traders = [t for t in traders if t.get('total_calls', 0) <= totalCallsMax]
+            traders = [t for t in traders if get_int(t, 'n_calls', 0) <= totalCallsMax]
         if roiMin is not None:
-            traders = [t for t in traders if t.get('average_roi', 0) >= roiMin]
+            traders = [t for t in traders if get_float(t, 'mean_ath_roi_pct', 0) >= roiMin]
         if roiMax is not None:
-            traders = [t for t in traders if t.get('average_roi', 0) <= roiMax]
+            traders = [t for t in traders if get_float(t, 'mean_ath_roi_pct', 0) <= roiMax]
         if search:
             search_lower = search.lower()
-            traders = [t for t in traders if search_lower in t.get('caller', '').lower()]
+            traders = [t for t in traders if search_lower in str(t.get('username', t.get('caller', ''))).lower()]
 
         if not traders:
             logger.warning("No traders found in DynamoDB")
             return []
 
-        # Map DynamoDB field 'username' to 'caller' for TraderStats model
+        # Map DynamoDB fields to TraderStats model
         mapped_traders = []
         for t in traders:
-            trader_dict = dict(t)
-            # Rename 'username' to 'caller' if it exists
-            if 'username' in trader_dict:
-                trader_dict['caller'] = trader_dict.pop('username')
+            # Convert Decimal types to float/int and map field names
+            def to_float(val):
+                if val is None:
+                    return 0.0
+                try:
+                    return float(val)
+                except (TypeError, ValueError):
+                    return 0.0
+
+            def to_int(val):
+                if val is None:
+                    return 0
+                try:
+                    return int(val)
+                except (TypeError, ValueError):
+                    return 0
+
+            # Get the caller name (from 'username' field in DynamoDB)
+            caller = t.get('username', t.get('caller', ''))
+            n_calls = to_int(t.get('n_calls', 0))
+            win_rate_pct = to_float(t.get('win_rate_pct', 0))
+            mean_ath_roi_pct = to_float(t.get('mean_ath_roi_pct', 0))
+
+            trader_dict = {
+                'caller': caller,
+                # Legacy fields for backwards compatibility
+                'win_rate': win_rate_pct / 100 if win_rate_pct else 0,
+                'total_calls': n_calls,
+                'winning_calls': int(n_calls * win_rate_pct / 100) if n_calls and win_rate_pct else 0,
+                'average_roi': mean_ath_roi_pct / 100 if mean_ath_roi_pct else 0,
+                # New fields from officialStats
+                'n_calls': n_calls,
+                'win_rate_pct': win_rate_pct,
+                'mean_ath_roi_pct': mean_ath_roi_pct,
+                'median_ath_roi_pct': to_float(t.get('median_ath_roi_pct', 0)),
+                'std_ath_roi_pct': to_float(t.get('std_ath_roi_pct', 0)),
+                'mean_atl_roi_pct': to_float(t.get('mean_atl_roi_pct', 0)),
+                'best_roi_pct': to_float(t.get('best_roi_pct', 0)),
+                'worst_roi_pct': to_float(t.get('worst_roi_pct', 0)),
+                'win_threshold_pct': to_float(t.get('win_threshold_pct', 25)),
+                'win_rate_mc_p5': to_float(t.get('win_rate_mc_p5', 0)),
+                'win_rate_mc_p50': to_float(t.get('win_rate_mc_p50', 0)),
+                'win_rate_mc_p95': to_float(t.get('win_rate_mc_p95', 0)),
+                'hit_2x_pct': to_float(t.get('hit_2x_pct', 0)),
+                'hit_3x_pct': to_float(t.get('hit_3x_pct', 0)),
+                'hit_5x_pct': to_float(t.get('hit_5x_pct', 0)),
+                'hit_10x_pct': to_float(t.get('hit_10x_pct', 0)),
+                'hit_20x_pct': to_float(t.get('hit_20x_pct', 0)),
+                'hit_50x_pct': to_float(t.get('hit_50x_pct', 0)),
+                'hit_100x_pct': to_float(t.get('hit_100x_pct', 0)),
+                'sharpe_ratio': to_float(t.get('sharpe_ratio', 0)),
+                'sortino_ratio': to_float(t.get('sortino_ratio', 0)),
+                'max_drawdown_pct': to_float(t.get('max_drawdown_pct', 0)),
+                'ev': to_float(t.get('ev', 0)),
+                'ev_weighted': to_float(t.get('ev_weighted', 0)),
+                'avg_days_to_ath': to_float(t.get('avg_days_to_ath', 0)),
+                'median_days_to_ath': to_float(t.get('median_days_to_ath', 0)),
+                'avg_correlation_with_others': to_float(t.get('avg_correlation_with_others', 0)),
+                'risk_score': to_float(t.get('risk_score', 0)),
+                'consistency_score': to_float(t.get('consistency_score', 0)),
+                'first_call_date': str(t.get('first_call_date', '')),
+                'last_call_date': str(t.get('last_call_date', '')),
+                'computed_at': str(t.get('computed_at', '')),
+            }
             mapped_traders.append(TraderStats(**trader_dict))
 
         return mapped_traders

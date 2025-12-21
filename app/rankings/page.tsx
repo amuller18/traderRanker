@@ -122,19 +122,6 @@ export default async function RankingsPage(props: RankingsPageProps) {
   return (
     <div className="min-h-screen gradient-background">
       <div className="container py-10 px-4">
-        <div className="mb-8 animate-fade-in">
-          <Link href="/rankings">
-            <Button variant="ghost" className="gap-2 pl-0 hover-lift mb-4">
-              <ArrowLeft className="h-4 w-4" />
-              Back to Rankings
-            </Button>
-          </Link>
-          <h1 className="text-4xl font-bold mb-2 text-gradient">{traderId}</h1>
-          <p className="text-muted-foreground text-lg">
-            Comprehensive performance analysis and trading history
-          </p>
-        </div>
-
         <DataSourceStatus usingMockData={usingMockData} />
 
         <div className="space-y-8">
@@ -150,17 +137,11 @@ export default async function RankingsPage(props: RankingsPageProps) {
 
           {/* Trade History */}
           <div className="space-y-4 animate-fade-in" style={{ animationDelay: "0.3s" }}>
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <div>
-                <h2 className="text-2xl font-bold tracking-tight">Trade History</h2>
-                <p className="text-muted-foreground">Recent trading activity and performance</p>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-muted-foreground font-medium">
-                  Showing {startIndex + 1}-{Math.min(endIndex, totalTrades)} of {totalTrades} trades
-                </span>
-                <BulkPriceUpdateButton traderId={traderId} totalTrades={totalTrades} />
-              </div>
+            <div className="flex items-center justify-end gap-3">
+              <span className="text-sm text-muted-foreground font-medium">
+                Showing {startIndex + 1}-{Math.min(endIndex, totalTrades)} of {totalTrades} trades
+              </span>
+              <BulkPriceUpdateButton traderId={traderId} totalTrades={totalTrades} />
             </div>
             <TraderTrades
               trades={paginatedTrades}

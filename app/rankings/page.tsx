@@ -143,7 +143,7 @@ export default async function RankingsPage(props: RankingsPageProps) {
           <div className="space-y-4 animate-fade-in" style={{ animationDelay: "0.3s" }}>
             <div className="flex items-center justify-end gap-3">
               <span className="text-sm text-muted-foreground font-medium">
-                Showing {startIndex + 1}-{Math.min(endIndex, totalTrades)} of {totalTrades} trades
+                Page {page} loaded
               </span>
               <BulkPriceUpdateButton traderId={traderId} totalTrades={totalTrades} />
             </div>

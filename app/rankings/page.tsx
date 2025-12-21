@@ -7,6 +7,7 @@ import { isUsingMockData } from "@/lib/trader-data"
 import { PerformanceMetrics } from "./components/performance-metrics"
 import { MarketCapPerformance } from "./components/market-cap-performance"
 import { TraderTrades } from "./components/trader-trades"
+import { TraderDetailDashboard } from "./components/trader-detail-dashboard"
 import { BulkPriceUpdateButton } from "./components/bulk-price-update-button"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft } from "lucide-react"
@@ -128,13 +129,22 @@ export default async function RankingsPage(props: RankingsPageProps) {
 
         <div className="space-y-8">
           <PageHeader/>
+
+          {/* Trader Detail Dashboard */}
+          <div className="animate-fade-in">
+            <TraderDetailDashboard trader={trader} trades={paginatedTrades} />
+          </div>
+
           {/* Trade History */}
           <div className="space-y-4 animate-fade-in" style={{ animationDelay: "0.3s" }}>
-            <div className="flex items-center justify-end gap-3">
-              <span className="text-sm text-muted-foreground font-medium">
-                Showing {startIndex + 1}-{Math.min(endIndex, totalTrades)} of {totalTrades} trades
-              </span>
-              <BulkPriceUpdateButton traderId={traderId} totalTrades={totalTrades} />
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-xl font-semibold">Trade History</h2>
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-muted-foreground font-medium">
+                  Showing {startIndex + 1}-{Math.min(endIndex, totalTrades)} of {totalTrades} trades
+                </span>
+                <BulkPriceUpdateButton traderId={traderId} totalTrades={totalTrades} />
+              </div>
             </div>
             <TraderTrades
               trades={paginatedTrades}

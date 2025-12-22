@@ -268,7 +268,135 @@ def is_valid_solana_address(address: str) -> bool:
         return len(base58.b58decode(address)) == 32
     except Exception:
         return False
-    
+
+
+# ---------------------------------------------------------------------------
+# Trade Validation (Comprehensive)
+# ---------------------------------------------------------------------------
+
+class TradeValidationResult:
+    """Result of trade validation."""
+    def __init__(self):
+        self.is_valid = True
+        self.errors: List[str] = []
+
+    def add_error(self, error: str):
+        self.is_valid = False
+        self.errors.append(error)
+
+
+def validate_trade_data(
+    token: str,
+    date_called: str,
+    entry_price: Optional[float] = None,
+    current_price: Optional[float] = None,
+    tokens_quantity: Optional[float] = None,
+) -> TradeValidationResult:
+    """
+    Comprehensive trade validation. A trade is invalid if ANY of the following:
+    - Missing/invalid token address
+    - Missing or invalid timestamps
+    - Missing price data for mark-to-market valuation
+    - Zero or NaN token quantities
+    - Missing entry price
+
+    Invalid trades must be excluded from:
+    - Trade tables
+    - Summary metrics
+    - Win-rate calculations
+    - ROI calculations
+
+    Returns TradeValidationResult with is_valid flag and list of errors.
+    """
+    result = TradeValidationResult()
+
+    # Validate token address
+    if not token or not isinstance(token, str):
+        result.add_error("Missing token address")
+    elif not is_valid_solana_address(token):
+        result.add_error(f"Invalid Solana address format: {token[:20]}...")
+
+    # Validate timestamp/date_called
+    if not date_called or not isinstance(date_called, str):
+        result.add_error("Missing or invalid date_called timestamp")
+    else:
+        try:
+            # Try parsing various formats
+            parsed = False
+            for fmt in ['%Y-%m-%dT%H:%M:%S.%fZ', '%Y-%m-%dT%H:%M:%SZ', '%Y-%m-%dT%H:%M:%S.%f+00:00',
+                        '%Y-%m-%dT%H:%M:%S+00:00', '%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S', '%Y-%m-%d']:
+                try:
+                    datetime.strptime(date_called.replace('Z', '').replace('+00:00', ''), fmt.replace('Z', '').replace('+00:00', ''))
+                    parsed = True
+                    break
+                except ValueError:
+                    continue
+            if not parsed:
+                # Try ISO format
+                try:
+                    datetime.fromisoformat(date_called.replace('Z', '+00:00'))
+                    parsed = True
+                except ValueError:
+                    pass
+            if not parsed:
+                result.add_error(f"Cannot parse date_called: {date_called}")
+        except Exception as e:
+            result.add_error(f"Date validation error: {str(e)}")
+
+    # Validate entry price (if provided)
+    if entry_price is not None:
+        if math.isnan(entry_price) or math.isinf(entry_price):
+            result.add_error("Entry price is NaN or infinite")
+        elif entry_price <= 0:
+            result.add_error(f"Entry price must be positive, got: {entry_price}")
+
+    # Validate current price for mark-to-market (if provided)
+    if current_price is not None:
+        if math.isnan(current_price) or math.isinf(current_price):
+            result.add_error("Current price is NaN or infinite")
+        elif current_price <= 0:
+            result.add_error(f"Current price must be positive for mark-to-market, got: {current_price}")
+
+    # Validate token quantity (if provided)
+    if tokens_quantity is not None:
+        if math.isnan(tokens_quantity) or math.isinf(tokens_quantity):
+            result.add_error("Token quantity is NaN or infinite")
+        elif tokens_quantity <= 0:
+            result.add_error(f"Token quantity must be positive, got: {tokens_quantity}")
+
+    return result
+
+
+def validate_price_data(prices: List[float]) -> TradeValidationResult:
+    """
+    Validate a list of price data points.
+    Returns TradeValidationResult with is_valid flag and list of errors.
+    """
+    result = TradeValidationResult()
+
+    if not prices or len(prices) == 0:
+        result.add_error("No price data available")
+        return result
+
+    # Check for NaN or invalid values
+    valid_prices = []
+    for i, price in enumerate(prices):
+        if price is None:
+            continue
+        if math.isnan(price) or math.isinf(price):
+            continue
+        if price <= 0:
+            continue
+        valid_prices.append(price)
+
+    if len(valid_prices) == 0:
+        result.add_error("All price data points are invalid (NaN, infinite, or non-positive)")
+    elif len(valid_prices) < 10:
+        result.add_error(f"Insufficient valid price data: {len(valid_prices)} points (need at least 10)")
+
+    return result
+
+
 def start_timestamp(req: SimulationRequest) -> int:
     """Return the exact unix 'time_from' value used everywhere."""
     if req.start_unix is not None:
@@ -1359,27 +1487,49 @@ def run_simulation_with_ledger(
 
     # Get final state from last ledger entry
     coins = float(out_coins[n_valid - 1]) if n_valid > 0 else entry_coins
-    realized = float(out_realized[n_valid - 1]) if n_valid > 0 else 0.0
-    unrealized = float(out_unrealized[n_valid - 1]) if n_valid > 0 else 0.0
+    realized_proceeds = float(out_realized[n_valid - 1]) if n_valid > 0 else 0.0
 
-    # Final point with the *live* Birdeye price if newer than last bar --------
-    equity = coins * current_price
-    unrealized = equity + realized - start_cash_usd
+    # ---------------------------------------------------------------------- #
+    # CRITICAL: Proper PnL Calculations (per specification)
+    # ---------------------------------------------------------------------- #
+    # Tokens sold = entry_coins - coins (remaining)
+    tokens_sold = entry_coins - coins
+    # Cost basis of sold tokens
+    cost_basis_sold = tokens_sold * entry_price
 
-    # record it only if the live price is newer or different
+    # Realized PnL = sale proceeds - cost basis of coins sold
+    # realized_pnl = sum((sell_price - avg_entry_price) * tokens_sold)
+    realised_pl = realized_proceeds - cost_basis_sold
+
+    # Mark-to-market: Value of remaining tokens at current price
+    # Unrealized PnL = (current_price - avg_entry_price) * remaining_tokens
+    mark_to_market_value = coins * current_price
+    unrealized_pl = (current_price - entry_price) * coins
+
+    # Final equity = cash from realized sales + mark-to-market value of remaining tokens
+    # This equals: start_cash + total_pnl
+    final_equity = realized_proceeds + mark_to_market_value
+
+    # Total PnL = realized + unrealized
+    total_pnl = realised_pl + unrealized_pl
+
+    # Verify invariant: starting_equity + total_pnl = final_equity
+    # start_cash_usd + total_pnl should equal final_equity
+    invariant_check = abs((start_cash_usd + total_pnl) - final_equity)
+    if invariant_check > 0.01:  # Allow small floating point errors
+        logger.warning(f"PnL invariant violated: start={start_cash_usd}, total_pnl={total_pnl}, final={final_equity}, diff={invariant_check}")
+
+    # Record final point with live price if different from last bar
     if not math.isclose(current_price, df_ohlc["close"].iloc[-1]):
         ledger.append(
             PositionPoint(
                 ts=int(datetime.utcnow().timestamp()),
-                value=float(equity),
+                value=float(mark_to_market_value),
                 coins_held=float(coins),
-                unrealized=float(unrealized),
-                realized=float(realized),
+                unrealized=float(unrealized_pl),
+                realized=float(realised_pl),
             )
         )
-
-    # realised P/L = sale proceeds – cost basis of coins sold
-    realised_pl = realized - (entry_coins - coins) * entry_price
 
     # Convert mask arrays to hit level lists
     tp_levels_list = tp_levels_arr.tolist()
@@ -1390,8 +1540,14 @@ def run_simulation_with_ledger(
     return {
         "ledger":            [pt.dict() for pt in ledger],
         "realized_profit":   round(realised_pl, 6),
-        "unrealized_profit": round(unrealized,   6),
-        "coins_left":        round(coins,        6),
+        "unrealized_profit": round(unrealized_pl, 6),
+        "total_pnl":         round(total_pnl, 6),
+        "coins_left":        round(coins, 6),
+        "coins_initial":     round(entry_coins, 6),
+        "entry_price":       round(entry_price, 10),
+        "final_price":       round(current_price, 10),
+        "final_equity":      round(final_equity, 6),
+        "trade_capital":     round(start_cash_usd, 6),
         "tps_hit":           tps_hit,
         "sls_hit":           sls_hit,
     }
@@ -1780,19 +1936,43 @@ class TokenPriceResult(BaseModel):
     error: Optional[str] = None
 
 class TokenBreakdown(BaseModel):
+    """
+    Detailed breakdown of a single trade's performance.
+
+    ROI Definitions:
+    - trade_roi: Trade-specific ROI = total_pnl / trade_capital_allocated
+      This is calculated per individual trade and does NOT depend on total account balance.
+    - roi_to_date: Same as trade_roi (kept for backwards compatibility)
+
+    PnL Definitions:
+    - realized_pnl: Profit/loss from actual sells = sum((sell_price - avg_entry_price) * tokens_sold)
+    - unrealized_pnl: Mark-to-market PnL from remaining tokens = (current_price - avg_entry_price) * remaining_tokens
+    - total_pnl: realized_pnl + unrealized_pnl
+
+    Final Value:
+    - final_value: cash_balance + (remaining_tokens * current_market_price)
+
+    Note: ATH price is for analytics/display ONLY, never used in PnL/ROI calculations.
+    """
     token: str
     trade_id: str = ""  # Unique identifier for this specific trade
     time_called: str = ""  # ISO string of when the trade was called
     entry_price: float = 0.0
-    final_price: float = 0.0
-    ath_price: float = 0.0
-    ath_percentage: float = 0.0
-    total_pnl: float = 0.0
-    realized_pnl: float = 0.0
-    unrealized_pnl: float = 0.0
-    coins_left: float = 0.0
+    final_price: float = 0.0  # Current market price (mark-to-market)
+    ath_price: float = 0.0  # All-time high price (for display only, NOT used in calculations)
+    ath_percentage: float = 0.0  # For display only
+    total_pnl: float = 0.0  # realized_pnl + unrealized_pnl
+    realized_pnl: float = 0.0  # From actual sells
+    unrealized_pnl: float = 0.0  # Mark-to-market from remaining tokens
+    coins_left: float = 0.0  # Remaining tokens
+    coins_initial: float = 0.0  # Initial tokens purchased
+    trade_capital: float = 0.0  # USD spent on entries for this trade
+    final_value: float = 0.0  # Cash from sells + remaining tokens * current price
     max_drawdown: float = 0.0
-    roi_to_date: float = 0.0
+    trade_roi: float = 0.0  # Trade ROI = total_pnl / trade_capital (NOT dependent on account balance)
+    roi_to_date: float = 0.0  # Same as trade_roi (backwards compatibility)
+    is_valid: bool = True  # Whether this trade has valid data
+    validation_errors: List[str] = []  # List of validation issues if any
     tps_hit: List[float] = []
     sls_hit: List[float] = []
     error: Optional[str] = None
@@ -2458,8 +2638,21 @@ async def simulate_with_breakdown_trades(req: TradeBasedSimulationRequest) -> Li
     """
     Enhanced simulation endpoint that uses individual trade dates for each token.
     Each trade starts at its specific date_called and runs until today.
+
+    ROI Definitions (STRICTLY SEPARATED):
+    - Trade ROI: total_pnl / trade_capital_allocated (per individual trade, NOT dependent on account balance)
+    - Account ROI: (final_account_equity - starting_account_equity) / starting_account_equity
+      (calculated in summary statistics only)
+
+    Final Equity Calculation:
+    - final_equity = cash_balance + sum(remaining_tokens * current_market_price)
+
+    Invalid Data Handling:
+    - Trades with missing entry price, invalid timestamps, missing price data,
+      or zero/NaN token quantities are marked as invalid
+    - Invalid trades are excluded from summary metrics, win-rate, and ROI calculations
     """
-    
+
     logger.info("=== TRADE-BASED SIMULATION BREAKDOWN REQUEST START ===")
     logger.info(f"Request trades: {len(req.trades)}")
     logger.info(f"Request amount_usd: {req.amount_usd}")
@@ -2470,15 +2663,6 @@ async def simulate_with_breakdown_trades(req: TradeBasedSimulationRequest) -> Li
     if not BIRDEYE_API_KEYS:
         logger.error("BIRDEYE_API_KEY not set")
         raise HTTPException(500, "BIRDEYE_API_KEY not set")
-
-    # Filter out invalid tokens instead of rejecting the whole request
-    valid_trades = [t for t in req.trades if is_valid_solana_address(t.token)]
-    invalid_trades = [t.token for t in req.trades if not is_valid_solana_address(t.token)]
-    if invalid_trades:
-        logger.warning(f"Filtered out {len(invalid_trades)} invalid Solana address(es): {', '.join(invalid_trades[:5])}{'...' if len(invalid_trades) > 5 else ''}")
-
-    if not valid_trades:
-        raise HTTPException(400, "No valid Solana addresses provided")
 
     logger.info("Parsing ladder levels...")
     tp_r, tp_s = _parse_ladder(req.tp)
@@ -2493,11 +2677,32 @@ async def simulate_with_breakdown_trades(req: TradeBasedSimulationRequest) -> Li
     session = aiohttp.ClientSession()
     try:
         # Process each trade individually with its own start date
-        logger.info(f"Processing {len(valid_trades)} valid trades with individual start dates...")
-        for trade in valid_trades:
+        logger.info(f"Processing {len(req.trades)} trades with individual start dates...")
+        for trade in req.trades:
             mint = trade.token
             logger.info(f"=== Processing trade: {mint} ===")
-            
+
+            # Initialize validation errors list
+            validation_errors: List[str] = []
+
+            # Step 1: Comprehensive validation using validation function
+            validation = validate_trade_data(
+                token=mint,
+                date_called=trade.date_called,
+            )
+
+            if not validation.is_valid:
+                logger.warning(f"Trade validation failed for {mint}: {validation.errors}")
+                # Create an invalid breakdown entry (excluded from metrics)
+                out.append(TokenBreakdown(
+                    token=mint,
+                    time_called=trade.date_called,
+                    is_valid=False,
+                    validation_errors=validation.errors,
+                    error="; ".join(validation.errors)
+                ))
+                continue
+
             try:
                 # Parse the date_called string to get start timestamp
                 try:
@@ -2515,12 +2720,24 @@ async def simulate_with_breakdown_trades(req: TradeBasedSimulationRequest) -> Li
                             continue
                     else:
                         logger.error(f"Could not parse date_called for {mint}: {trade.date_called}")
-                        out.append(TokenBreakdown(token=mint, error=f"Invalid date format: {trade.date_called}"))
+                        out.append(TokenBreakdown(
+                            token=mint,
+                            time_called=trade.date_called,
+                            is_valid=False,
+                            validation_errors=["Invalid date format"],
+                            error=f"Invalid date format: {trade.date_called}"
+                        ))
                         continue
 
                 if start_ts >= now_ts:
                     logger.error(f"start_ts {start_ts} must be < now {now_ts} for {mint}")
-                    out.append(TokenBreakdown(token=mint, error="Trade date must be in the past"))
+                    out.append(TokenBreakdown(
+                        token=mint,
+                        time_called=trade.date_called,
+                        is_valid=False,
+                        validation_errors=["Trade date must be in the past"],
+                        error="Trade date must be in the past"
+                    ))
                     continue
 
                 logger.info(f"Trade {mint}: Start time {start_ts} ({datetime.fromtimestamp(start_ts)}) to {now_ts} ({datetime.fromtimestamp(now_ts)})")
@@ -2539,14 +2756,31 @@ async def simulate_with_breakdown_trades(req: TradeBasedSimulationRequest) -> Li
                 res_hist = await _cached_history(session, mint, start_ts, optimal_timeframe, now_ts)
                 if res_hist is None:
                     logger.error(f"History fetch failed for {mint}")
-                    out.append(TokenBreakdown(token=mint, error="Price data fetch failed"))
+                    out.append(TokenBreakdown(
+                        token=mint,
+                        time_called=trade.date_called,
+                        is_valid=False,
+                        validation_errors=["Price data fetch failed"],
+                        error="Price data fetch failed"
+                    ))
                     continue
 
                 mint, items = res_hist
                 logger.info(f"Got {len(items)} history items for {mint}")
-                if len(items) < 10:
-                    logger.warning(f"Not enough data for {mint}: {len(items)} items (need >= 10)")
-                    out.append(TokenBreakdown(token=mint, error="Insufficient price data (need at least 10 data points)"))
+
+                # Validate price data
+                original_prices = [item['value'] for item in items if 'value' in item and item.get('value', 0) > 0]
+                price_validation = validate_price_data(original_prices)
+
+                if not price_validation.is_valid:
+                    logger.warning(f"Price validation failed for {mint}: {price_validation.errors}")
+                    out.append(TokenBreakdown(
+                        token=mint,
+                        time_called=trade.date_called,
+                        is_valid=False,
+                        validation_errors=price_validation.errors,
+                        error="; ".join(price_validation.errors)
+                    ))
                     continue
 
                 logger.info(f"Building OHLC for {mint} with timeframe {optimal_timeframe} minutes...")
@@ -2555,26 +2789,45 @@ async def simulate_with_breakdown_trades(req: TradeBasedSimulationRequest) -> Li
                     logger.info(f"OHLC shape for {mint}: {df.shape}")
                     if df.empty:
                         logger.error(f"Empty OHLC for {mint}")
-                        out.append(TokenBreakdown(token=mint, error="No OHLC data available"))
+                        out.append(TokenBreakdown(
+                            token=mint,
+                            time_called=trade.date_called,
+                            is_valid=False,
+                            validation_errors=["No OHLC data available"],
+                            error="No OHLC data available"
+                        ))
                         continue
                 except Exception as ohlc_exc:
                     logger.error(f"OHLC building failed for {mint}: {ohlc_exc}")
-                    out.append(TokenBreakdown(token=mint, error=f"OHLC building failed: {str(ohlc_exc)}"))
+                    out.append(TokenBreakdown(
+                        token=mint,
+                        time_called=trade.date_called,
+                        is_valid=False,
+                        validation_errors=[f"OHLC building failed: {str(ohlc_exc)}"],
+                        error=f"OHLC building failed: {str(ohlc_exc)}"
+                    ))
                     continue
 
                 # Calculate key metrics using the original price data from API
                 try:
-                    # Get the original price data from the API response
-                    original_prices = [item['value'] for item in items if 'value' in item and item['value'] > 0]
-                    if not original_prices:
-                        logger.error(f"No valid prices in API response for {mint}")
-                        out.append(TokenBreakdown(token=mint, error="No valid price data in API response"))
-                        continue
-
                     entry_price = original_prices[0]  # First price in the series
-                    final_price = original_prices[-1]  # Last price in the series
-                    ath_price = max(original_prices)  # Highest price reached
+                    final_price = original_prices[-1]  # Last price (current market price for mark-to-market)
+                    ath_price = max(original_prices)  # Highest price reached (FOR DISPLAY ONLY)
                     ath_percentage = ((ath_price - entry_price) / entry_price) * 100 if entry_price > 0 else 0
+
+                    # Final validation of prices
+                    if entry_price <= 0 or final_price <= 0:
+                        logger.error(f"Invalid prices for {mint}: entry={entry_price}, final={final_price}")
+                        out.append(TokenBreakdown(
+                            token=mint,
+                            time_called=trade.date_called,
+                            entry_price=entry_price,
+                            final_price=final_price,
+                            is_valid=False,
+                            validation_errors=["Entry or final price is non-positive"],
+                            error="Invalid price data (non-positive values)"
+                        ))
+                        continue
 
                     # Run simulation
                     logger.info(f"Running simulation for {mint}...")
@@ -2582,84 +2835,123 @@ async def simulate_with_breakdown_trades(req: TradeBasedSimulationRequest) -> Li
                         df, req.amount_usd, final_price, tp_r, tp_s, sl_r, sl_s
                     )
 
-                    # Extract results
+                    # ------------------------------------------------------------------
+                    # Extract results with PROPER CALCULATIONS
+                    # ------------------------------------------------------------------
+                    trade_capital = sim.get("trade_capital", req.amount_usd)
                     realized_pnl = sim.get("realized_profit", 0.0)
                     unrealized_pnl = sim.get("unrealized_profit", 0.0)
-                    total_pnl = realized_pnl + unrealized_pnl
+                    total_pnl = sim.get("total_pnl", realized_pnl + unrealized_pnl)
                     coins_left = sim.get("coins_left", 0.0)
-                    
-                    # Calculate max drawdown and ROI
+                    coins_initial = sim.get("coins_initial", 0.0)
+                    final_equity = sim.get("final_equity", 0.0)
+
+                    # ------------------------------------------------------------------
+                    # TRADE ROI CALCULATION (per specification)
+                    # trade_roi = total_trade_pnl / trade_capital_allocated
+                    # This is calculated per individual trade only, NOT dependent on account balance
+                    # ------------------------------------------------------------------
+                    trade_roi = (total_pnl / trade_capital * 100) if trade_capital > 0 else 0.0
+
+                    # Calculate max drawdown from ledger
                     ledger = sim.get("ledger", [])
                     max_drawdown = 0.0
-                    roi_to_date = 0.0
-                    
+
                     if ledger:
-                        # Calculate max drawdown from ledger
-                        peak_value = req.amount_usd  # Start with initial investment
-                        max_drawdown = 0.0
-                        
+                        peak_value = trade_capital  # Start with initial investment
                         for entry in ledger:
+                            # current_value = value of remaining tokens + realized cash
                             current_value = entry.get("value", 0.0) + entry.get("realized", 0.0)
                             if current_value > peak_value:
                                 peak_value = current_value
                             else:
                                 drawdown = (peak_value - current_value) / peak_value if peak_value > 0 else 0
                                 max_drawdown = max(max_drawdown, drawdown)
-                        
-                        # Calculate ROI to date
-                        final_value = ledger[-1].get("value", 0.0) + ledger[-1].get("realized", 0.0)
-                        roi_to_date = ((final_value - req.amount_usd) / req.amount_usd) * 100 if req.amount_usd > 0 else 0
-
-                    # Validate prices are positive
-                    if entry_price <= 0 or final_price <= 0 or ath_price <= 0:
-                        logger.error(f"Invalid prices for {mint}: entry={entry_price}, final={final_price}, ath={ath_price}")
-                        out.append(TokenBreakdown(token=mint, error="Invalid price data (non-positive values)"))
-                        continue
 
                     # Create unique trade ID
-                    trade_id = f"{mint}_{int(datetime.fromisoformat(trade.date_called.replace('Z', '+00:00')).timestamp())}"
-                    
+                    trade_id = f"{mint}_{start_ts}"
+
+                    # ------------------------------------------------------------------
+                    # INVARIANT CHECK: realized_pnl + unrealized_pnl = total_pnl
+                    # ------------------------------------------------------------------
+                    invariant_diff = abs(total_pnl - (realized_pnl + unrealized_pnl))
+                    if invariant_diff > 0.01:
+                        logger.warning(f"PnL invariant warning for {mint}: total={total_pnl}, realized+unrealized={realized_pnl + unrealized_pnl}")
+
+                    # ------------------------------------------------------------------
+                    # INVARIANT CHECK: starting_equity + total_pnl = final_equity
+                    # ------------------------------------------------------------------
+                    equity_diff = abs((trade_capital + total_pnl) - final_equity)
+                    if equity_diff > 0.01:
+                        logger.warning(f"Equity invariant warning for {mint}: start+pnl={trade_capital + total_pnl}, final={final_equity}")
+
                     breakdown = TokenBreakdown(
                         token=mint,
                         trade_id=trade_id,
                         time_called=trade.date_called,
-                        entry_price=entry_price,
-                        final_price=final_price,
-                        ath_price=ath_price,
-                        ath_percentage=ath_percentage,
-                        total_pnl=total_pnl,
-                        realized_pnl=realized_pnl,
-                        unrealized_pnl=unrealized_pnl,
-                        coins_left=coins_left,
-                        max_drawdown=max_drawdown * 100,  # Convert to percentage
-                        roi_to_date=roi_to_date,
+                        entry_price=round(entry_price, 10),
+                        final_price=round(final_price, 10),  # Current market price (mark-to-market)
+                        ath_price=round(ath_price, 10),  # FOR DISPLAY ONLY
+                        ath_percentage=round(ath_percentage, 2),  # FOR DISPLAY ONLY
+                        total_pnl=round(total_pnl, 6),
+                        realized_pnl=round(realized_pnl, 6),
+                        unrealized_pnl=round(unrealized_pnl, 6),
+                        coins_left=round(coins_left, 10),
+                        coins_initial=round(coins_initial, 10),
+                        trade_capital=round(trade_capital, 6),
+                        final_value=round(final_equity, 6),
+                        max_drawdown=round(max_drawdown * 100, 2),  # Convert to percentage
+                        trade_roi=round(trade_roi, 2),  # TRADE ROI (per specification)
+                        roi_to_date=round(trade_roi, 2),  # Same as trade_roi (backwards compatibility)
+                        is_valid=True,
+                        validation_errors=[],
                         tps_hit=sim.get("tps_hit", []),
                         sls_hit=sim.get("sls_hit", [])
                     )
-                    
-                    logger.info(f"Breakdown for {mint}: Entry=${entry_price}, Final=${final_price}, ATH=${ath_price} ({ath_percentage:.2f}%), Total PnL=${total_pnl}")
+
+                    logger.info(f"Breakdown for {mint}: Entry=${entry_price:.10f}, Final=${final_price:.10f}, "
+                               f"Trade ROI={trade_roi:.2f}%, Total PnL=${total_pnl:.2f}")
                     out.append(breakdown)
+
                 except Exception as sim_exc:
                     logger.error(f"Simulation failed for {mint}: {sim_exc}")
-                    out.append(TokenBreakdown(token=mint, error=f"Simulation failed: {str(sim_exc)}"))
+                    out.append(TokenBreakdown(
+                        token=mint,
+                        time_called=trade.date_called,
+                        is_valid=False,
+                        validation_errors=[f"Simulation failed: {str(sim_exc)}"],
+                        error=f"Simulation failed: {str(sim_exc)}"
+                    ))
 
             except HTTPException:      # propagate 4xx back to caller
                 logger.error(f"HTTPException for {mint}")
                 raise
             except Exception as exc:   # everything else is logged + returned
                 logger.exception(f"Simulation for {mint} failed")
-                out.append(TokenBreakdown(token=mint, error=str(exc)))
+                out.append(TokenBreakdown(
+                    token=mint,
+                    time_called=trade.date_called,
+                    is_valid=False,
+                    validation_errors=[str(exc)],
+                    error=str(exc)
+                ))
     finally:
         # Ensure session is closed
         await session.close()
 
-    logger.info(f"=== TRADE-BASED SIMULATION BREAKDOWN COMPLETE === Returning {len(out)} results")
+    # Summary logging - count valid vs invalid trades
+    valid_count = sum(1 for r in out if r.is_valid)
+    invalid_count = sum(1 for r in out if not r.is_valid)
+
+    logger.info(f"=== TRADE-BASED SIMULATION BREAKDOWN COMPLETE ===")
+    logger.info(f"Total: {len(out)}, Valid: {valid_count}, Invalid: {invalid_count}")
+
     for result in out:
-        if result.error:
-            logger.error(f"Token {result.token}: {result.error}")
+        if result.error or not result.is_valid:
+            logger.error(f"Token {result.token}: INVALID - {result.error}")
         else:
-            logger.info(f"Token {result.token}: Success - Total PnL: ${result.total_pnl}")
-    
+            logger.info(f"Token {result.token}: VALID - Trade ROI: {result.trade_roi:.2f}%, Total PnL: ${result.total_pnl:.2f}")
+
     return out
 
 @app.post("/api/simulate/trades", response_model=list[SimulationResult])

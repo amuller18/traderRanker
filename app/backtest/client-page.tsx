@@ -108,26 +108,48 @@ interface TokenBreakdown {
   trade_id: string;
   time_called: string;
   entry_price: number;
-  final_price: number;
-  ath_price: number;
-  ath_percentage: number;
-  total_pnl: number;
-  realized_pnl: number;
-  unrealized_pnl: number;
+  final_price: number;  // Current market price (mark-to-market)
+  ath_price: number;    // For display only, NOT used in calculations
+  ath_percentage: number;  // For display only
+  total_pnl: number;    // realized_pnl + unrealized_pnl
+  realized_pnl: number; // From actual sells
+  unrealized_pnl: number;  // Mark-to-market from remaining tokens
   coins_left: number;
+  coins_initial: number;
+  trade_capital: number;  // USD spent on entries for this trade
+  final_value: number;    // Cash from sells + remaining tokens * current price
   max_drawdown: number;
-  roi_to_date: number;
+  trade_roi: number;      // Trade ROI = total_pnl / trade_capital (NOT dependent on account balance)
+  roi_to_date: number;    // Same as trade_roi (backwards compatibility)
+  is_valid: boolean;      // Whether this trade has valid data
+  validation_errors: string[];  // List of validation issues if any
   tps_hit: number[];
   sls_hit: number[];
   error?: string;
 }
+
+/**
+ * Summary statistics for the backtest.
+ *
+ * ROI Definitions (STRICTLY SEPARATED):
+ * - accountROI: (final_account_equity - starting_account_equity) / starting_account_equity
+ *   This is for summary/account-level display ONLY.
+ * - avgTradeROI: Average of individual trade ROIs (for reference, different from accountROI)
+ */
 interface SummaryStats {
-  totalProfit: number;
-  winRate: number;
-  avgProfit: number;
-  finalPortfolioValue: number;
+  totalProfit: number;         // Sum of all valid trade PnLs
+  realizedProfit: number;      // Sum of realized PnLs only
+  unrealizedProfit: number;    // Sum of unrealized PnLs only
+  winRate: number;             // Percentage of winning trades (valid trades only)
+  avgProfit: number;           // Average profit per valid trade
+  avgTradeROI: number;         // Average trade ROI (NOT account ROI)
+  accountROI: number;          // Account ROI = (final - starting) / starting
+  finalPortfolioValue: number; // Final account equity
+  startingCapital: number;     // Starting capital
   isBankrupt: boolean;
-  totalTrades: number;
+  totalTrades: number;         // Total trades processed
+  validTrades: number;         // Number of valid trades
+  invalidTrades: number;       // Number of invalid trades (excluded from metrics)
 }
 interface BacktestModernPageProps {
   initialTrades: Trade[];
@@ -441,18 +463,50 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
       
       setTokenBreakdown(breakdowns);
 
-      // Calculate summary stats from breakdown data (more accurate)
+      // ------------------------------------------------------------------
+      // Calculate summary stats from breakdown data
+      // IMPORTANT: Only include VALID trades in metrics (per specification)
+      // ------------------------------------------------------------------
       let totalProfit = 0;
+      let realizedProfit = 0;
+      let unrealizedProfit = 0;
       let winningTrades = 0;
-      
+      let validTradeCount = 0;
+      let invalidTradeCount = 0;
+      let sumTradeROI = 0;
+      let totalCapitalDeployed = 0;
+      let totalFinalValue = 0;
+
       breakdowns.forEach((breakdown) => {
-        if (!breakdown.error) {
-          const tokenProfit = breakdown.total_pnl;
+        // Check if trade is valid (has is_valid field or no error)
+        const isValid = breakdown.is_valid !== false && !breakdown.error;
+
+        if (isValid) {
+          validTradeCount++;
+          const tokenProfit = breakdown.total_pnl || 0;
           totalProfit += tokenProfit;
+          realizedProfit += breakdown.realized_pnl || 0;
+          unrealizedProfit += breakdown.unrealized_pnl || 0;
+
+          // Get trade capital (position size for this trade)
+          const tradeCapital = breakdown.trade_capital || positionSizePerTrade;
+          totalCapitalDeployed += tradeCapital;
+          totalFinalValue += breakdown.final_value || (tradeCapital + tokenProfit);
+
+          // Trade ROI for averaging
+          const tradeROI = breakdown.trade_roi || (tradeCapital > 0 ? (tokenProfit / tradeCapital) * 100 : 0);
+          sumTradeROI += tradeROI;
+
           if (tokenProfit > 0) winningTrades++;
-          console.log(`Token ${breakdown.token}: Profit = $${tokenProfit.toFixed(2)}`);
+          console.log(`Token ${breakdown.token}: VALID - Trade ROI = ${tradeROI.toFixed(2)}%, PnL = $${tokenProfit.toFixed(2)}`);
+        } else {
+          invalidTradeCount++;
+          console.log(`Token ${breakdown.token}: INVALID - Excluded from metrics. Error: ${breakdown.error || breakdown.validation_errors?.join(', ')}`);
         }
       });
+
+      console.log(`\n=== SUMMARY ===`);
+      console.log(`Valid trades: ${validTradeCount}, Invalid trades: ${invalidTradeCount}`);
 
       // Then get the simulation data for charts using trade-based endpoint
       const res = await fetch(`${pythonApiUrl}/api/simulate/trades`, {
@@ -551,16 +605,72 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
       setChartData(rows);
       setCumChartData(cumulative);
 
-      const finalPortfolioValue = runningPortfolio;
-      const winRate = filteredTrades.length > 0 ? winningTrades / filteredTrades.length : 0;
-      
+      // ------------------------------------------------------------------
+      // FINAL EQUITY CALCULATION (CRITICAL)
+      // final_account_equity = cash_balance + sum(current_value_of_all_open_positions)
+      // where current_value_of_open_position = remaining_tokens * current_market_price
+      // ------------------------------------------------------------------
+
+      // Cash not invested (if any positions weren't taken)
+      const cashNotInvested = Math.max(0, initialCapital - totalCapitalDeployed);
+
+      // Final portfolio value = final value of all positions + uninvested cash
+      const finalPortfolioValue = totalFinalValue + cashNotInvested;
+
+      // ------------------------------------------------------------------
+      // ACCOUNT ROI CALCULATION (per specification)
+      // account_roi = (final_account_equity - starting_account_equity) / starting_account_equity
+      // This ROI includes: Realized PnL + Unrealized PnL from held positions marked to current price
+      // ------------------------------------------------------------------
+      const accountROI = initialCapital > 0
+        ? ((finalPortfolioValue - initialCapital) / initialCapital) * 100
+        : 0;
+
+      // ------------------------------------------------------------------
+      // WIN RATE (valid trades only)
+      // ------------------------------------------------------------------
+      const winRate = validTradeCount > 0 ? winningTrades / validTradeCount : 0;
+
+      // ------------------------------------------------------------------
+      // AVERAGE TRADE ROI (NOT account ROI - these are different!)
+      // ------------------------------------------------------------------
+      const avgTradeROI = validTradeCount > 0 ? sumTradeROI / validTradeCount : 0;
+
+      // ------------------------------------------------------------------
+      // INVARIANT CHECK: Sum of realized + unrealized = total account PnL
+      // ------------------------------------------------------------------
+      const pnlInvariantDiff = Math.abs(totalProfit - (realizedProfit + unrealizedProfit));
+      if (pnlInvariantDiff > 0.01) {
+        console.warn(`PnL Invariant Warning: total=${totalProfit}, realized+unrealized=${realizedProfit + unrealizedProfit}`);
+      }
+
+      // ------------------------------------------------------------------
+      // INVARIANT CHECK: starting_equity + total_pnl = final_equity
+      // ------------------------------------------------------------------
+      const equityInvariantDiff = Math.abs((initialCapital + totalProfit) - finalPortfolioValue);
+      if (equityInvariantDiff > 1) { // Allow $1 tolerance for rounding
+        console.warn(`Equity Invariant Warning: start+pnl=${initialCapital + totalProfit}, final=${finalPortfolioValue}`);
+      }
+
+      console.log(`Account ROI: ${accountROI.toFixed(2)}%`);
+      console.log(`Average Trade ROI: ${avgTradeROI.toFixed(2)}%`);
+      console.log(`Total PnL: $${totalProfit.toFixed(2)} (Realized: $${realizedProfit.toFixed(2)}, Unrealized: $${unrealizedProfit.toFixed(2)})`);
+      console.log(`Final Portfolio: $${finalPortfolioValue.toFixed(2)}`);
+
       setSummary({
         totalProfit,
-        avgProfit: filteredTrades.length > 0 ? totalProfit / filteredTrades.length : 0,
+        realizedProfit,
+        unrealizedProfit,
+        avgProfit: validTradeCount > 0 ? totalProfit / validTradeCount : 0,
+        avgTradeROI,
+        accountROI,  // Account ROI (for summary display only)
         winRate,
         finalPortfolioValue,
+        startingCapital: initialCapital,
         isBankrupt: finalPortfolioValue <= 0,
-        totalTrades: filteredTrades.length
+        totalTrades: filteredTrades.length,
+        validTrades: validTradeCount,
+        invalidTrades: invalidTradeCount,
       });
 
       // Auto-switch to results tab after backtest completes
@@ -628,7 +738,12 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
         </span>
         {summary && (
           <span className="text-muted-foreground">
-            • ROI: {((summary.totalProfit / initialCapital) * 100).toFixed(1)}%
+            • Account ROI: {summary.accountROI.toFixed(1)}%
+          </span>
+        )}
+        {summary && summary.invalidTrades > 0 && (
+          <span className="text-yellow-500">
+            • {summary.invalidTrades} invalid trade{summary.invalidTrades > 1 ? 's' : ''} excluded
           </span>
         )}
         <div className="ml-auto flex items-center gap-2">
@@ -1182,42 +1297,98 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
           {summary && (
             <Card>
               <CardHeader>
-                <CardTitle>Summary</CardTitle>
+                <CardTitle>Account Summary</CardTitle>
+                <CardDescription>
+                  Account-level metrics (includes realized + unrealized PnL)
+                </CardDescription>
               </CardHeader>
-              <CardContent className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 text-center">
-                <div>
-                  <p className="text-sm text-muted-foreground">Total Profit</p>
-                  <p className="text-xl font-semibold">
-                    ${formatLargeNumber(summary.totalProfit)}
-                  </p>
+              <CardContent>
+                {/* Main Stats Row */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 text-center mb-6">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Account ROI</p>
+                    <p className={`text-2xl font-bold ${summary.accountROI >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {summary.accountROI >= 0 ? '+' : ''}{summary.accountROI.toFixed(2)}%
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      (Final - Start) / Start
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Final Equity</p>
+                    <p className="text-xl font-semibold">
+                      ${formatLargeNumber(summary.finalPortfolioValue)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Start: ${formatLargeNumber(summary.startingCapital)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Total PnL</p>
+                    <p className={`text-xl font-semibold ${summary.totalProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      ${formatLargeNumber(summary.totalProfit)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Win Rate</p>
+                    <p className="text-xl font-semibold">
+                      {(summary.winRate * 100).toFixed(0)}%
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      (valid trades only)
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Avg Trade ROI</p>
+                    <p className={`text-xl font-semibold ${summary.avgTradeROI >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {summary.avgTradeROI >= 0 ? '+' : ''}{summary.avgTradeROI.toFixed(1)}%
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      (per trade, not account)
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Valid Trades</p>
+                    <p className="text-xl font-semibold">
+                      {summary.validTrades}
+                      <span className="text-sm font-normal text-muted-foreground"> / {summary.totalTrades}</span>
+                    </p>
+                    {summary.invalidTrades > 0 && (
+                      <p className="text-xs text-yellow-500">
+                        {summary.invalidTrades} excluded
+                      </p>
+                    )}
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Avg Profit / Trade</p>
-                  <p className="text-xl font-semibold">
-                    ${formatLargeNumber(summary.avgProfit)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Final Equity</p>
-                  <p className="text-xl font-semibold">
-                    ${formatLargeNumber(summary.finalPortfolioValue)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Trades</p>
-                  <p className="text-xl font-semibold">{summary.totalTrades}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Win‑rate</p>
-                  <p className="text-xl font-semibold">
-                    {(summary.winRate * 100).toFixed(0)}%
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Bankrupt?</p>
-                  <p className="text-xl font-semibold">
-                    {summary.isBankrupt ? "Yes" : "No"}
-                  </p>
+
+                {/* PnL Breakdown Row */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center pt-4 border-t">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Realized PnL</p>
+                    <p className={`text-lg font-semibold ${summary.realizedProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      ${formatLargeNumber(summary.realizedProfit)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">from sells</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Unrealized PnL</p>
+                    <p className={`text-lg font-semibold ${summary.unrealizedProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      ${formatLargeNumber(summary.unrealizedProfit)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">mark-to-market</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Avg Profit/Trade</p>
+                    <p className={`text-lg font-semibold ${summary.avgProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      ${formatLargeNumber(summary.avgProfit)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Status</p>
+                    <p className={`text-lg font-semibold ${summary.isBankrupt ? 'text-red-600' : 'text-green-600'}`}>
+                      {summary.isBankrupt ? "Bankrupt" : "Solvent"}
+                    </p>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -1226,8 +1397,15 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
           {tokenBreakdown.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle>Token-by-Token Breakdown</CardTitle>
-                <CardDescription>Detailed analysis of each token's performance</CardDescription>
+                <CardTitle>Trade-by-Trade Breakdown</CardTitle>
+                <CardDescription>
+                  Individual trade performance. Trade ROI = PnL / Capital per trade.
+                  {tokenBreakdown.filter(t => t.is_valid === false || t.error).length > 0 && (
+                    <span className="text-yellow-500 ml-2">
+                      ({tokenBreakdown.filter(t => t.is_valid === false || t.error).length} invalid trades shown in yellow)
+                    </span>
+                  )}
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
@@ -1236,64 +1414,78 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                       <tr className="border-b">
                         <th className="text-left py-2">Token</th>
                         <th className="text-right py-2">Time Called</th>
-                        <th className="text-right py-2">Entry Price</th>
-                        <th className="text-right py-2">Final Price</th>
-                        <th className="text-right py-2">ATH Price</th>
-                        <th className="text-right py-2">ATH %</th>
+                        <th className="text-right py-2">Entry</th>
+                        <th className="text-right py-2">Current</th>
+                        <th className="text-right py-2">ATH</th>
                         <th className="text-right py-2">Total PnL</th>
                         <th className="text-right py-2">Realized</th>
                         <th className="text-right py-2">Unrealized</th>
-                        <th className="text-right py-2">Remaining USD</th>
-                        <th className="text-right py-2">Max Drawdown</th>
-                        <th className="text-right py-2">ROI to Date</th>
+                        <th className="text-right py-2">Position Value</th>
+                        <th className="text-right py-2">Trade ROI</th>
+                        <th className="text-right py-2">Status</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {tokenBreakdown.map((token) => (
-                        <tr key={token.trade_id} className="border-b hover:bg-muted/50">
-                          <td className="py-2">
-                            <a
-                              href={`/token-analysis?token=${encodeURIComponent(token.token)}`}
-                              className="font-mono text-xs text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
-                              target="_blank"
-                              rel="noopener noreferrer"
-                            >
-                              {token.token.slice(0, 8)}...
-                            </a>
-                          </td>
-                          <td className="text-right py-2 text-xs">
-                            {new Date(token.time_called).toLocaleString("en-US", {
-                              month: "short",
-                              day: "numeric",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                              hour12: false
-                            })}
-                          </td>
-                          <td className="text-right py-2">${token.entry_price.toFixed(6)}</td>
-                          <td className="text-right py-2">${token.final_price.toFixed(6)}</td>
-                          <td className="text-right py-2">${token.ath_price.toFixed(6)}</td>
-                          <td className={`text-right py-2 ${token.ath_percentage > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            {token.ath_percentage > 0 ? '+' : ''}{token.ath_percentage.toFixed(2)}%
-                          </td>
-                          <td className={`text-right py-2 font-semibold ${token.total_pnl > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            ${token.total_pnl.toFixed(2)}
-                          </td>
-                          <td className={`text-right py-2 ${token.realized_pnl > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            ${token.realized_pnl.toFixed(2)}
-                          </td>
-                          <td className={`text-right py-2 ${token.unrealized_pnl > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            ${token.unrealized_pnl.toFixed(2)}
-                          </td>
-                          <td className="text-right py-2 font-mono text-xs">${(token.coins_left * token.final_price).toFixed(2)}</td>
-                          <td className={`text-right py-2 ${token.max_drawdown > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                            {token.max_drawdown.toFixed(2)}%
-                          </td>
-                          <td className={`text-right py-2 font-semibold ${token.roi_to_date > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            {token.roi_to_date > 0 ? '+' : ''}{token.roi_to_date.toFixed(2)}%
-                          </td>
-                        </tr>
-                      ))}
+                      {tokenBreakdown.map((token, index) => {
+                        const isInvalid = token.is_valid === false || !!token.error;
+                        const tradeROI = token.trade_roi || token.roi_to_date || 0;
+
+                        return (
+                          <tr
+                            key={token.trade_id || `${token.token}-${index}`}
+                            className={`border-b hover:bg-muted/50 ${isInvalid ? 'bg-yellow-50 dark:bg-yellow-900/20 opacity-60' : ''}`}
+                          >
+                            <td className="py-2">
+                              <a
+                                href={`/token-analysis?token=${encodeURIComponent(token.token)}`}
+                                className={`font-mono text-xs ${isInvalid ? 'text-yellow-600' : 'text-blue-600'} hover:underline cursor-pointer`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                {token.token.slice(0, 8)}...
+                              </a>
+                            </td>
+                            <td className="text-right py-2 text-xs">
+                              {token.time_called ? new Date(token.time_called).toLocaleString("en-US", {
+                                month: "short",
+                                day: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                                hour12: false
+                              }) : 'N/A'}
+                            </td>
+                            <td className="text-right py-2">{isInvalid ? 'N/A' : `$${token.entry_price.toFixed(6)}`}</td>
+                            <td className="text-right py-2">{isInvalid ? 'N/A' : `$${token.final_price.toFixed(6)}`}</td>
+                            <td className="text-right py-2 text-muted-foreground text-xs">
+                              {isInvalid ? 'N/A' : `$${token.ath_price.toFixed(6)}`}
+                            </td>
+                            <td className={`text-right py-2 font-semibold ${isInvalid ? 'text-muted-foreground' : token.total_pnl > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                              {isInvalid ? 'N/A' : `$${token.total_pnl.toFixed(2)}`}
+                            </td>
+                            <td className={`text-right py-2 ${isInvalid ? 'text-muted-foreground' : token.realized_pnl > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                              {isInvalid ? 'N/A' : `$${token.realized_pnl.toFixed(2)}`}
+                            </td>
+                            <td className={`text-right py-2 ${isInvalid ? 'text-muted-foreground' : token.unrealized_pnl > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                              {isInvalid ? 'N/A' : `$${token.unrealized_pnl.toFixed(2)}`}
+                            </td>
+                            <td className="text-right py-2 font-mono text-xs">
+                              {isInvalid ? 'N/A' : `$${(token.final_value || (token.coins_left * token.final_price)).toFixed(2)}`}
+                            </td>
+                            <td className={`text-right py-2 font-semibold ${isInvalid ? 'text-muted-foreground' : tradeROI > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                              {isInvalid ? 'N/A' : `${tradeROI > 0 ? '+' : ''}${tradeROI.toFixed(2)}%`}
+                            </td>
+                            <td className="text-right py-2">
+                              {isInvalid ? (
+                                <span className="text-xs text-yellow-600" title={token.error || token.validation_errors?.join(', ')}>
+                                  ⚠️ Invalid
+                                </span>
+                              ) : (
+                                <span className="text-xs text-green-600">✓ Valid</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

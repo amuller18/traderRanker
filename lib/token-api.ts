@@ -60,7 +60,7 @@ export async function getTokenInfo(contractAddress: string): Promise<TokenInfo[]
   try {
     console.log(`Fetching token info for: ${contractAddress}`)
 
-    // Use DexScreener v1 API for Solana tokens
+    // Use DexScreener v1 API for Solana tokens (optimized - no fallbacks for speed)
     const url = `https://api.dexscreener.com/tokens/v1/solana/${contractAddress}`
     const response = await fetch(url, {
       headers: {
@@ -71,8 +71,8 @@ export async function getTokenInfo(contractAddress: string): Promise<TokenInfo[]
     })
 
     if (!response.ok) {
-      console.log(`DexScreener v1 API failed for ${contractAddress} - trying CoinGecko fallback`)
-      return await getCoinGeckoTokenInfo(contractAddress)
+      console.log(`DexScreener v1 API failed for ${contractAddress}: ${response.status}`)
+      return null
     }
 
     const data = await response.json()
@@ -81,18 +81,8 @@ export async function getTokenInfo(contractAddress: string): Promise<TokenInfo[]
     const pairs = Array.isArray(data) ? data : data.pairs
 
     if (!pairs || pairs.length === 0) {
-      console.log(`No trading pairs found in DexScreener v1 for ${contractAddress} - trying CoinGecko fallback`)
-      return await getCoinGeckoTokenInfo(contractAddress)
-    }
-
-    // Check if we have valid market cap data
-    const hasValidMarketCap = pairs.some((pair: any) =>
-      pair.marketCap && pair.marketCap > 0 || pair.fdv && pair.fdv > 0
-    )
-
-    if (!hasValidMarketCap) {
-      console.log(`No valid market cap data in DexScreener v1 for ${contractAddress} - trying CoinGecko fallback`)
-      return await getCoinGeckoTokenInfo(contractAddress)
+      console.log(`No trading pairs found in DexScreener v1 for ${contractAddress}`)
+      return null
     }
 
     // Map the pairs to our TokenInfo format
@@ -113,7 +103,7 @@ export async function getTokenInfo(contractAddress: string): Promise<TokenInfo[]
       }
 
       // Log market cap for debugging
-      const marketCap = pair.marketCap || 0
+      const marketCap = pair.marketCap || pair.fdv || 0
       if (marketCap < 10000) {
         console.log(`Low market cap detected for ${contractAddress}: $${marketCap}`)
       }
@@ -145,8 +135,7 @@ export async function getTokenInfo(contractAddress: string): Promise<TokenInfo[]
     return tokenInformation
   } catch (error) {
     console.error(`Error fetching token info: ${error}`)
-    // Try CoinGecko as fallback
-    return await getCoinGeckoTokenInfo(contractAddress)
+    return null
   }
 }
 

@@ -1636,10 +1636,14 @@ async def simulate(req: SimulationRequest) -> list[SimulationResult]:
         logger.error("BIRDEYE_API_KEY not set")
         raise HTTPException(500, "BIRDEYE_API_KEY not set")
 
-    bad = [t for t in req.tokens if not is_valid_solana_address(t)]
-    if bad:
-        logger.error(f"Invalid Solana address(es): {', '.join(bad)}")
-        raise HTTPException(400, f"Invalid Solana address(es): {', '.join(bad)}")
+    # Filter out invalid tokens instead of rejecting the whole request
+    valid_tokens = [t for t in req.tokens if is_valid_solana_address(t)]
+    invalid_tokens = [t for t in req.tokens if not is_valid_solana_address(t)]
+    if invalid_tokens:
+        logger.warning(f"Filtered out {len(invalid_tokens)} invalid Solana address(es): {', '.join(invalid_tokens[:5])}{'...' if len(invalid_tokens) > 5 else ''}")
+
+    if not valid_tokens:
+        raise HTTPException(400, "No valid Solana addresses provided")
 
     logger.info("Parsing ladder levels...")
     tp_r, tp_s = _parse_ladder(req.tp)
@@ -1676,12 +1680,12 @@ async def simulate(req: SimulationRequest) -> list[SimulationResult]:
         # ------------------------------------------------------------------ #
         # 1) pull *all* history in parallel (limited only by aiohttp connector)
         # ------------------------------------------------------------------ #
-        logger.info("Creating history fetch tasks...")
+        logger.info(f"Creating history fetch tasks for {len(valid_tokens)} valid tokens...")
         hist_tasks: dict[str, asyncio.Task] = {
             m: asyncio.create_task(
                 _cached_history(session, m, start_ts, req.timeframe_minutes, end_ts)
             )
-            for m in req.tokens
+            for m in valid_tokens
         }
 
         # 2) We'll use the most recent close price from the ledger instead of making current price requests
@@ -1689,7 +1693,7 @@ async def simulate(req: SimulationRequest) -> list[SimulationResult]:
 
         # 3) assemble results
         logger.info("Processing results for each token...")
-        for mint in req.tokens:
+        for mint in valid_tokens:
             logger.info(f"=== Processing token: {mint} ===")
             try:
                 logger.info(f"Fetching history for {mint}...")
@@ -2268,10 +2272,14 @@ async def simulate_with_breakdown(req: SimulationRequest) -> List[TokenBreakdown
         logger.error("BIRDEYE_API_KEY not set")
         raise HTTPException(500, "BIRDEYE_API_KEY not set")
 
-    bad = [t for t in req.tokens if not is_valid_solana_address(t)]
-    if bad:
-        logger.error(f"Invalid Solana address(es): {', '.join(bad)}")
-        raise HTTPException(400, f"Invalid Solana address(es): {', '.join(bad)}")
+    # Filter out invalid tokens instead of rejecting the whole request
+    valid_tokens = [t for t in req.tokens if is_valid_solana_address(t)]
+    invalid_tokens = [t for t in req.tokens if not is_valid_solana_address(t)]
+    if invalid_tokens:
+        logger.warning(f"Filtered out {len(invalid_tokens)} invalid Solana address(es): {', '.join(invalid_tokens[:5])}{'...' if len(invalid_tokens) > 5 else ''}")
+
+    if not valid_tokens:
+        raise HTTPException(400, "No valid Solana addresses provided")
 
     logger.info("Parsing ladder levels...")
     tp_r, tp_s = _parse_ladder(req.tp)
@@ -2306,17 +2314,17 @@ async def simulate_with_breakdown(req: SimulationRequest) -> List[TokenBreakdown
     session = aiohttp.ClientSession()
     try:
         # Pull all history in parallel
-        logger.info("Creating history fetch tasks...")
+        logger.info(f"Creating history fetch tasks for {len(valid_tokens)} valid tokens...")
         hist_tasks: dict[str, asyncio.Task] = {
             m: asyncio.create_task(
                 _cached_history(session, m, start_ts, req.timeframe_minutes, end_ts)
             )
-            for m in req.tokens
+            for m in valid_tokens
         }
 
         # Process results for each token
         logger.info("Processing results for each token...")
-        for mint in req.tokens:
+        for mint in valid_tokens:
             logger.info(f"=== Processing token: {mint} ===")
             try:
                 logger.info(f"Fetching history for {mint}...")
@@ -2463,11 +2471,14 @@ async def simulate_with_breakdown_trades(req: TradeBasedSimulationRequest) -> Li
         logger.error("BIRDEYE_API_KEY not set")
         raise HTTPException(500, "BIRDEYE_API_KEY not set")
 
-    # Validate all tokens
-    bad = [t.token for t in req.trades if not is_valid_solana_address(t.token)]
-    if bad:
-        logger.error(f"Invalid Solana address(es): {', '.join(bad)}")
-        raise HTTPException(400, f"Invalid Solana address(es): {', '.join(bad)}")
+    # Filter out invalid tokens instead of rejecting the whole request
+    valid_trades = [t for t in req.trades if is_valid_solana_address(t.token)]
+    invalid_trades = [t.token for t in req.trades if not is_valid_solana_address(t.token)]
+    if invalid_trades:
+        logger.warning(f"Filtered out {len(invalid_trades)} invalid Solana address(es): {', '.join(invalid_trades[:5])}{'...' if len(invalid_trades) > 5 else ''}")
+
+    if not valid_trades:
+        raise HTTPException(400, "No valid Solana addresses provided")
 
     logger.info("Parsing ladder levels...")
     tp_r, tp_s = _parse_ladder(req.tp)
@@ -2482,8 +2493,8 @@ async def simulate_with_breakdown_trades(req: TradeBasedSimulationRequest) -> Li
     session = aiohttp.ClientSession()
     try:
         # Process each trade individually with its own start date
-        logger.info("Processing each trade with individual start dates...")
-        for trade in req.trades:
+        logger.info(f"Processing {len(valid_trades)} valid trades with individual start dates...")
+        for trade in valid_trades:
             mint = trade.token
             logger.info(f"=== Processing trade: {mint} ===")
             
@@ -2670,11 +2681,14 @@ async def simulate_trades(req: TradeBasedSimulationRequest) -> list[SimulationRe
         logger.error("BIRDEYE_API_KEY not set")
         raise HTTPException(500, "BIRDEYE_API_KEY not set")
 
-    # Validate all tokens
-    bad = [t.token for t in req.trades if not is_valid_solana_address(t.token)]
-    if bad:
-        logger.error(f"Invalid Solana address(es): {', '.join(bad)}")
-        raise HTTPException(400, f"Invalid Solana address(es): {', '.join(bad)}")
+    # Filter out invalid tokens instead of rejecting the whole request
+    valid_trades = [t for t in req.trades if is_valid_solana_address(t.token)]
+    invalid_trades = [t.token for t in req.trades if not is_valid_solana_address(t.token)]
+    if invalid_trades:
+        logger.warning(f"Filtered out {len(invalid_trades)} invalid Solana address(es): {', '.join(invalid_trades[:5])}{'...' if len(invalid_trades) > 5 else ''}")
+
+    if not valid_trades:
+        raise HTTPException(400, "No valid Solana addresses provided")
 
     logger.info("Parsing ladder levels...")
     tp_r, tp_s = _parse_ladder(req.tp)
@@ -2689,8 +2703,8 @@ async def simulate_trades(req: TradeBasedSimulationRequest) -> list[SimulationRe
     session = aiohttp.ClientSession()
     try:
         # Process each trade individually with its own start date
-        logger.info("Processing each trade with individual start dates...")
-        for trade in req.trades:
+        logger.info(f"Processing {len(valid_trades)} valid trades with individual start dates...")
+        for trade in valid_trades:
             mint = trade.token
             logger.info(f"=== Processing trade: {mint} ===")
             

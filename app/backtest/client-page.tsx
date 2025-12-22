@@ -176,6 +176,22 @@ const ladderToString = (arr: (TakeProfitLevel | StopLossLevel)[]) => {
   return list.length ? list : ["0:0"]; // backend‑safe default
 };
 
+/**
+ * Validate Solana address format.
+ * Solana addresses are 32-44 character base58 strings.
+ */
+const BASE58_CHARS = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+const isValidSolanaAddress = (address: string): boolean => {
+  if (!address || typeof address !== "string") return false;
+  // Solana addresses are typically 32-44 characters
+  if (address.length < 32 || address.length > 44) return false;
+  // Must only contain valid base58 characters
+  for (const char of address) {
+    if (!BASE58_CHARS.includes(char)) return false;
+  }
+  return true;
+};
+
 /* ---------------------------------------------------------------------
  * COMPONENT
  * -------------------------------------------------------------------*/
@@ -346,7 +362,20 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
     if (apiStatus !== "connected" || filteredTrades.length === 0) return;
     setIsRunning(true);
 
-    const uniqueTokens = Array.from(new Set(filteredTrades.map((t) => t.ca)));
+    // Sanitize: Filter out trades with invalid Solana addresses
+    const validTrades = filteredTrades.filter((t) => isValidSolanaAddress(t.ca));
+    const invalidCount = filteredTrades.length - validTrades.length;
+    if (invalidCount > 0) {
+      console.warn(`Filtered out ${invalidCount} trades with invalid Solana addresses`);
+    }
+
+    if (validTrades.length === 0) {
+      console.error("No valid trades to simulate after filtering");
+      setIsRunning(false);
+      return;
+    }
+
+    const uniqueTokens = Array.from(new Set(validTrades.map((t) => t.ca)));
     console.log(`Unique tokens to simulate: ${uniqueTokens.length}`);
     console.log(`Tokens: ${uniqueTokens.slice(0, 5).join(', ')}${uniqueTokens.length > 5 ? '...' : ''}`);
 
@@ -355,9 +384,9 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
       ? (initialCapital * positionSizing.value) / 100
       : positionSizing.value;
 
-    // Create trade-based payload with individual dates
+    // Create trade-based payload with individual dates (using sanitized trades)
     const tradesPayload = {
-      trades: filteredTrades.map(trade => ({
+      trades: validTrades.map(trade => ({
         token: trade.ca,
         date_called: trade.date_called
       })),

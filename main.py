@@ -41,7 +41,6 @@ import itertools
 from matplotlib.dates import DateFormatter
 from dotenv import load_dotenv
 import random
-import base58
 
 import aiohttp
 import async_timeout
@@ -111,7 +110,7 @@ try:
         client.describe_table(TableName=TRADERS_TABLE)
         traders_table = dynamodb.Table(TRADERS_TABLE)
         
-        logger.info(f"✓ DynamoDB table '{TRADERS_TABLE}' verified and ready")
+        logger.info(f" DynamoDB table '{TRADERS_TABLE}' verified and ready")
     except ClientError as e:
         if e.response['Error']['Code'] == 'ResourceNotFoundException':
             logger.warning(f"✗ DynamoDB table '{TRADERS_TABLE}' does not exist. Trader endpoints will return empty data.")
@@ -121,7 +120,7 @@ try:
     try:
         client.describe_table(TableName=TRADES_TABLE)
         trades_table = dynamodb.Table(TRADES_TABLE)
-        logger.info(f"✓ DynamoDB table '{TRADES_TABLE}' verified and ready")
+        logger.info(f" DynamoDB table '{TRADES_TABLE}' verified and ready")
     except ClientError as e:
         if e.response['Error']['Code'] == 'ResourceNotFoundException':
             logger.warning(f"✗ DynamoDB table '{TRADES_TABLE}' does not exist. Trade endpoints will return empty data.")
@@ -264,6 +263,7 @@ def is_valid_solana_address(address: str) -> bool:
     if not 32 <= len(address) <= 44:
         return False
     try:
+        import base58
 
         return len(base58.b58decode(address)) == 32
     except Exception:
@@ -387,85 +387,6 @@ try:
                     sl_hit[k] = True
         return pnl, size_left, tp_hit, sl_hit
 
-    @njit(cache=True, fastmath=True)
-    def _ledger_core(
-        timestamps: np.ndarray,     # int64 unix timestamps
-        prices: np.ndarray,         # float64 close prices
-        entry_coins: float,       # initial coin position
-        start_cash_usd: float,    # initial USD invested
-        tp_levels: np.ndarray,      # float64 TP price levels
-        tp_sizes: np.ndarray,       # float64 TP sell fractions
-        sl_levels: np.ndarray,      # float64 SL price levels
-        sl_sizes: np.ndarray,       # float64 SL sell fractions
-    ):
-        """
-        Numba-accelerated ledger building.
-        Returns arrays for: (ts, value, coins_held, unrealized, realized, n_valid, tp_fired_mask, sl_fired_mask)
-        """
-        n_candles = prices.shape[0]
-        n_tp = tp_levels.shape[0]
-        n_sl = sl_levels.shape[0]
-
-        # Pre-allocate output arrays (maximum size = n_candles)
-        out_ts = np.empty(n_candles, dtype=np.int64)
-        out_value = np.empty(n_candles, dtype=np.float64)
-        out_coins = np.empty(n_candles, dtype=np.float64)
-        out_unrealized = np.empty(n_candles, dtype=np.float64)
-        out_realized = np.empty(n_candles, dtype=np.float64)
-
-        # State tracking
-        coins = entry_coins
-        realized = 0.0
-        tp_fired = np.zeros(n_tp, dtype=boolean)
-        sl_fired = np.zeros(n_sl, dtype=boolean)
-
-        valid_count = 0
-
-        for j in range(n_candles):
-            ts = timestamps[j]
-            price = prices[j]
-
-            # Check TP ladder
-            for k in range(n_tp):
-                if tp_fired[k] or coins <= 1e-12:
-                    continue
-                if price >= tp_levels[k]:
-                    sell_qty = entry_coins * tp_sizes[k]
-                    sell_qty = min(sell_qty, coins)
-                    coins -= sell_qty
-                    realized += sell_qty * tp_levels[k]
-                    tp_fired[k] = True
-
-            # Check SL ladder
-            for k in range(n_sl):
-                if sl_fired[k] or coins <= 1e-12:
-                    continue
-                if price <= sl_levels[k]:
-                    sell_qty = entry_coins * sl_sizes[k]
-                    sell_qty = min(sell_qty, coins)
-                    coins -= sell_qty
-                    realized += sl_levels[k] * sell_qty
-                    sl_fired[k] = True
-
-            # Record ledger point
-            equity = coins * price
-            unrealized = equity + realized - start_cash_usd
-
-            out_ts[valid_count] = ts
-            out_value[valid_count] = equity
-            out_coins[valid_count] = coins
-            out_unrealized[valid_count] = unrealized
-            out_realized[valid_count] = realized
-            valid_count += 1
-
-            # Early exit if no position left
-            if coins <= 1e-12:
-                break
-
-        return (out_ts[:valid_count], out_value[:valid_count],
-                out_coins[:valid_count], out_unrealized[:valid_count],
-                out_realized[:valid_count], valid_count, tp_fired, sl_fired)
-
     JIT_READY = True
 except Exception as e:  # pragma: no cover – Numba not installed
     logger.warning("Numba unavailable – falling back to pure-Python back-tester (%s)", e)
@@ -513,82 +434,8 @@ def _bt_core_py(
                 sl_hit[k] = True
     return pnl, size_left, tp_hit, sl_hit
 
-
-def _ledger_core_py(
-    timestamps: np.ndarray,
-    prices: np.ndarray,
-    entry_coins: float,
-    start_cash_usd: float,
-    tp_levels: np.ndarray,
-    tp_sizes: np.ndarray,
-    sl_levels: np.ndarray,
-    sl_sizes: np.ndarray,
-):
-    """Pure-Python fallback for ledger building."""
-    n_candles = len(prices)
-    n_tp = len(tp_levels)
-    n_sl = len(sl_levels)
-
-    # Pre-allocate output arrays
-    out_ts = np.empty(n_candles, dtype=np.int64)
-    out_value = np.empty(n_candles, dtype=np.float64)
-    out_coins = np.empty(n_candles, dtype=np.float64)
-    out_unrealized = np.empty(n_candles, dtype=np.float64)
-    out_realized = np.empty(n_candles, dtype=np.float64)
-
-    coins = entry_coins
-    realized = 0.0
-    tp_fired = np.zeros(n_tp, dtype=bool)
-    sl_fired = np.zeros(n_sl, dtype=bool)
-
-    valid_count = 0
-
-    for j in range(n_candles):
-        ts = timestamps[j]
-        price = prices[j]
-
-        # Check TP ladder
-        for k in range(n_tp):
-            if tp_fired[k] or coins <= 1e-12:
-                continue
-            if price >= tp_levels[k]:
-                sell_qty = min(entry_coins * tp_sizes[k], coins)
-                coins -= sell_qty
-                realized += sell_qty * tp_levels[k]
-                tp_fired[k] = True
-
-        # Check SL ladder
-        for k in range(n_sl):
-            if sl_fired[k] or coins <= 1e-12:
-                continue
-            if price <= sl_levels[k]:
-                sell_qty = min(entry_coins * sl_sizes[k], coins)
-                coins -= sell_qty
-                realized += sl_levels[k] * sell_qty
-                sl_fired[k] = True
-
-        # Record ledger point
-        equity = coins * price
-        unrealized = equity + realized - start_cash_usd
-
-        out_ts[valid_count] = ts
-        out_value[valid_count] = equity
-        out_coins[valid_count] = coins
-        out_unrealized[valid_count] = unrealized
-        out_realized[valid_count] = realized
-        valid_count += 1
-
-        if coins <= 1e-12:
-            break
-
-    return (out_ts[:valid_count], out_value[:valid_count],
-            out_coins[:valid_count], out_unrealized[:valid_count],
-            out_realized[:valid_count], valid_count, tp_fired, sl_fired)
-
-
-# convenience aliases
+# convenience alias
 _bt_engine = _bt_core if JIT_READY else _bt_core_py
-_ledger_engine = _ledger_core if JIT_READY else _ledger_core_py
 
 # ---------------------------------------------------------------------------
 # Data helpers (Birdeye clients cut for brevity – unchanged from original)
@@ -817,45 +664,51 @@ async def fetch_current_price(session: aiohttp.ClientSession, mint: str) -> Opti
 # ---------------------------------------------------------------------------
 
 def build_ohlc(items: List[Dict[str, Any]], tf_minutes: int) -> pd.DataFrame:
-    """Convert API data points → OHLC DataFrame. The API already provides data at the requested interval.
-
-    Optimized: Uses vectorized pandas operations instead of iterrows() for 10-100x speedup.
-    """
+    """Convert API data points → OHLC DataFrame. The API already provides data at the requested interval."""
     if not items:
         logger.error("No items provided to build_ohlc")
         return pd.DataFrame()
-
+        
     try:
         # The API already returns data at the requested interval, so we just need to format it
         df = (
             pd.DataFrame(items)
             .rename(columns={"unixTime": "t", "value": "close"})
             .assign(t=lambda d: pd.to_datetime(d["t"], unit="s"))
+            .set_index("t")
         )
-
+        
         if df.empty:
             logger.error("Empty DataFrame after initial processing")
             return pd.DataFrame()
-
+        
         # Sort by timestamp to ensure proper order
-        df = df.sort_values("t")
-
-        # Vectorized OHLC construction - no iterrows() needed
-        # Since the API returns data at requested intervals, use close for all OHLC values
-        result = pd.DataFrame({
-            "t": df["t"].values,
-            "open": df["close"].values,
-            "high": df["close"].values,
-            "low": df["close"].values,
-            "close": df["close"].values,
-            "volume": np.nan
-        })
-
+        df = df.sort_index()
+        
+        # Since the API already provides data at the requested interval,
+        # we need to create proper OHLC format
+        # Use the actual price data from the API without artificial variations
+        ohlc_bars = []
+        for idx, row in df.iterrows():
+            close_price = row["close"]
+            # Use the actual price data - no artificial variations
+            bar = {
+                "t": idx,  # Use the timestamp from the data
+                "open": close_price,   # Use actual close price as open
+                "high": close_price,   # Use actual close price as high
+                "low": close_price,    # Use actual close price as low
+                "close": close_price,  # Use actual close price as close
+                "volume": np.nan
+            }
+            ohlc_bars.append(bar)
+        
+        result = pd.DataFrame(ohlc_bars)
+        
         logger.info(f"Built OHLC data with shape: {result.shape} from {len(items)} API data points")
         logger.info(f"Time range: {result['t'].min()} to {result['t'].max()}")
         logger.info(f"Sample prices: {result['close'].head(3).tolist()}")
         return result
-
+        
     except Exception as e:
         logger.error(f"Error building OHLC data: {str(e)}", exc_info=True)
         return pd.DataFrame()
@@ -1086,34 +939,125 @@ def dynamodb_item_to_trade(item: dict) -> Trade:
     If date_called is missing or empty but timestamp exists, convert timestamp to ISO string.
     Maps 'username' field to 'caller' if present for DynamoDB compatibility.
     """
-    # Make a copy to avoid modifying the original
-    trade_dict = dict(item)
+    # Make a shallow copy to avoid mutating the original
+    trade_dict = dict(item or {})
 
-    # Map username to caller if it exists
-    if 'username' in trade_dict:
+    # ---- Field mapping for new CSV format / legacy variants ----
+    # username -> caller (legacy)
+    if 'username' in trade_dict and 'caller' not in trade_dict:
         trade_dict['caller'] = trade_dict.pop('username')
 
-    # Check if date_called is missing or empty
+    # key -> ca (some exports use `key` as the composite id)
+    if 'ca' not in trade_dict and 'key' in trade_dict:
+        trade_dict['ca'] = trade_dict.get('key')
+
+    # call_timestamp (numeric) -> keep as 'timestamp' (for filtering) and also set date_called if missing
+    if 'call_timestamp' in trade_dict:
+        call_ts_val = trade_dict.get('call_timestamp')
+        # normalize numeric/string/Decimal to int if possible
+        try:
+            if isinstance(call_ts_val, (int, float)):
+                ts_int = int(call_ts_val)
+            else:
+                ts_int = int(str(call_ts_val))
+            trade_dict['timestamp'] = ts_int
+            # only set date_called if not already present
+            if not trade_dict.get('date_called') and not trade_dict.get('call_timestamp_dt'):
+                trade_dict['date_called'] = datetime.fromtimestamp(ts_int).isoformat()
+        except Exception:
+            # leave as-is if conversion failed
+            logger.debug(f"Could not convert call_timestamp '{call_ts_val}' to int")
+
+    # call_timestamp_dt (ISO string) takes precedence for date_called
+    if 'call_timestamp_dt' in trade_dict and trade_dict.get('call_timestamp_dt'):
+        try:
+            # normalize Z to +00:00 for fromisoformat
+            dt_str = str(trade_dict.get('call_timestamp_dt')).replace('Z', '+00:00')
+            parsed = datetime.fromisoformat(dt_str)
+            trade_dict['date_called'] = parsed.isoformat()
+            # also set numeric timestamp for compatibility
+            trade_dict['timestamp'] = int(parsed.timestamp())
+        except Exception:
+            logger.debug(
+                f"call_timestamp_dt present but failed to parse: {trade_dict.get('call_timestamp_dt')}"
+            )
+
+    # If there's already a 'timestamp' field (legacy), try to ensure date_called exists
     if not trade_dict.get('date_called') and trade_dict.get('timestamp'):
         try:
-            # Convert Unix timestamp to ISO string
-            timestamp_val = trade_dict['timestamp']
-            # Handle Decimal type from DynamoDB
-            if isinstance(timestamp_val, (int, float)):
-                timestamp_int = int(timestamp_val)
+            ts_val = trade_dict.get('timestamp')
+            if isinstance(ts_val, (int, float)):
+                ts_int = int(ts_val)
             else:
-                # Try to convert from Decimal or string
-                timestamp_int = int(timestamp_val)
+                ts_int = int(str(ts_val))
+            trade_dict['date_called'] = datetime.fromtimestamp(ts_int).isoformat()
+        except Exception:
+            logger.debug(
+                f"Could not normalize timestamp -> date_called for '{trade_dict.get('timestamp')}'"
+            )
 
-            # Convert to datetime and format as ISO string
-            dt = datetime.fromtimestamp(timestamp_int)
-            trade_dict['date_called'] = dt.isoformat()
-            logger.debug(f"Converted timestamp {timestamp_int} to date_called {trade_dict['date_called']}")
-        except (ValueError, TypeError) as e:
-            logger.warning(f"Failed to convert timestamp to date_called: {e}")
-            # Keep date_called empty if conversion fails
+        # Optional: preserve new analytics fields under safe names if they exist,
+        # but do NOT pass unknown keys into the Pydantic model
+        raw_meta_keys = [
+            'entry_price', 'ath_price', 'atl_price', 'ath_roi', 'atl_roi',
+            'ath_timestamp', 'atl_timestamp', 'price_points', 'status', 'performance'
+        ]
+        raw_meta = {}
 
-    return Trade(**trade_dict)
+        for k in raw_meta_keys:
+            if k in trade_dict:
+                raw_meta[k] = trade_dict.pop(k)
+
+        if raw_meta:
+            trade_dict['raw_meta'] = raw_meta  # safe to keep for debugging / future use
+
+        # ---- Only pass fields that exist on Trade model (avoid unexpected-key errors) ----
+        try:
+            # Pydantic v2
+            model_fields = set(Trade.model_fields.keys())
+        except Exception:
+            # Fallback (mirrors Trade model)
+            model_fields = {
+                "ca", "caller", "date_called", "high_time", "low_time",
+                "initial_mc", "current_mc", "high_mc", "low_mc",
+                "high_price", "low_price",
+                "price_change_24h", "volume_24h", "liquidity", "holders",
+                "market_cap_rank", "market_cap_change_24h",
+                "market_cap_change_percentage_24h", "market_cap_dominance",
+                "fully_diluted_valuation", "total_volume",
+                "high_24h", "low_24h",
+                "price_change_percentage_24h", "price_change_percentage_7d",
+                "price_change_percentage_14d", "price_change_percentage_30d",
+                "price_change_percentage_60d", "price_change_percentage_200d",
+                "price_change_percentage_1y",
+                "market_cap_change_24h_in_currency",
+                "market_cap_change_percentage_24h_in_currency",
+                "total_supply", "max_supply", "circulating_supply",
+                "last_updated", "sparkline_in_7d",
+                "price_change_percentage_1h_in_currency",
+                "price_change_percentage_24h_in_currency",
+                "price_change_percentage_7d_in_currency",
+                "price_change_percentage_14d_in_currency",
+                "price_change_percentage_30d_in_currency",
+                "price_change_percentage_60d_in_currency",
+                "price_change_percentage_200d_in_currency",
+                "price_change_percentage_1y_in_currency",
+                "roi", "roi_at_high", "roi_at_low",
+                "profit_at_high", "profit_at_low", "profit", "is_winner",
+            }
+
+        cleaned = {k: v for k, v in trade_dict.items() if k in model_fields}
+
+        # Ensure minimal required fields
+        if 'ca' not in cleaned and 'ca' in trade_dict:
+            cleaned['ca'] = trade_dict['ca']
+        if 'caller' not in cleaned and 'caller' in trade_dict:
+            cleaned['caller'] = trade_dict['caller']
+        if 'date_called' not in cleaned and 'date_called' in trade_dict:
+            cleaned['date_called'] = trade_dict['date_called']
+
+        return Trade(**cleaned)
+
 
 # ---------------------------------------------------------------------------
 # FastAPI app & CORS
@@ -1296,8 +1240,6 @@ def run_simulation_with_ledger(
     sl_ratios: List[float], sl_sizes: List[float],
 ) -> Dict[str, Any]:
     """
-    Numba-accelerated ledger simulation.
-
     Parameters
     ----------
     df_ohlc
@@ -1311,8 +1253,6 @@ def run_simulation_with_ledger(
     tp_sizes / sl_sizes
         Matching list of *fractions* of the starting position to close
         (e.g. 0.25 means "sell 25 % of original coins").
-
-    Optimization: Uses Numba JIT-compiled _ledger_engine for 10-50x speedup.
     """
     if df_ohlc.empty:
         raise ValueError("Empty OHLC dataframe")
@@ -1321,49 +1261,72 @@ def run_simulation_with_ledger(
     entry_price = float(df_ohlc["close"].iloc[0])
     entry_coins = start_cash_usd / entry_price
 
-    # Build absolute price levels as numpy arrays for Numba
-    tp_levels_arr = np.array([entry_price * (1 + r) for r in tp_ratios], dtype=np.float64)
-    sl_levels_arr = np.array([entry_price * (1 - r) for r in sl_ratios], dtype=np.float64)
-    tp_sizes_arr = np.array(tp_sizes, dtype=np.float64)
-    sl_sizes_arr = np.array(sl_sizes, dtype=np.float64)
+    # Build absolute price levels once
+    tp_levels = [entry_price * (1 + r) for r in tp_ratios]
+    sl_levels = [entry_price * (1 - r) for r in sl_ratios]
+
+    # Internal state
+    coins = entry_coins
+    realized = 0.0
+    tp_fired: set[int] = set()   # indices of ladder levels already filled
+    sl_fired: set[int] = set()
+
+    ledger: List[PositionPoint] = []
 
     # ---------------------------------------------------------------------- #
-    # Extract arrays from DataFrame for Numba (avoiding iterrows)
+    # loop over bars
     # ---------------------------------------------------------------------- #
-    # Convert timestamps to unix seconds
-    timestamps = df_ohlc["t"].apply(lambda x: int(x.timestamp())).values.astype(np.int64)
-    prices = df_ohlc["close"].values.astype(np.float64)
+    for _, row in df_ohlc.iterrows():
+        ts     = int(row["t"].timestamp())           # <-- real unix seconds
+        price  = float(row["close"])
 
-    # ---------------------------------------------------------------------- #
-    # Call Numba-accelerated ledger engine
-    # ---------------------------------------------------------------------- #
-    (out_ts, out_value, out_coins, out_unrealized, out_realized,
-     n_valid, tp_fired_mask, sl_fired_mask) = _ledger_engine(
-        timestamps, prices, entry_coins, start_cash_usd,
-        tp_levels_arr, tp_sizes_arr, sl_levels_arr, sl_sizes_arr
-    )
+        tp_hit = sl_hit = None
 
-    # ---------------------------------------------------------------------- #
-    # Build ledger list from Numba output arrays
-    # ---------------------------------------------------------------------- #
-    ledger: List[PositionPoint] = [
-        PositionPoint(
-            ts=int(out_ts[i]),
-            value=float(out_value[i]),
-            coins_held=float(out_coins[i]),
-            unrealized=float(out_unrealized[i]),
-            realized=float(out_realized[i]),
+        # --- check TP ladder ------------------------------------------------
+        for i, (px, sz) in enumerate(zip(tp_levels, tp_sizes)):
+            if i in tp_fired or coins <= 0:
+                continue
+            if price >= px:                 # hit!
+                sell_qty = entry_coins * sz
+                sell_qty = min(sell_qty, coins)   # do not short
+                coins -= sell_qty
+                realized += sell_qty * px
+                tp_fired.add(i)
+                tp_hit = px
+
+        # --- check SL ladder ------------------------------------------------
+        for i, (px, sz) in enumerate(zip(sl_levels, sl_sizes)):
+            if i in sl_fired or coins <= 0:
+                continue
+            if price <= px:                 # hit!
+                sell_qty = entry_coins * sz
+                sell_qty = min(sell_qty, coins)
+                coins -= sell_qty
+                realized += sell_qty * px
+                sl_fired.add(i)
+                sl_hit = px
+
+        # --- book keeping ---------------------------------------------------
+        equity = coins * price
+        unrealized = equity + realized - start_cash_usd
+
+        ledger.append(
+            PositionPoint(
+                ts=int(ts),
+                value=float(equity),
+                coins_held=float(coins),
+                unrealized=float(unrealized),
+                realized=float(realized),
+            )
         )
-        for i in range(n_valid)
-    ]
 
-    # Get final state from last ledger entry
-    coins = float(out_coins[n_valid - 1]) if n_valid > 0 else entry_coins
-    realized = float(out_realized[n_valid - 1]) if n_valid > 0 else 0.0
-    unrealized = float(out_unrealized[n_valid - 1]) if n_valid > 0 else 0.0
+        # early exit – no position left
+        if coins <= 0:
+            break
 
     # Final point with the *live* Birdeye price if newer than last bar --------
-    equity = coins * current_price
+
+    equity     = coins * current_price
     unrealized = equity + realized - start_cash_usd
 
     # record it only if the live price is newer or different
@@ -1379,21 +1342,15 @@ def run_simulation_with_ledger(
         )
 
     # realised P/L = sale proceeds – cost basis of coins sold
-    realised_pl = realized - (entry_coins - coins) * entry_price
-
-    # Convert mask arrays to hit level lists
-    tp_levels_list = tp_levels_arr.tolist()
-    sl_levels_list = sl_levels_arr.tolist()
-    tps_hit = [tp_levels_list[i] for i in range(len(tp_fired_mask)) if tp_fired_mask[i]]
-    sls_hit = [sl_levels_list[i] for i in range(len(sl_fired_mask)) if sl_fired_mask[i]]
+    realised_pl = realized - (entry_coins - coins) * entry_price   # works for both full/partial exits
 
     return {
         "ledger":            [pt.dict() for pt in ledger],
         "realized_profit":   round(realised_pl, 6),
         "unrealized_profit": round(unrealized,   6),
         "coins_left":        round(coins,        6),
-        "tps_hit":           tps_hit,
-        "sls_hit":           sls_hit,
+        "tps_hit":           [tp_levels[i] for i in sorted(tp_fired)],
+        "sls_hit":           [sl_levels[i] for i in sorted(sl_fired)],
     }
 
 def _price_chart_png(df_ohlc: pd.DataFrame) -> BytesIO:
@@ -1636,14 +1593,10 @@ async def simulate(req: SimulationRequest) -> list[SimulationResult]:
         logger.error("BIRDEYE_API_KEY not set")
         raise HTTPException(500, "BIRDEYE_API_KEY not set")
 
-    # Filter out invalid tokens instead of rejecting the whole request
-    valid_tokens = [t for t in req.tokens if is_valid_solana_address(t)]
-    invalid_tokens = [t for t in req.tokens if not is_valid_solana_address(t)]
-    if invalid_tokens:
-        logger.warning(f"Filtered out {len(invalid_tokens)} invalid Solana address(es): {', '.join(invalid_tokens[:5])}{'...' if len(invalid_tokens) > 5 else ''}")
-
-    if not valid_tokens:
-        raise HTTPException(400, "No valid Solana addresses provided")
+    bad = [t for t in req.tokens if not is_valid_solana_address(t)]
+    if bad:
+        logger.error(f"Invalid Solana address(es): {', '.join(bad)}")
+        raise HTTPException(400, f"Invalid Solana address(es): {', '.join(bad)}")
 
     logger.info("Parsing ladder levels...")
     tp_r, tp_s = _parse_ladder(req.tp)
@@ -1680,12 +1633,12 @@ async def simulate(req: SimulationRequest) -> list[SimulationResult]:
         # ------------------------------------------------------------------ #
         # 1) pull *all* history in parallel (limited only by aiohttp connector)
         # ------------------------------------------------------------------ #
-        logger.info(f"Creating history fetch tasks for {len(valid_tokens)} valid tokens...")
+        logger.info("Creating history fetch tasks...")
         hist_tasks: dict[str, asyncio.Task] = {
             m: asyncio.create_task(
                 _cached_history(session, m, start_ts, req.timeframe_minutes, end_ts)
             )
-            for m in valid_tokens
+            for m in req.tokens
         }
 
         # 2) We'll use the most recent close price from the ledger instead of making current price requests
@@ -1693,7 +1646,7 @@ async def simulate(req: SimulationRequest) -> list[SimulationResult]:
 
         # 3) assemble results
         logger.info("Processing results for each token...")
-        for mint in valid_tokens:
+        for mint in req.tokens:
             logger.info(f"=== Processing token: {mint} ===")
             try:
                 logger.info(f"Fetching history for {mint}...")
@@ -2034,8 +1987,10 @@ async def try_birdeye_bulk(session: aiohttp.ClientSession, tokens: List[str]) ->
 @app.post("/api/bulk-token-prices", response_model=List[TokenPriceResult])
 async def bulk_token_prices(req: BulkPriceRequest):
     """
-    Fetch current prices for multiple tokens using DexScreener v1 API bulk.
-    Optimized for speed - uses only DexScreener which has the best coverage for Solana tokens.
+    Fetch current prices for multiple tokens using bulk APIs:
+    1. DexScreener v1 API bulk (/tokens/v1/solana/{addresses}) - primary source
+    2. Birdeye bulk fallback (good for newer tokens)
+    3. CoinGecko bulk fallback (for established tokens)
     """
     if not req.tokens:
         raise HTTPException(400, "No tokens provided")
@@ -2046,21 +2001,71 @@ async def bulk_token_prices(req: BulkPriceRequest):
 
     # Track results by token address
     results_map: Dict[str, TokenPriceResult] = {}
+    remaining_tokens = list(req.tokens)
 
     async with aiohttp.ClientSession() as session:
-        # Use DexScreener v1 API bulk (best for Solana DEX tokens)
-        dexscreener_results = await try_dexscreener_bulk(session, req.tokens)
+        # Step 1: Try DexScreener v1 API bulk first (best for Solana DEX tokens)
+        step1_start = time.time()
+        dexscreener_results = await try_dexscreener_bulk(session, remaining_tokens)
         results_map.update(dexscreener_results)
+        remaining_tokens = [t for t in remaining_tokens if t not in results_map]
+        logger.info(f" DexScreener v1: {len(dexscreener_results)} found in {time.time() - step1_start:.2f}s, {len(remaining_tokens)} remaining")
 
-        # For any tokens not found, return error results
-        for token in req.tokens:
-            if token not in results_map:
-                results_map[token] = TokenPriceResult(
-                    token=token,
-                    price=0,
-                    market_cap=0,
-                    error="Price not available from DexScreener"
-                )
+        # Step 2: Try Birdeye bulk for remaining tokens
+        if remaining_tokens:
+            step2_start = time.time()
+            birdeye_results = await try_birdeye_bulk(session, remaining_tokens)
+            results_map.update(birdeye_results)
+            remaining_tokens = [t for t in remaining_tokens if t not in results_map]
+            logger.info(f"Birdeye: {len(birdeye_results)} found in {time.time() - step2_start:.2f}s, {len(remaining_tokens)} remaining")
+
+        # Step 3: Try CoinGecko bulk for remaining tokens (in batches of 100)
+        if remaining_tokens:
+            step3_start = time.time()
+            BATCH_SIZE = 100
+            for i in range(0, len(remaining_tokens), BATCH_SIZE):
+                batch = remaining_tokens[i:i + BATCH_SIZE]
+                contract_addresses = ",".join(batch)
+
+                try:
+                    await asyncio.sleep(REQUEST_DELAY_SECONDS)
+
+                    url = f"https://api.coingecko.com/api/v3/simple/token_price/solana?contract_addresses={contract_addresses}&vs_currencies=usd"
+                    async with session.get(
+                        url,
+                        headers={
+                            "accept": "application/json",
+                            "x-cg-demo-api-key": COINGECKO_API_KEY
+                        },
+                        timeout=aiohttp.ClientTimeout(total=HTTP_TIMEOUT)
+                    ) as response:
+                        if response.ok:
+                            price_data = await response.json()
+                            for token in batch:
+                                if token in price_data and "usd" in price_data[token]:
+                                    price = price_data[token]["usd"]
+                                    market_cap = price * 1e9
+                                    results_map[token] = TokenPriceResult(
+                                        token=token,
+                                        price=price,
+                                        market_cap=market_cap
+                                    )
+
+                except Exception as e:
+                    logger.error(f"Error in CoinGecko bulk request: {e}")
+
+            # Update remaining tokens after CoinGecko
+            remaining_tokens = [t for t in remaining_tokens if t not in results_map]
+            logger.info(f"CoinGecko: done in {time.time() - step3_start:.2f}s, {len(remaining_tokens)} remaining")
+
+        # Step 4: For any remaining tokens, return error results
+        for token in remaining_tokens:
+            results_map[token] = TokenPriceResult(
+                token=token,
+                price=0,
+                market_cap=0,
+                error="Price not available from DexScreener, Birdeye, or CoinGecko bulk APIs"
+            )
 
     # Convert results_map to list in the same order as input tokens
     results = [results_map[token] for token in req.tokens]
@@ -2272,14 +2277,10 @@ async def simulate_with_breakdown(req: SimulationRequest) -> List[TokenBreakdown
         logger.error("BIRDEYE_API_KEY not set")
         raise HTTPException(500, "BIRDEYE_API_KEY not set")
 
-    # Filter out invalid tokens instead of rejecting the whole request
-    valid_tokens = [t for t in req.tokens if is_valid_solana_address(t)]
-    invalid_tokens = [t for t in req.tokens if not is_valid_solana_address(t)]
-    if invalid_tokens:
-        logger.warning(f"Filtered out {len(invalid_tokens)} invalid Solana address(es): {', '.join(invalid_tokens[:5])}{'...' if len(invalid_tokens) > 5 else ''}")
-
-    if not valid_tokens:
-        raise HTTPException(400, "No valid Solana addresses provided")
+    bad = [t for t in req.tokens if not is_valid_solana_address(t)]
+    if bad:
+        logger.error(f"Invalid Solana address(es): {', '.join(bad)}")
+        raise HTTPException(400, f"Invalid Solana address(es): {', '.join(bad)}")
 
     logger.info("Parsing ladder levels...")
     tp_r, tp_s = _parse_ladder(req.tp)
@@ -2314,17 +2315,17 @@ async def simulate_with_breakdown(req: SimulationRequest) -> List[TokenBreakdown
     session = aiohttp.ClientSession()
     try:
         # Pull all history in parallel
-        logger.info(f"Creating history fetch tasks for {len(valid_tokens)} valid tokens...")
+        logger.info("Creating history fetch tasks...")
         hist_tasks: dict[str, asyncio.Task] = {
             m: asyncio.create_task(
                 _cached_history(session, m, start_ts, req.timeframe_minutes, end_ts)
             )
-            for m in valid_tokens
+            for m in req.tokens
         }
 
         # Process results for each token
         logger.info("Processing results for each token...")
-        for mint in valid_tokens:
+        for mint in req.tokens:
             logger.info(f"=== Processing token: {mint} ===")
             try:
                 logger.info(f"Fetching history for {mint}...")
@@ -2471,14 +2472,11 @@ async def simulate_with_breakdown_trades(req: TradeBasedSimulationRequest) -> Li
         logger.error("BIRDEYE_API_KEY not set")
         raise HTTPException(500, "BIRDEYE_API_KEY not set")
 
-    # Filter out invalid tokens instead of rejecting the whole request
-    valid_trades = [t for t in req.trades if is_valid_solana_address(t.token)]
-    invalid_trades = [t.token for t in req.trades if not is_valid_solana_address(t.token)]
-    if invalid_trades:
-        logger.warning(f"Filtered out {len(invalid_trades)} invalid Solana address(es): {', '.join(invalid_trades[:5])}{'...' if len(invalid_trades) > 5 else ''}")
-
-    if not valid_trades:
-        raise HTTPException(400, "No valid Solana addresses provided")
+    # Validate all tokens
+    bad = [t.token for t in req.trades if not is_valid_solana_address(t.token)]
+    if bad:
+        logger.error(f"Invalid Solana address(es): {', '.join(bad)}")
+        raise HTTPException(400, f"Invalid Solana address(es): {', '.join(bad)}")
 
     logger.info("Parsing ladder levels...")
     tp_r, tp_s = _parse_ladder(req.tp)
@@ -2493,8 +2491,8 @@ async def simulate_with_breakdown_trades(req: TradeBasedSimulationRequest) -> Li
     session = aiohttp.ClientSession()
     try:
         # Process each trade individually with its own start date
-        logger.info(f"Processing {len(valid_trades)} valid trades with individual start dates...")
-        for trade in valid_trades:
+        logger.info("Processing each trade with individual start dates...")
+        for trade in req.trades:
             mint = trade.token
             logger.info(f"=== Processing trade: {mint} ===")
             
@@ -2681,14 +2679,11 @@ async def simulate_trades(req: TradeBasedSimulationRequest) -> list[SimulationRe
         logger.error("BIRDEYE_API_KEY not set")
         raise HTTPException(500, "BIRDEYE_API_KEY not set")
 
-    # Filter out invalid tokens instead of rejecting the whole request
-    valid_trades = [t for t in req.trades if is_valid_solana_address(t.token)]
-    invalid_trades = [t.token for t in req.trades if not is_valid_solana_address(t.token)]
-    if invalid_trades:
-        logger.warning(f"Filtered out {len(invalid_trades)} invalid Solana address(es): {', '.join(invalid_trades[:5])}{'...' if len(invalid_trades) > 5 else ''}")
-
-    if not valid_trades:
-        raise HTTPException(400, "No valid Solana addresses provided")
+    # Validate all tokens
+    bad = [t.token for t in req.trades if not is_valid_solana_address(t.token)]
+    if bad:
+        logger.error(f"Invalid Solana address(es): {', '.join(bad)}")
+        raise HTTPException(400, f"Invalid Solana address(es): {', '.join(bad)}")
 
     logger.info("Parsing ladder levels...")
     tp_r, tp_s = _parse_ladder(req.tp)
@@ -2703,8 +2698,8 @@ async def simulate_trades(req: TradeBasedSimulationRequest) -> list[SimulationRe
     session = aiohttp.ClientSession()
     try:
         # Process each trade individually with its own start date
-        logger.info(f"Processing {len(valid_trades)} valid trades with individual start dates...")
-        for trade in valid_trades:
+        logger.info("Processing each trade with individual start dates...")
+        for trade in req.trades:
             mint = trade.token
             logger.info(f"=== Processing trade: {mint} ===")
             
@@ -3228,90 +3223,206 @@ async def get_filtered_trades(
     timeframe: Optional[str] = None
 ) -> List[Trade]:
     """
-    Get filtered trades based on various criteria.
-    Dates are expected as Unix timestamps (seconds since epoch).
+    Filter trades for NEW officialCalls schema.
+
+    DynamoDB schema:
+      ca, caller, call_timestamp, call_timestamp_dt,
+      entry_price, ath_price, atl_price,
+      ath_roi, atl_roi,
+      status, performance, price_points, key
+
+    Guarantees:
+      - No None values returned
+      - ROI filters use ath_roi (fallback computed)
+      - Date filters use call_timestamp / call_timestamp_dt
+      - Safe against malformed rows
     """
-    # Log all raw parameters for debugging
-    logger.info(f"GET /api/trades/filtered - Raw params: roiMin={roiMin}, roiMax={roiMax}, "
-                f"mcMin={mcMin}, mcMax={mcMax}, dateFrom={dateFrom}, dateTo={dateTo}, "
-                f"search='{search}', trader='{trader}', timeframe='{timeframe}'")
+
+    logger.info(
+        f"GET /api/trades/filtered | "
+        f"roiMin={roiMin}, roiMax={roiMax}, "
+        f"dateFrom={dateFrom}, dateTo={dateTo}, "
+        f"search={search}, trader={trader}"
+    )
 
     if trades_table is None:
-        logger.warning("DynamoDB not available, returning empty list")
+        logger.warning("DynamoDB not available")
         return []
+
+    # -------------------------
+    # Helpers
+    # -------------------------
+
+    def safe_float(v) -> Optional[float]:
+        try:
+            if v is None or v == "":
+                return None
+            return float(v)
+        except Exception:
+            return None
+
+    def safe_int(v) -> Optional[int]:
+        try:
+            if v is None or v == "":
+                return None
+            return int(float(v))
+        except Exception:
+            return None
+
+    def normalize_timestamp(item: dict) -> Optional[int]:
+        """
+        Resolve best timestamp in unix seconds.
+        Priority:
+          1) call_timestamp
+          2) call_timestamp_dt
+        """
+        ts = safe_int(item.get("call_timestamp"))
+        if ts:
+            return ts
+
+        dt_str = item.get("call_timestamp_dt")
+        if dt_str:
+            try:
+                parsed = datetime.fromisoformat(str(dt_str).replace("Z", "+00:00"))
+                return int(parsed.timestamp())
+            except Exception:
+                return None
+
+        return None
+
+    # -------------------------
+    # Scan DynamoDB
+    # -------------------------
 
     try:
-        # Scan with pagination to retrieve all trades
         response = trades_table.scan()
-        trades = response.get('Items', [])
+        items = response.get("Items", [])
 
-        # Handle pagination
-        while 'LastEvaluatedKey' in response:
+        while "LastEvaluatedKey" in response:
             response = trades_table.scan(
-                ExclusiveStartKey=response['LastEvaluatedKey']
+                ExclusiveStartKey=response["LastEvaluatedKey"]
             )
-            trades.extend(response.get('Items', []))
+            items.extend(response.get("Items", []))
 
-        # Apply filters
-        if roiMin is not None or roiMax is not None:
-            filtered_trades = []
-            for trade in trades:
-                roi = ((trade.get('current_mc', 0) - trade.get('initial_mc', 0)) / trade.get('initial_mc', 1)) * 100 if trade.get('initial_mc', 0) > 0 else 0
-                if (roiMin is None or roi >= roiMin) and (roiMax is None or roi <= roiMax):
-                    filtered_trades.append(trade)
-            trades = filtered_trades
-
-        if mcMin is not None:
-            trades = [t for t in trades if t.get('initial_mc', 0) >= mcMin]
-        if mcMax is not None:
-            trades = [t for t in trades if t.get('initial_mc', 0) <= mcMax]
-
-        # Apply date filtering using unix timestamp comparison
-        if dateFrom is not None or dateTo is not None:
-            logger.info(f"Applying date filter: from={dateFrom}, to={dateTo}")
-            filtered_trades = []
-            for t in trades:
-                timestamp = t.get('timestamp')
-                if timestamp:  # Skip trades with empty or missing timestamp
-                    try:
-                        # Convert timestamp to int (handles Decimal from DynamoDB or string)
-                        timestamp_int = int(timestamp)
-                        # Direct unix timestamp comparison
-                        if (dateFrom is None or timestamp_int >= dateFrom) and \
-                           (dateTo is None or timestamp_int <= dateTo):
-                            filtered_trades.append(t)
-                    except (ValueError, TypeError):
-                        # Skip trades with invalid timestamp
-                        logger.warning(f"Skipping trade with invalid timestamp type: {timestamp} (type: {type(timestamp)})")
-            logger.info(f"After date filter: {len(filtered_trades)} trades (from {len(trades)})")
-            trades = filtered_trades
-
-        if search:
-            search_lower = search.lower()
-            trades = [t for t in trades if search_lower in t.get('ca', '').lower()]
-        if trader:
-            trades = [t for t in trades if t.get('caller') == trader]
-
-        # Log final results
-        logger.info(f"Returning {len(trades)} filtered trades")
-        if not trades:
-            logger.warning(f"No trades matched filters - dateFrom={dateFrom}, dateTo={dateTo}, "
-                          f"roiMin={roiMin}, roiMax={roiMax}, mcMin={mcMin}, mcMax={mcMax}, "
-                          f"search={search}, trader={trader}")
-
-        return [dynamodb_item_to_trade(t) for t in trades]
     except ClientError as e:
-        error_code = e.response['Error']['Code']
-        if error_code == 'ResourceNotFoundException':
-            logger.error(f"Table not found: {e}")
-        elif error_code == 'AccessDeniedException':
-            logger.error(f"Access denied to DynamoDB table: {e}")
-        else:
-            logger.error(f"DynamoDB client error fetching filtered trades: {e}")
+        logger.error(f"DynamoDB error: {e}")
         return []
-    except Exception as e:
-        logger.error(f"Unexpected error fetching filtered trades: {e}")
+
+    if not items:
         return []
+
+    # -------------------------
+    # Filtering
+    # -------------------------
+
+    results: list[Trade] = []
+    search_lower = search.lower() if search else None
+
+    for idx, item in enumerate(items):
+        if not isinstance(item, dict):
+            continue
+
+        ca = item.get("ca") or item.get("key") or ""
+        caller = item.get("caller") or item.get("username") or ""
+
+        # ---- Date filter ----
+        ts = normalize_timestamp(item)
+        if dateFrom is not None or dateTo is not None:
+            if ts is None:
+                continue
+            if dateFrom is not None and ts < int(dateFrom):
+                continue
+            if dateTo is not None and ts > int(dateTo):
+                continue
+
+        # ---- ROI filter (ATH ROI, percent) ----
+        ath_roi = safe_float(item.get("ath_roi"))
+
+        if ath_roi is None:
+            entry = safe_float(item.get("entry_price"))
+            ath_price = safe_float(item.get("ath_price"))
+            if entry and ath_price and entry > 0:
+                ath_roi = ((ath_price - entry) / entry) * 100
+
+        if roiMin is not None or roiMax is not None:
+            if ath_roi is None:
+                continue
+            if roiMin is not None and ath_roi < roiMin:
+                continue
+            if roiMax is not None and ath_roi > roiMax:
+                continue
+
+        # ---- Search filter ----
+        if search_lower:
+            haystack = " ".join([
+                str(ca),
+                str(caller),
+                str(item.get("status", "")),
+                str(item.get("performance", "")),
+                str(item.get("price_points", ""))
+            ]).lower()
+            if search_lower not in haystack:
+                continue
+
+        # ---- Trader filter ----
+        if trader and caller != trader:
+            continue
+
+        # -------------------------
+        # Safe conversion to Trade
+        # -------------------------
+
+        try:
+            trade = dynamodb_item_to_trade(item)
+            if trade is None:
+                raise ValueError("Trade conversion returned None")
+            results.append(trade)
+
+        except Exception as e:
+            logger.exception(
+                f"Trade conversion failed at index {idx}, ca={ca}: {e}"
+            )
+            # fallback minimal Trade (never None)
+            try:
+                fallback = Trade(
+                    ca=str(ca),
+                    caller=str(caller),
+                    date_called=str(
+                        item.get("call_timestamp_dt", "")
+                        or ""
+                    )
+                )
+                results.append(fallback)
+            except Exception:
+                continue
+
+    # -------------------------
+    # Sort newest → oldest
+    # -------------------------
+
+    def sort_ts(trade: Trade):
+        try:
+            return int(
+                datetime.fromisoformat(
+                    trade.date_called.replace("Z", "+00:00")
+                ).timestamp()
+            )
+        except Exception:
+            return 0
+
+    results.sort(key=sort_ts, reverse=True)
+
+    logger.info(
+        f"/api/trades/filtered returning {len(results)} trades "
+        f"(from {len(items)} scanned)"
+    )
+
+    return results
+
+
+    
+
+
 
 @app.post("/api/traders")
 async def create_or_update_trader(trader: TraderStats) -> Dict[str, Any]:

@@ -542,3 +542,51 @@
 2025-12-21 17:22:13,153 - INFO - Returning 6095 filtered trades
 2025-12-21 17:40:54,888 - INFO - GET /api/traders/stats
 2025-12-21 17:40:55,039 - INFO - GET /api/traders/stats
+2025-12-22 02:33:29,771 - INFO - ============================================================
+2025-12-22 02:33:29,771 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-12-22 02:33:29,771 - INFO - ============================================================
+2025-12-22 02:33:29,783 - INFO - Using explicit AWS credentials from environment variables
+2025-12-22 02:33:30,547 - INFO - Loaded 1 Birdeye API keys
+2025-12-22 02:33:30,547 - INFO -   Key 1: 0c96b594d3...466c
+2025-12-22 02:33:30,547 - INFO - CoinGecko API Key: CG-8jAASUa...gjNr
+2025-12-22 02:33:30,547 - INFO - Development Mode: True
+2025-12-22 02:33:30,547 - INFO - Request Delay: 2 seconds
+2025-12-22 02:33:30,547 - INFO - ============================================================
+2025-12-22 02:33:31,227 - WARNING - SUPABASE_SERVICE_ROLE_KEY not set in environment
+2025-12-22 02:33:31,245 - INFO - Wallet authentication routes loaded successfully
+2025-12-22 02:33:32,962 - INFO - ============================================================
+2025-12-22 02:33:32,963 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-12-22 02:33:32,963 - INFO - ============================================================
+2025-12-22 02:33:32,964 - INFO - Using explicit AWS credentials from environment variables
+2025-12-22 02:33:33,413 - INFO - Loaded 1 Birdeye API keys
+2025-12-22 02:33:33,413 - INFO -   Key 1: 0c96b594d3...466c
+2025-12-22 02:33:33,413 - INFO - CoinGecko API Key: CG-8jAASUa...gjNr
+2025-12-22 02:33:33,413 - INFO - Development Mode: True
+2025-12-22 02:33:33,413 - INFO - Request Delay: 2 seconds
+2025-12-22 02:33:33,413 - INFO - ============================================================
+2025-12-22 02:33:33,835 - WARNING - SUPABASE_SERVICE_ROLE_KEY not set in environment
+2025-12-22 02:33:33,854 - INFO - Wallet authentication routes loaded successfully
+2025-12-22 02:33:33,967 - INFO - ============================================================
+2025-12-22 02:33:33,967 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-12-22 02:33:33,967 - INFO - ============================================================
+2025-12-22 02:33:33,969 - INFO - Using explicit AWS credentials from environment variables
+2025-12-22 02:33:34,496 - INFO - Loaded 1 Birdeye API keys
+2025-12-22 02:33:34,496 - INFO -   Key 1: 0c96b594d3...466c
+2025-12-22 02:33:34,497 - INFO - CoinGecko API Key: CG-8jAASUa...gjNr
+2025-12-22 02:33:34,497 - INFO - Development Mode: True
+2025-12-22 02:33:34,497 - INFO - Request Delay: 2 seconds
+2025-12-22 02:33:34,497 - INFO - ============================================================
+2025-12-22 02:33:34,543 - INFO - Wallet authentication routes loaded successfully
+2025-12-22 02:33:37,443 - INFO - GET /api/traders/stats
+2025-12-22 02:33:41,484 - INFO - GET /api/traders/stats
+2025-12-22 02:33:41,535 - INFO - GET /api/traders/CryptoTalkManZone/trades - limit=10, offset=None
+2025-12-22 02:33:42,787 - INFO - Returning 10 trades for CryptoTalkManZone
+2025-12-22 02:33:43,715 - INFO - DexScreener v1 bulk: found 3/10 tokens
+2025-12-22 02:33:43,715 - INFO - DexScreener v1 bulk: found 3/10 tokens
+2025-12-22 02:33:45,783 - INFO - GET /api/traders/stats
+2025-12-22 02:33:45,822 - INFO - GET /api/traders/stats
+2025-12-22 02:33:46,071 - WARNING - Birdeye bulk API error: 401
+2025-12-22 02:33:46,072 - INFO - Birdeye bulk: found 0/7 tokens
+2025-12-22 02:33:46,103 - WARNING - Birdeye bulk API error: 429
+2025-12-22 02:33:46,103 - INFO - Birdeye bulk: found 0/7 tokens
+2025-12-22 02:34:28,423 - INFO - GET /api/traders/stats

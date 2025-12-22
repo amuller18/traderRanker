@@ -590,3 +590,73 @@
 2025-12-22 02:33:46,103 - WARNING - Birdeye bulk API error: 429
 2025-12-22 02:33:46,103 - INFO - Birdeye bulk: found 0/7 tokens
 2025-12-22 02:34:28,423 - INFO - GET /api/traders/stats
+2025-12-22 14:27:37,449 - INFO - ============================================================
+2025-12-22 14:27:37,449 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-12-22 14:27:37,449 - INFO - ============================================================
+2025-12-22 14:27:37,450 - INFO - Using explicit AWS credentials from environment variables
+2025-12-22 14:27:37,896 - INFO - Loaded 1 Birdeye API keys
+2025-12-22 14:27:37,896 - INFO -   Key 1: 0c96b594d3...466c
+2025-12-22 14:27:37,896 - INFO - CoinGecko API Key: CG-8jAASUa...gjNr
+2025-12-22 14:27:37,896 - INFO - Development Mode: True
+2025-12-22 14:27:37,896 - INFO - Request Delay: 2 seconds
+2025-12-22 14:27:37,896 - INFO - ============================================================
+2025-12-22 14:27:38,339 - WARNING - SUPABASE_SERVICE_ROLE_KEY not set in environment
+2025-12-22 14:27:38,367 - INFO - Wallet authentication routes loaded successfully
+2025-12-22 14:27:38,482 - INFO - ============================================================
+2025-12-22 14:27:38,482 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-12-22 14:27:38,482 - INFO - ============================================================
+2025-12-22 14:27:38,482 - INFO - Using explicit AWS credentials from environment variables
+2025-12-22 14:27:38,675 - INFO - Loaded 1 Birdeye API keys
+2025-12-22 14:27:38,675 - INFO -   Key 1: 0c96b594d3...466c
+2025-12-22 14:27:38,675 - INFO - CoinGecko API Key: CG-8jAASUa...gjNr
+2025-12-22 14:27:38,675 - INFO - Development Mode: True
+2025-12-22 14:27:38,675 - INFO - Request Delay: 2 seconds
+2025-12-22 14:27:38,675 - INFO - ============================================================
+2025-12-22 14:27:38,715 - INFO - Wallet authentication routes loaded successfully
+2025-12-22 14:27:42,717 - INFO - ============================================================
+2025-12-22 14:27:42,717 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-12-22 14:27:42,717 - INFO - ============================================================
+2025-12-22 14:27:42,717 - INFO - Using explicit AWS credentials from environment variables
+2025-12-22 14:27:43,165 - INFO - Loaded 1 Birdeye API keys
+2025-12-22 14:27:43,165 - INFO -   Key 1: 0c96b594d3...466c
+2025-12-22 14:27:43,165 - INFO - CoinGecko API Key: CG-8jAASUa...gjNr
+2025-12-22 14:27:43,165 - INFO - Development Mode: True
+2025-12-22 14:27:43,165 - INFO - Request Delay: 2 seconds
+2025-12-22 14:27:43,165 - INFO - ============================================================
+2025-12-22 14:27:43,649 - WARNING - SUPABASE_SERVICE_ROLE_KEY not set in environment
+2025-12-22 14:27:43,666 - INFO - Wallet authentication routes loaded successfully
+2025-12-22 14:27:43,797 - INFO - ============================================================
+2025-12-22 14:27:43,797 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-12-22 14:27:43,797 - INFO - ============================================================
+2025-12-22 14:27:43,800 - INFO - Using explicit AWS credentials from environment variables
+2025-12-22 14:27:43,981 - INFO - Loaded 1 Birdeye API keys
+2025-12-22 14:27:43,981 - INFO -   Key 1: 0c96b594d3...466c
+2025-12-22 14:27:43,981 - INFO - CoinGecko API Key: CG-8jAASUa...gjNr
+2025-12-22 14:27:43,981 - INFO - Development Mode: True
+2025-12-22 14:27:43,981 - INFO - Request Delay: 2 seconds
+2025-12-22 14:27:43,981 - INFO - ============================================================
+2025-12-22 14:27:44,020 - INFO - Wallet authentication routes loaded successfully
+2025-12-22 14:27:44,153 - INFO - GET /api/trades
+2025-12-22 14:27:49,277 - INFO - ============================================================
+2025-12-22 14:27:49,277 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-12-22 14:27:49,277 - INFO - ============================================================
+2025-12-22 14:27:49,277 - INFO - Using explicit AWS credentials from environment variables
+2025-12-22 14:27:49,704 - INFO - Loaded 1 Birdeye API keys
+2025-12-22 14:27:49,705 - INFO -   Key 1: 0c96b594d3...466c
+2025-12-22 14:27:49,705 - INFO - CoinGecko API Key: CG-8jAASUa...gjNr
+2025-12-22 14:27:49,705 - INFO - Development Mode: True
+2025-12-22 14:27:49,705 - INFO - Request Delay: 2 seconds
+2025-12-22 14:27:49,705 - INFO - ============================================================
+2025-12-22 14:27:50,112 - WARNING - SUPABASE_SERVICE_ROLE_KEY not set in environment
+2025-12-22 14:27:50,128 - INFO - Wallet authentication routes loaded successfully
+2025-12-22 14:27:50,246 - INFO - ============================================================
+2025-12-22 14:27:50,246 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-12-22 14:27:50,246 - INFO - ============================================================
+2025-12-22 14:27:50,246 - INFO - Using explicit AWS credentials from environment variables
+2025-12-22 14:27:50,423 - INFO - Loaded 1 Birdeye API keys
+2025-12-22 14:27:50,423 - INFO -   Key 1: 0c96b594d3...466c
+2025-12-22 14:27:50,423 - INFO - CoinGecko API Key: CG-8jAASUa...gjNr
+2025-12-22 14:27:50,423 - INFO - Development Mode: True
+2025-12-22 14:27:50,423 - INFO - Request Delay: 2 seconds
+2025-12-22 14:27:50,423 - INFO - ============================================================
+2025-12-22 14:27:50,467 - INFO - Wallet authentication routes loaded successfully

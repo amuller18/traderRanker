@@ -150,6 +150,7 @@ interface SummaryStats {
   totalTrades: number;         // Total trades processed
   validTrades: number;         // Number of valid trades
   invalidTrades: number;       // Number of invalid trades (excluded from metrics)
+  durationMs: number;          // Time it took to complete the backtest in milliseconds
 }
 interface BacktestModernPageProps {
   initialTrades: Trade[];
@@ -250,6 +251,8 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
   const [tokenBreakdown, setTokenBreakdown] = useState<TokenBreakdown[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [activeTab, setActiveTab] = useState("settings"); // Track active tab
+  const [backtestDuration, setBacktestDuration] = useState<number | null>(null); // Duration in ms
+  const [showInvalidTrades, setShowInvalidTrades] = useState(false); // Toggle for showing invalid trades
   const [apiStatus, setApiStatus] = useState<
     "checking" | "connected" | "disconnected"
   >("checking");
@@ -383,6 +386,10 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
   const runBacktest = async () => {
     if (apiStatus !== "connected" || filteredTrades.length === 0) return;
     setIsRunning(true);
+    setBacktestDuration(null); // Reset duration
+
+    // Start timing
+    const startTime = performance.now();
 
     // Sanitize: Filter out trades with invalid Solana addresses
     const validTrades = filteredTrades.filter((t) => isValidSolanaAddress(t.ca));
@@ -397,7 +404,23 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
       return;
     }
 
-    const uniqueTokens = Array.from(new Set(validTrades.map((t) => t.ca)));
+    // ------------------------------------------------------------------
+    // REPLACEMENT LOGIC: Overfetch to collect N valid trades
+    // If user requests N trades, send N + buffer to account for potential failures
+    // This ensures we get enough valid trades even if some fail price data fetch
+    // ------------------------------------------------------------------
+    const targetValidTrades = maxBacktests > 0 ? maxBacktests : validTrades.length;
+    const overfetchBuffer = Math.ceil(targetValidTrades * 0.5); // 50% buffer
+    const tradesToSend = Math.min(
+      targetValidTrades + overfetchBuffer,
+      validTrades.length
+    );
+    const tradesToProcess = validTrades.slice(0, tradesToSend);
+
+    console.log(`Target valid trades: ${targetValidTrades}, Overfetch buffer: ${overfetchBuffer}`);
+    console.log(`Sending ${tradesToProcess.length} trades to API (may return fewer valid ones)`);
+
+    const uniqueTokens = Array.from(new Set(tradesToProcess.map((t) => t.ca)));
     console.log(`Unique tokens to simulate: ${uniqueTokens.length}`);
     console.log(`Tokens: ${uniqueTokens.slice(0, 5).join(', ')}${uniqueTokens.length > 5 ? '...' : ''}`);
 
@@ -408,7 +431,7 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
 
     // Create trade-based payload with individual dates (using sanitized trades)
     const tradesPayload = {
-      trades: validTrades.map(trade => ({
+      trades: tradesToProcess.map(trade => ({
         token: trade.ca,
         date_called: trade.date_called
       })),
@@ -461,7 +484,33 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
         }
       });
       
-      setTokenBreakdown(breakdowns);
+      // ------------------------------------------------------------------
+      // REPLACEMENT LOGIC: Keep only target number of valid trades
+      // If we overfetched, only use the first N valid trades for metrics
+      // ------------------------------------------------------------------
+      const validBreakdowns: TokenBreakdown[] = [];
+      const invalidBreakdowns: TokenBreakdown[] = [];
+
+      for (const breakdown of breakdowns) {
+        const isValid = breakdown.is_valid !== false && !breakdown.error;
+        if (isValid) {
+          // Only add up to targetValidTrades valid trades
+          if (validBreakdowns.length < targetValidTrades) {
+            validBreakdowns.push(breakdown);
+          }
+          // Skip extra valid trades beyond target (silently)
+        } else {
+          invalidBreakdowns.push(breakdown);
+        }
+      }
+
+      // Combine for display: valid trades first, then invalid (if toggle is on)
+      const displayBreakdowns = [...validBreakdowns, ...invalidBreakdowns];
+      setTokenBreakdown(displayBreakdowns);
+
+      console.log(`\n=== REPLACEMENT LOGIC ===`);
+      console.log(`Target: ${targetValidTrades} valid trades`);
+      console.log(`Got: ${validBreakdowns.length} valid, ${invalidBreakdowns.length} invalid`);
 
       // ------------------------------------------------------------------
       // Calculate summary stats from breakdown data
@@ -472,37 +521,29 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
       let unrealizedProfit = 0;
       let winningTrades = 0;
       let validTradeCount = 0;
-      let invalidTradeCount = 0;
+      let invalidTradeCount = invalidBreakdowns.length;
       let sumTradeROI = 0;
       let totalCapitalDeployed = 0;
       let totalFinalValue = 0;
 
-      breakdowns.forEach((breakdown) => {
-        // Check if trade is valid (has is_valid field or no error)
-        const isValid = breakdown.is_valid !== false && !breakdown.error;
+      validBreakdowns.forEach((breakdown) => {
+        validTradeCount++;
+        const tokenProfit = breakdown.total_pnl || 0;
+        totalProfit += tokenProfit;
+        realizedProfit += breakdown.realized_pnl || 0;
+        unrealizedProfit += breakdown.unrealized_pnl || 0;
 
-        if (isValid) {
-          validTradeCount++;
-          const tokenProfit = breakdown.total_pnl || 0;
-          totalProfit += tokenProfit;
-          realizedProfit += breakdown.realized_pnl || 0;
-          unrealizedProfit += breakdown.unrealized_pnl || 0;
+        // Get trade capital (position size for this trade)
+        const tradeCapital = breakdown.trade_capital || positionSizePerTrade;
+        totalCapitalDeployed += tradeCapital;
+        totalFinalValue += breakdown.final_value || (tradeCapital + tokenProfit);
 
-          // Get trade capital (position size for this trade)
-          const tradeCapital = breakdown.trade_capital || positionSizePerTrade;
-          totalCapitalDeployed += tradeCapital;
-          totalFinalValue += breakdown.final_value || (tradeCapital + tokenProfit);
+        // Trade ROI for averaging
+        const tradeROI = breakdown.trade_roi || (tradeCapital > 0 ? (tokenProfit / tradeCapital) * 100 : 0);
+        sumTradeROI += tradeROI;
 
-          // Trade ROI for averaging
-          const tradeROI = breakdown.trade_roi || (tradeCapital > 0 ? (tokenProfit / tradeCapital) * 100 : 0);
-          sumTradeROI += tradeROI;
-
-          if (tokenProfit > 0) winningTrades++;
-          console.log(`Token ${breakdown.token}: VALID - Trade ROI = ${tradeROI.toFixed(2)}%, PnL = $${tokenProfit.toFixed(2)}`);
-        } else {
-          invalidTradeCount++;
-          console.log(`Token ${breakdown.token}: INVALID - Excluded from metrics. Error: ${breakdown.error || breakdown.validation_errors?.join(', ')}`);
-        }
+        if (tokenProfit > 0) winningTrades++;
+        console.log(`Token ${breakdown.token}: VALID - Trade ROI = ${tradeROI.toFixed(2)}%, PnL = $${tokenProfit.toFixed(2)}`);
       });
 
       console.log(`\n=== SUMMARY ===`);
@@ -520,88 +561,94 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
       /* ─ compute charts & stats ─*/
       const rows: any[] = [];
 
-      // Process each simulation result and create individual token charts
-      console.log(`Processing ${sims.length} simulation results`);
+      // ------------------------------------------------------------------
+      // FILTER OUT INVALID SIMULATIONS FROM CHARTS
+      // Only show valid trades on the individual positions chart
+      // ------------------------------------------------------------------
+      const validSims = sims.filter(sim => sim.ledger?.length && !sim.error);
+      console.log(`Processing ${validSims.length} VALID simulation results (${sims.length - validSims.length} filtered out)`);
+
       const allTimestamps = new Set<number>();
-      
-      // Create a mapping of unique identifiers for each trade
+
+      // Create a mapping of unique identifiers for each VALID trade
       const tradeIdentifiers: string[] = [];
-      
-      sims.forEach((sim, simIndex) => {
-        console.log(`Processing simulation ${simIndex + 1}/${sims.length}: ${sim.token}`);
-        if (!sim.ledger?.length) {
-          console.log(`No ledger data for ${sim.token}`);
-          return;
-        }
-        
-        console.log(`Token ${sim.token}: ${sim.ledger.length} ledger points`);
-        
+      const tradeIdToSimIndex: Map<string, number> = new Map();
+
+      validSims.forEach((sim, validIndex) => {
+        console.log(`Processing valid simulation ${validIndex + 1}/${validSims.length}: ${sim.token}`);
+        console.log(`Token ${sim.token}: ${sim.ledger!.length} ledger points`);
+
         // Create unique identifier for this trade
-        const tradeId = `${sim.token}_${simIndex}`;
+        const tradeId = `${sim.token}_${validIndex}`;
         tradeIdentifiers.push(tradeId);
-        
-        // Collect all timestamps from all trades
-        sim.ledger.forEach((pt) => {
+        tradeIdToSimIndex.set(tradeId, validIndex);
+
+        // Collect all timestamps from all valid trades
+        sim.ledger!.forEach((pt) => {
           allTimestamps.add(pt.ts);
         });
       });
 
       // Sort timestamps and create chart rows
       const sortedTimestamps = Array.from(allTimestamps).sort((a, b) => a - b);
-      
+
       sortedTimestamps.forEach((ts) => {
         const row: any = { ts, date: formatDate(ts) };
-        
-        // Add each token's value at this timestamp using unique identifiers
-        sims.forEach((sim, simIndex) => {
+
+        // Add each VALID token's value at this timestamp
+        validSims.forEach((sim, validIndex) => {
           if (sim.ledger) {
             // Find the closest ledger point to this timestamp
             const closestPoint = sim.ledger.reduce((closest, current) => {
               return Math.abs(current.ts - ts) < Math.abs(closest.ts - ts) ? current : closest;
             });
-            
+
             // Only add if the point is within a reasonable time range (e.g., 1 hour)
             if (Math.abs(closestPoint.ts - ts) <= 3600) {
-              const tradeId = tradeIdentifiers[simIndex];
+              const tradeId = tradeIdentifiers[validIndex];
               row[tradeId] = closestPoint.value + closestPoint.realized;
             }
           }
         });
-        
+
         rows.push(row);
       });
 
-      // Calculate cumulative portfolio value (including cash not in positions)
+      // ------------------------------------------------------------------
+      // CUMULATIVE PORTFOLIO CALCULATION (TOTAL EQUITY)
+      // final_equity = cash_balance + sum(current_value_of_all_open_positions)
+      // Use validTradeCount (not filteredTrades.length) for proper calculation
+      // ------------------------------------------------------------------
       const cumulative: any[] = [];
-      let runningPortfolio = initialCapital;
-      
+
       rows.forEach((row) => {
         // Get all trade keys (excluding ts and date)
         const tradeKeys = Object.keys(row).filter(
           (k) => k !== 'ts' && k !== 'date' && k.includes('_')
         );
-        
+
         // Calculate the total value of all positions at this timestamp
-        let totalValue = 0;
+        let totalPositionValue = 0;
         tradeKeys.forEach(tradeKey => {
-          totalValue += row[tradeKey] || 0;
+          totalPositionValue += row[tradeKey] || 0;
         });
-        
-        // Calculate cash not in positions (initial capital minus what's invested)
-        const cashNotInPositions = initialCapital - (positionSizing.type === "percentage" ? 
-          (initialCapital * positionSizing.value / 100) * filteredTrades.length : 
-          positionSizing.value * filteredTrades.length);
-        
-        // The running portfolio should be the current total value of all positions
-        // plus any cash that hasn't been invested yet
-        runningPortfolio = totalValue + cashNotInPositions;
-        cumulative.push({ ...row, cumulative: runningPortfolio });
+
+        // Calculate cash not deployed (initial capital minus capital used for valid trades)
+        // Use validTradeCount which tracks actual valid trades from breakdown
+        const capitalUsed = positionSizing.type === "percentage"
+          ? (initialCapital * positionSizing.value / 100) * validTradeCount
+          : positionSizing.value * validTradeCount;
+        const cashNotDeployed = Math.max(0, initialCapital - capitalUsed);
+
+        // Total equity = position values + uninvested cash
+        const totalEquity = totalPositionValue + cashNotDeployed;
+        cumulative.push({ ...row, cumulative: totalEquity });
       });
 
       console.log(`Chart data rows: ${rows.length}`);
-      console.log(`Sample row keys: ${Object.keys(rows[0] || {}).join(', ')}`);
-      console.log(`Trade keys in chart data: ${Object.keys(rows[0] || {}).filter(k => k !== 'ts' && k !== 'date' && k.includes('_')).join(', ')}`);
-      
+      console.log(`Valid simulations on chart: ${validSims.length}`);
+      console.log(`Trade keys in chart data: ${tradeIdentifiers.join(', ')}`);
+
       setChartData(rows);
       setCumChartData(cumulative);
 
@@ -652,6 +699,15 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
         console.warn(`Equity Invariant Warning: start+pnl=${initialCapital + totalProfit}, final=${finalPortfolioValue}`);
       }
 
+      // ------------------------------------------------------------------
+      // TIMING: Calculate how long the backtest took
+      // ------------------------------------------------------------------
+      const endTime = performance.now();
+      const durationMs = endTime - startTime;
+      setBacktestDuration(durationMs);
+
+      console.log(`\n=== BACKTEST COMPLETE ===`);
+      console.log(`Duration: ${(durationMs / 1000).toFixed(2)}s`);
       console.log(`Account ROI: ${accountROI.toFixed(2)}%`);
       console.log(`Average Trade ROI: ${avgTradeROI.toFixed(2)}%`);
       console.log(`Total PnL: $${totalProfit.toFixed(2)} (Realized: $${realizedProfit.toFixed(2)}, Unrealized: $${unrealizedProfit.toFixed(2)})`);
@@ -671,6 +727,7 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
         totalTrades: filteredTrades.length,
         validTrades: validTradeCount,
         invalidTrades: invalidTradeCount,
+        durationMs,
       });
 
       // Auto-switch to results tab after backtest completes
@@ -737,9 +794,16 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
           • Timeframe: {timeframe === "auto" ? "Auto" : TIMEFRAME_OPTIONS.find(opt => opt.value === timeframe)?.label || timeframe}
         </span>
         {summary && (
-          <span className="text-muted-foreground">
-            • Account ROI: {summary.accountROI.toFixed(1)}%
-          </span>
+          <>
+            <span className="text-muted-foreground">
+              • Account ROI: {summary.accountROI.toFixed(1)}%
+            </span>
+            <span className="text-muted-foreground">
+              • {summary.durationMs < 1000
+                  ? `${summary.durationMs.toFixed(0)}ms`
+                  : `${(summary.durationMs / 1000).toFixed(1)}s`}
+            </span>
+          </>
         )}
         {summary && summary.invalidTrades > 0 && (
           <span className="text-yellow-500">
@@ -1390,6 +1454,37 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                     </p>
                   </div>
                 </div>
+
+                {/* Timing and Controls Row */}
+                <div className="flex items-center justify-between pt-4 mt-4 border-t">
+                  <div className="flex items-center gap-4">
+                    <div className="text-sm">
+                      <span className="text-muted-foreground">Backtest completed in </span>
+                      <span className="font-semibold">
+                        {summary.durationMs < 1000
+                          ? `${summary.durationMs.toFixed(0)}ms`
+                          : summary.durationMs < 60000
+                          ? `${(summary.durationMs / 1000).toFixed(2)}s`
+                          : `${Math.floor(summary.durationMs / 60000)}m ${((summary.durationMs % 60000) / 1000).toFixed(0)}s`
+                        }
+                      </span>
+                    </div>
+                  </div>
+                  {summary.invalidTrades > 0 && (
+                    <div className="flex items-center gap-2">
+                      <label htmlFor="show-invalid" className="text-sm text-muted-foreground cursor-pointer">
+                        Show failed trades ({summary.invalidTrades})
+                      </label>
+                      <input
+                        type="checkbox"
+                        id="show-invalid"
+                        checked={showInvalidTrades}
+                        onChange={(e) => setShowInvalidTrades(e.target.checked)}
+                        className="w-4 h-4 cursor-pointer"
+                      />
+                    </div>
+                  )}
+                </div>
               </CardContent>
             </Card>
           )}
@@ -1400,9 +1495,9 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                 <CardTitle>Trade-by-Trade Breakdown</CardTitle>
                 <CardDescription>
                   Individual trade performance. Trade ROI = PnL / Capital per trade.
-                  {tokenBreakdown.filter(t => t.is_valid === false || t.error).length > 0 && (
-                    <span className="text-yellow-500 ml-2">
-                      ({tokenBreakdown.filter(t => t.is_valid === false || t.error).length} invalid trades shown in yellow)
+                  {!showInvalidTrades && tokenBreakdown.filter(t => t.is_valid === false || t.error).length > 0 && (
+                    <span className="text-muted-foreground ml-2">
+                      ({tokenBreakdown.filter(t => t.is_valid === false || t.error).length} failed trades hidden)
                     </span>
                   )}
                 </CardDescription>
@@ -1422,70 +1517,78 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                         <th className="text-right py-2">Unrealized</th>
                         <th className="text-right py-2">Position Value</th>
                         <th className="text-right py-2">Trade ROI</th>
-                        <th className="text-right py-2">Status</th>
+                        {showInvalidTrades && <th className="text-right py-2">Status</th>}
                       </tr>
                     </thead>
                     <tbody>
-                      {tokenBreakdown.map((token, index) => {
-                        const isInvalid = token.is_valid === false || !!token.error;
-                        const tradeROI = token.trade_roi || token.roi_to_date || 0;
+                      {tokenBreakdown
+                        .filter(token => {
+                          // Filter based on toggle: if showInvalidTrades is false, hide invalid trades
+                          const isInvalid = token.is_valid === false || !!token.error;
+                          return showInvalidTrades || !isInvalid;
+                        })
+                        .map((token, index) => {
+                          const isInvalid = token.is_valid === false || !!token.error;
+                          const tradeROI = token.trade_roi || token.roi_to_date || 0;
 
-                        return (
-                          <tr
-                            key={token.trade_id || `${token.token}-${index}`}
-                            className={`border-b hover:bg-muted/50 ${isInvalid ? 'bg-yellow-50 dark:bg-yellow-900/20 opacity-60' : ''}`}
-                          >
-                            <td className="py-2">
-                              <a
-                                href={`/token-analysis?token=${encodeURIComponent(token.token)}`}
-                                className={`font-mono text-xs ${isInvalid ? 'text-yellow-600' : 'text-blue-600'} hover:underline cursor-pointer`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                              >
-                                {token.token.slice(0, 8)}...
-                              </a>
-                            </td>
-                            <td className="text-right py-2 text-xs">
-                              {token.time_called ? new Date(token.time_called).toLocaleString("en-US", {
-                                month: "short",
-                                day: "numeric",
-                                hour: "2-digit",
-                                minute: "2-digit",
-                                hour12: false
-                              }) : 'N/A'}
-                            </td>
-                            <td className="text-right py-2">{isInvalid ? 'N/A' : `$${token.entry_price.toFixed(6)}`}</td>
-                            <td className="text-right py-2">{isInvalid ? 'N/A' : `$${token.final_price.toFixed(6)}`}</td>
-                            <td className="text-right py-2 text-muted-foreground text-xs">
-                              {isInvalid ? 'N/A' : `$${token.ath_price.toFixed(6)}`}
-                            </td>
-                            <td className={`text-right py-2 font-semibold ${isInvalid ? 'text-muted-foreground' : token.total_pnl > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                              {isInvalid ? 'N/A' : `$${token.total_pnl.toFixed(2)}`}
-                            </td>
-                            <td className={`text-right py-2 ${isInvalid ? 'text-muted-foreground' : token.realized_pnl > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                              {isInvalid ? 'N/A' : `$${token.realized_pnl.toFixed(2)}`}
-                            </td>
-                            <td className={`text-right py-2 ${isInvalid ? 'text-muted-foreground' : token.unrealized_pnl > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                              {isInvalid ? 'N/A' : `$${token.unrealized_pnl.toFixed(2)}`}
-                            </td>
-                            <td className="text-right py-2 font-mono text-xs">
-                              {isInvalid ? 'N/A' : `$${(token.final_value || (token.coins_left * token.final_price)).toFixed(2)}`}
-                            </td>
-                            <td className={`text-right py-2 font-semibold ${isInvalid ? 'text-muted-foreground' : tradeROI > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                              {isInvalid ? 'N/A' : `${tradeROI > 0 ? '+' : ''}${tradeROI.toFixed(2)}%`}
-                            </td>
-                            <td className="text-right py-2">
-                              {isInvalid ? (
-                                <span className="text-xs text-yellow-600" title={token.error || token.validation_errors?.join(', ')}>
-                                  ⚠️ Invalid
-                                </span>
-                              ) : (
-                                <span className="text-xs text-green-600">✓ Valid</span>
+                          return (
+                            <tr
+                              key={token.trade_id || `${token.token}-${index}`}
+                              className={`border-b hover:bg-muted/50 ${isInvalid ? 'bg-yellow-50 dark:bg-yellow-900/20 opacity-60' : ''}`}
+                            >
+                              <td className="py-2">
+                                <a
+                                  href={`/token-analysis?token=${encodeURIComponent(token.token)}`}
+                                  className={`font-mono text-xs ${isInvalid ? 'text-yellow-600' : 'text-blue-600'} hover:underline cursor-pointer`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
+                                  {token.token.slice(0, 8)}...
+                                </a>
+                              </td>
+                              <td className="text-right py-2 text-xs">
+                                {token.time_called ? new Date(token.time_called).toLocaleString("en-US", {
+                                  month: "short",
+                                  day: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                  hour12: false
+                                }) : 'N/A'}
+                              </td>
+                              <td className="text-right py-2">{isInvalid ? 'N/A' : `$${token.entry_price.toFixed(6)}`}</td>
+                              <td className="text-right py-2">{isInvalid ? 'N/A' : `$${token.final_price.toFixed(6)}`}</td>
+                              <td className="text-right py-2 text-muted-foreground text-xs">
+                                {isInvalid ? 'N/A' : `$${token.ath_price.toFixed(6)}`}
+                              </td>
+                              <td className={`text-right py-2 font-semibold ${isInvalid ? 'text-muted-foreground' : token.total_pnl > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                {isInvalid ? 'N/A' : `$${token.total_pnl.toFixed(2)}`}
+                              </td>
+                              <td className={`text-right py-2 ${isInvalid ? 'text-muted-foreground' : token.realized_pnl > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                {isInvalid ? 'N/A' : `$${token.realized_pnl.toFixed(2)}`}
+                              </td>
+                              <td className={`text-right py-2 ${isInvalid ? 'text-muted-foreground' : token.unrealized_pnl > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                {isInvalid ? 'N/A' : `$${token.unrealized_pnl.toFixed(2)}`}
+                              </td>
+                              <td className="text-right py-2 font-mono text-xs">
+                                {isInvalid ? 'N/A' : `$${(token.final_value || (token.coins_left * token.final_price)).toFixed(2)}`}
+                              </td>
+                              <td className={`text-right py-2 font-semibold ${isInvalid ? 'text-muted-foreground' : tradeROI > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                {isInvalid ? 'N/A' : `${tradeROI > 0 ? '+' : ''}${tradeROI.toFixed(2)}%`}
+                              </td>
+                              {showInvalidTrades && (
+                                <td className="text-right py-2">
+                                  {isInvalid ? (
+                                    <span className="text-xs text-yellow-600" title={token.error || token.validation_errors?.join(', ')}>
+                                      ⚠️ {token.error?.slice(0, 20) || 'Invalid'}...
+                                    </span>
+                                  ) : (
+                                    <span className="text-xs text-green-600">✓ Valid</span>
+                                  )}
+                                </td>
                               )}
-                            </td>
-                          </tr>
-                        );
-                      })}
+                            </tr>
+                          );
+                        })}
                     </tbody>
                   </table>
                 </div>

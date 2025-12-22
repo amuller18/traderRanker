@@ -31,11 +31,13 @@ next-env.d.ts
 .env.production
 
 # Python
+*.log
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
+logs/log.log
 logs/log.log
 logs/log.log
 logs/log.log

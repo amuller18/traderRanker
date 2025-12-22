@@ -577,3 +577,16 @@
 2025-12-22 02:33:34,497 - INFO - Request Delay: 2 seconds
 2025-12-22 02:33:34,497 - INFO - ============================================================
 2025-12-22 02:33:34,543 - INFO - Wallet authentication routes loaded successfully
+2025-12-22 02:33:37,443 - INFO - GET /api/traders/stats
+2025-12-22 02:33:41,484 - INFO - GET /api/traders/stats
+2025-12-22 02:33:41,535 - INFO - GET /api/traders/CryptoTalkManZone/trades - limit=10, offset=None
+2025-12-22 02:33:42,787 - INFO - Returning 10 trades for CryptoTalkManZone
+2025-12-22 02:33:43,715 - INFO - DexScreener v1 bulk: found 3/10 tokens
+2025-12-22 02:33:43,715 - INFO - DexScreener v1 bulk: found 3/10 tokens
+2025-12-22 02:33:45,783 - INFO - GET /api/traders/stats
+2025-12-22 02:33:45,822 - INFO - GET /api/traders/stats
+2025-12-22 02:33:46,071 - WARNING - Birdeye bulk API error: 401
+2025-12-22 02:33:46,072 - INFO - Birdeye bulk: found 0/7 tokens
+2025-12-22 02:33:46,103 - WARNING - Birdeye bulk API error: 429
+2025-12-22 02:33:46,103 - INFO - Birdeye bulk: found 0/7 tokens
+2025-12-22 02:34:28,423 - INFO - GET /api/traders/stats

@@ -102,7 +102,9 @@ export default async function RankingsPage(props: RankingsPageProps) {
 
   console.log(`✅ Fetched ${paginatedTrades.length} trades for page ${page}`)
 
-  if (paginatedTrades.length === 0 && page === 1) {
+  // Only throw notFound if trader stats don't exist AND no trades found
+  // If trader has stats (total_calls > 0) but API returns no trades, show empty state instead
+  if (paginatedTrades.length === 0 && page === 1 && trader.total_calls === 0) {
     console.error(`No trades found for trader ${traderId}`)
     notFound()
   }

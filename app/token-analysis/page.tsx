@@ -34,6 +34,7 @@ import { HolderDistribution } from "@/app/components/holder-distribution"
 import { TradesTable } from "@/app/trades/components/trades-table"
 import { DataSourceStatus } from "@/app/components/data-source-status"
 import { Sidebar, SidebarContent, SidebarHeader, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
+import { TokenTradeHistory } from "@/app/token-analysis/components/token-trade-history"
 import { Input } from "@/components/ui/input"
 import { JupiterSwap } from "@/app/components/jupiter-swap"
 import Big from 'big.js'
@@ -228,25 +229,22 @@ export default async function TokenAnalysisPage(props: TokenAnalysisPageProps) {
   const trades = await fetchAllTrades()
   const filteredTrades = trades.filter(trade => trade.ca.toLowerCase() === tokenAddress.toLowerCase())
 
-  // Calculate ROI stats using the market cap from tokenInfo
-  const currentMc = Number(tokenInfo.marketCap) || 0
-  const calculateRoi = (initialMc: number) => {
-    if (!initialMc || !currentMc) return 0
-    if (currentMc < 10000) {
-      const rawRoi = ((currentMc - initialMc) / initialMc) * 100
-      return Math.min(rawRoi, 1000)
-    }
-    return ((currentMc - initialMc) / initialMc) * 100
+  // Calculate ROI stats using price from tokenInfo
+  const currentTokenPrice = Number(tokenInfo.priceUsd) || 0
+  const calculateRoi = (entryPrice: number) => {
+    if (!entryPrice || !currentTokenPrice) return 0
+    if (entryPrice === 0) return 0
+    return ((currentTokenPrice - entryPrice) / entryPrice) * 100
   }
 
   const highestRoi = filteredTrades.length > 0
-    ? Math.max(...filteredTrades.map(t => calculateRoi(Number(t.initial_mc))))
+    ? Math.max(...filteredTrades.map(t => calculateRoi(Number(t.entry_price))))
     : 0
   const lowestRoi = filteredTrades.length > 0
-    ? Math.min(...filteredTrades.map(t => calculateRoi(Number(t.initial_mc))))
+    ? Math.min(...filteredTrades.map(t => calculateRoi(Number(t.entry_price))))
     : 0
   const averageRoi = filteredTrades.length > 0
-    ? filteredTrades.reduce((sum, t) => sum + calculateRoi(Number(t.initial_mc)), 0) / filteredTrades.length
+    ? filteredTrades.reduce((sum, t) => sum + calculateRoi(Number(t.entry_price)), 0) / filteredTrades.length
     : 0
   const totalTraders = filteredTrades.length > 0 ? new Set(filteredTrades.map((t) => t.caller)).size : 0
   const firstTradeDate = filteredTrades.length > 0 ? new Date(Math.min(...filteredTrades.map((t) => new Date(t.date_called).getTime()))) : new Date()
@@ -639,57 +637,11 @@ export default async function TokenAnalysisPage(props: TokenAnalysisPageProps) {
                     </Card>
                   </div>
 
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Trade History</CardTitle>
-                      <CardDescription>All trades for {tokenInfo.baseToken?.symbol || "this token"}</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="rounded-md border">
-                        <table className="w-full">
-                          <thead>
-                            <tr className="border-b bg-muted/50">
-                              <th className="p-3 text-left font-medium">Date</th>
-                              <th className="p-3 text-left font-medium">Trader</th>
-                              <th className="p-3 text-left font-medium">Initial MC</th>
-                              <th className="p-3 text-left font-medium">Current MC</th>
-                              <th className="p-3 text-left font-medium">ROI</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {filteredTrades.map((trade, i) => {
-                              const roi = calculateRoi(Number(trade.initial_mc))
-                              return (
-                                <tr key={i} className="border-b">
-                                  <td className="p-3">{format(new Date(trade.date_called), "MMM d, yyyy HH:mm")}</td>
-                                  <td className="p-3">
-                                    <Link
-                                      href={`/rankings?trader=${encodeURIComponent(trade.caller)}`}
-                                      className="hover:underline text-primary"
-                                    >
-                                      {trade.caller}
-                                    </Link>
-                                  </td>
-                                  <td className="p-3">{formatNumber(trade.initial_mc.toString())}</td>
-                                  <td className="p-3">{formatNumber(currentMc.toString())}</td>
-                                  <td className={`p-3 ${roi >= 0 ? "text-green-500" : "text-red-500"}`}>
-                                    {roi === 0 ? 'N/A' : formatPercentage(roi.toString())}
-                                  </td>
-                                </tr>
-                              )
-                            })}
-                            {filteredTrades.length === 0 && (
-                              <tr>
-                                <td colSpan={5} className="p-3 text-center text-muted-foreground">
-                                  No trades found for this token
-                                </td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    </CardContent>
-                  </Card>
+                  <TokenTradeHistory
+                    trades={filteredTrades}
+                    tokenSymbol={tokenInfo.baseToken?.symbol || "this token"}
+                    currentPrice={currentTokenPrice}
+                  />
                 </TabsContent>
 
                 <TabsContent value="holders" className="space-y-8">

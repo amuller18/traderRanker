@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import type { Trade } from "@/lib/trader-data"
 import { ArrowUpDown, ChevronDown, ChevronUp, ExternalLink, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react"
 import { format } from "date-fns"
@@ -22,11 +23,20 @@ interface TraderTradesProps {
 export function TraderTrades({ trades, currentPage, totalPages, totalTrades, traderName }: TraderTradesProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const [tokenInfos, setTokenInfos] = useState<Record<string, NonNullable<TokenInfo['marketInfo']>>>({})
+  const [tokenInfos, setTokenInfos] = useState<Record<string, { currentPrice: number }>>({})
   const [loadingStates, setLoadingStates] = useState<Record<string, boolean>>({})
   const [errorStates, setErrorStates] = useState<Record<string, boolean>>({})
   const [retryCount, setRetryCount] = useState(0)
   const fetchedTokensRef = useRef<Set<string>>(new Set())
+  const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({
+    date_called: true,
+    token: true,
+    entry_price: true,
+    current_price: true,
+    ath_price: true,
+    ath_roi: true,
+    roi: true,
+  })
 
   const getPerformanceClass = (roi: number) => {
     if (roi > 0) return "text-green-500"
@@ -34,10 +44,32 @@ export function TraderTrades({ trades, currentPage, totalPages, totalTrades, tra
     return "text-muted-foreground"
   }
 
+  const toggleColumn = (column: string) => {
+    setColumnVisibility((prev) => ({
+      ...prev,
+      [column]: !prev[column],
+    }))
+  }
+
   const handlePageChange = (newPage: number) => {
     const params = new URLSearchParams(searchParams.toString())
     params.set("page", newPage.toString())
     router.push(`?${params.toString()}`)
+  }
+
+  const formatPrice = (value: number | undefined): string => {
+    if (value === undefined || value === null || isNaN(value)) return "0.00"
+
+    if (value < 0.00000001) {
+      return value.toExponential(2)
+    }
+    if (value < 0.0001) {
+      return value.toFixed(8)
+    }
+    if (value < 1) {
+      return value.toFixed(6)
+    }
+    return value.toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 })
   }
 
   // Fetch all token prices in one bulk request
@@ -67,7 +99,7 @@ export function TraderTrades({ trades, currentPage, totalPages, totalTrades, tra
       console.log(`✅ Received ${results.length} price results`)
 
       // Update all token infos at once
-      const newTokenInfos: Record<string, NonNullable<TokenInfo['marketInfo']>> = {}
+      const newTokenInfos: Record<string, { currentPrice: number }> = {}
 
       results.forEach((result: any) => {
         if (result.error) {
@@ -75,10 +107,7 @@ export function TraderTrades({ trades, currentPage, totalPages, totalTrades, tra
           setErrorStates(prev => ({ ...prev, [result.token]: true }))
         } else {
           newTokenInfos[result.token] = {
-            fdv: result.market_cap,
-            price: result.price,
-            volume24h: 0,
-            liquidity: 0
+            currentPrice: result.price || 0
           }
           fetchedTokensRef.current.add(result.token)
         }
@@ -113,36 +142,40 @@ export function TraderTrades({ trades, currentPage, totalPages, totalTrades, tra
     }
 
     trades.forEach(trade => {
-      const currentMc = tokenInfos[trade.ca]?.fdv || trade.current_mc
-      const roi = ((currentMc - trade.initial_mc) / trade.initial_mc) * 100
+      const currentPrice = tokenInfos[trade.ca]?.currentPrice
+      const entryPrice = trade.entry_price
 
-      if (!isNaN(roi)) {
-        stats.totalRoi += roi
-        if (roi > 0) stats.winningTrades++
-        if (roi < 0) stats.losingTrades++
+      if (currentPrice !== undefined && entryPrice > 0) {
+        const roi = ((currentPrice - entryPrice) / entryPrice) * 100
 
-        // Categorize by market cap
-        const initialMc = trade.initial_mc
-        if (initialMc < 1_000_000) {
-          stats.marketCapPerformance.micro.count++
-          stats.marketCapPerformance.micro.roi += roi
-          if (roi > 0) stats.marketCapPerformance.micro.wins++
-        } else if (initialMc < 5_000_000) {
-          stats.marketCapPerformance.small.count++
-          stats.marketCapPerformance.small.roi += roi
-          if (roi > 0) stats.marketCapPerformance.small.wins++
-        } else if (initialMc < 25_000_000) {
-          stats.marketCapPerformance.mid.count++
-          stats.marketCapPerformance.mid.roi += roi
-          if (roi > 0) stats.marketCapPerformance.mid.wins++
-        } else if (initialMc < 100_000_000) {
-          stats.marketCapPerformance.large.count++
-          stats.marketCapPerformance.large.roi += roi
-          if (roi > 0) stats.marketCapPerformance.large.wins++
-        } else {
-          stats.marketCapPerformance.mega.count++
-          stats.marketCapPerformance.mega.roi += roi
-          if (roi > 0) stats.marketCapPerformance.mega.wins++
+        if (!isNaN(roi)) {
+          stats.totalRoi += roi
+          if (roi > 0) stats.winningTrades++
+          if (roi < 0) stats.losingTrades++
+
+          // Categorize by market cap
+          const initialMc = trade.initial_mc
+          if (initialMc < 1_000_000) {
+            stats.marketCapPerformance.micro.count++
+            stats.marketCapPerformance.micro.roi += roi
+            if (roi > 0) stats.marketCapPerformance.micro.wins++
+          } else if (initialMc < 5_000_000) {
+            stats.marketCapPerformance.small.count++
+            stats.marketCapPerformance.small.roi += roi
+            if (roi > 0) stats.marketCapPerformance.small.wins++
+          } else if (initialMc < 25_000_000) {
+            stats.marketCapPerformance.mid.count++
+            stats.marketCapPerformance.mid.roi += roi
+            if (roi > 0) stats.marketCapPerformance.mid.wins++
+          } else if (initialMc < 100_000_000) {
+            stats.marketCapPerformance.large.count++
+            stats.marketCapPerformance.large.roi += roi
+            if (roi > 0) stats.marketCapPerformance.large.wins++
+          } else {
+            stats.marketCapPerformance.mega.count++
+            stats.marketCapPerformance.mega.roi += roi
+            if (roi > 0) stats.marketCapPerformance.mega.wins++
+          }
         }
       }
     })
@@ -210,6 +243,57 @@ export function TraderTrades({ trades, currentPage, totalPages, totalTrades, tra
           Page {currentPage} of {totalPages} total pages
         </div>
         <div className="flex items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm">
+                Columns <ChevronDown className="ml-2 h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuCheckboxItem
+                checked={columnVisibility.date_called}
+                onCheckedChange={() => toggleColumn("date_called")}
+              >
+                Date Called
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem
+                checked={columnVisibility.token}
+                onCheckedChange={() => toggleColumn("token")}
+              >
+                Token
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem
+                checked={columnVisibility.entry_price}
+                onCheckedChange={() => toggleColumn("entry_price")}
+              >
+                Entry Price
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem
+                checked={columnVisibility.current_price}
+                onCheckedChange={() => toggleColumn("current_price")}
+              >
+                Current Price
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem
+                checked={columnVisibility.ath_price}
+                onCheckedChange={() => toggleColumn("ath_price")}
+              >
+                ATH Price
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem
+                checked={columnVisibility.ath_roi}
+                onCheckedChange={() => toggleColumn("ath_roi")}
+              >
+                ATH ROI
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem
+                checked={columnVisibility.roi}
+                onCheckedChange={() => toggleColumn("roi")}
+              >
+                Current ROI
+              </DropdownMenuCheckboxItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button
             variant="outline"
             size="sm"
@@ -236,50 +320,94 @@ export function TraderTrades({ trades, currentPage, totalPages, totalTrades, tra
           <table className="w-full">
             <thead>
               <tr className="border-b bg-muted/50">
-                <th className="px-4 py-3 text-left text-sm font-medium w-[160px]">Date & Time</th>
-                <th className="px-4 py-3 text-left text-sm font-medium">Token</th>
-                <th className="px-4 py-3 text-left text-sm font-medium">Initial MC</th>
-                <th className="px-4 py-3 text-left text-sm font-medium">Current MC</th>
-                <th className="px-4 py-3 text-left text-sm font-medium">ROI</th>
+                {columnVisibility.date_called && (
+                  <th className="px-4 py-3 text-left text-sm font-medium w-[160px]">Date & Time</th>
+                )}
+                {columnVisibility.token && (
+                  <th className="px-4 py-3 text-left text-sm font-medium">Token</th>
+                )}
+                {columnVisibility.entry_price && (
+                  <th className="px-4 py-3 text-left text-sm font-medium">Entry Price</th>
+                )}
+                {columnVisibility.current_price && (
+                  <th className="px-4 py-3 text-left text-sm font-medium">Current Price</th>
+                )}
+                {columnVisibility.ath_price && (
+                  <th className="px-4 py-3 text-left text-sm font-medium">ATH Price</th>
+                )}
+                {columnVisibility.ath_roi && (
+                  <th className="px-4 py-3 text-left text-sm font-medium">ATH ROI</th>
+                )}
+                {columnVisibility.roi && (
+                  <th className="px-4 py-3 text-left text-sm font-medium">Current ROI</th>
+                )}
               </tr>
             </thead>
             <tbody>
-              {trades.map((trade) => {
-                const currentMc = tokenInfos[trade.ca]?.fdv || trade.current_mc
-                const roi = ((currentMc - trade.initial_mc) / trade.initial_mc) * 100
-                const isLoading = loadingStates[trade.ca]
-                const hasError = errorStates[trade.ca]
+              {trades.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                    No trades found for this page. The trader may have stats but trades are not available from the API.
+                  </td>
+                </tr>
+              ) : (
+                trades.map((trade) => {
+                  const currentPrice = tokenInfos[trade.ca]?.currentPrice
+                  const entryPrice = trade.entry_price
+                  const roi = currentPrice !== undefined && entryPrice > 0
+                    ? ((currentPrice - entryPrice) / entryPrice) * 100
+                    : null
+                  const hasError = errorStates[trade.ca]
 
-                return (
-                  <tr key={`${trade.caller}_${trade.ca}_${trade.date_called}`} className="border-b">
-                    <td className="px-4 py-3 text-sm whitespace-nowrap">{formatDate(trade.date_called)}</td>
-                    <td className="px-4 py-3 text-sm">
-                      <Link href={`/token-analysis?token=${encodeURIComponent(trade.ca)}`} className="text-primary hover:underline">
-                        {trade.ca}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3 text-sm">{formatMarketCap(trade.initial_mc)}</td>
-                    <td className="px-4 py-3 text-sm">
-                      {hasError ? (
-                        <span className="text-muted-foreground">N/A</span>
-                      ) : tokenInfos[trade.ca] ? (
-                        formatMarketCap(currentMc)
-                      ) : (
-                        <span className="animate-pulse text-muted-foreground">Loading...</span>
+                  return (
+                    <tr key={`${trade.caller}_${trade.ca}_${trade.date_called}`} className="border-b">
+                      {columnVisibility.date_called && (
+                        <td className="px-4 py-3 text-sm whitespace-nowrap">{formatDate(trade.date_called)}</td>
                       )}
-                    </td>
-                    <td className={`px-4 py-3 text-sm ${getPerformanceClass(roi)}`}>
-                      {hasError ? (
-                        <span className="text-muted-foreground">N/A</span>
-                      ) : tokenInfos[trade.ca] ? (
-                        `${roi.toFixed(1)}%`
-                      ) : (
-                        <span className="animate-pulse text-muted-foreground">Loading...</span>
+                      {columnVisibility.token && (
+                        <td className="px-4 py-3 text-sm">
+                          <Link href={`/token-analysis?token=${encodeURIComponent(trade.ca)}`} className="text-primary hover:underline">
+                            {trade.ca}
+                          </Link>
+                        </td>
                       )}
-                    </td>
-                  </tr>
-                )
-              })}
+                      {columnVisibility.entry_price && (
+                        <td className="px-4 py-3 text-sm">{formatPrice(entryPrice)}</td>
+                      )}
+                      {columnVisibility.current_price && (
+                        <td className="px-4 py-3 text-sm">
+                          {hasError ? (
+                            <span className="text-muted-foreground">N/A</span>
+                          ) : currentPrice !== undefined ? (
+                            formatPrice(currentPrice)
+                          ) : (
+                            <span className="animate-pulse text-muted-foreground">Loading...</span>
+                          )}
+                        </td>
+                      )}
+                      {columnVisibility.ath_price && (
+                        <td className="px-4 py-3 text-sm">{formatPrice(trade.ath_price)}</td>
+                      )}
+                      {columnVisibility.ath_roi && (
+                        <td className={`px-4 py-3 text-sm ${getPerformanceClass(trade.ath_roi)}`}>
+                          {trade.ath_roi.toFixed(2)}%
+                        </td>
+                      )}
+                      {columnVisibility.roi && (
+                        <td className={`px-4 py-3 text-sm ${roi !== null ? getPerformanceClass(roi) : ''}`}>
+                          {hasError ? (
+                            <span className="text-muted-foreground">N/A</span>
+                          ) : roi !== null ? (
+                            `${roi.toFixed(2)}%`
+                          ) : (
+                            <span className="animate-pulse text-muted-foreground">Loading...</span>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  )
+                })
+              )}
             </tbody>
           </table>
         </div>

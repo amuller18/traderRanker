@@ -58,6 +58,7 @@ export interface Trade {
   date_called: string
   high_time: string
   low_time: string
+  entry_price: number
   initial_mc: number
   current_mc: number
   high_mc: number

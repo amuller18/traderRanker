@@ -14,7 +14,7 @@ interface TradesTableProps {
   loading?: boolean
 }
 
-type SortField = "date_called" | "roi" | "initial_mc" | "caller"
+type SortField = "date_called" | "roi" | "entry_price" | "caller"
 type SortDirection = "asc" | "desc"
 
 export function TradesTable({ trades, loading = false }: TradesTableProps) {
@@ -352,11 +352,11 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
               <TableHead className="w-[150px]">
                 <Button
                   variant="ghost"
-                  onClick={() => handleSort("initial_mc")}
+                  onClick={() => handleSort("entry_price")}
                   className="flex items-center gap-1 p-0 h-auto font-medium"
                 >
-                  Initial MC
-                  {sortField === "initial_mc" ? (
+                  Entry Price
+                  {sortField === "entry_price" ? (
                     sortDirection === "asc" ? (
                       <ChevronUp className="h-4 w-4" />
                     ) : (
@@ -423,8 +423,8 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
                       </Link>
                     </TableCell>
                     <TableCell>
-                      {trade.initial_mc > 0 ? (
-                        formatMarketCap(trade.initial_mc)
+                      {trade.entry_price > 0 ? (
+                        `$${trade.entry_price.toFixed(8)}`
                       ) : (
                         <span className="text-muted-foreground">N/A</span>
                       )}

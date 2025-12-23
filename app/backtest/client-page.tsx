@@ -151,9 +151,39 @@ interface SummaryStats {
   validTrades: number;         // Number of valid trades
   invalidTrades: number;       // Number of invalid trades (excluded from metrics)
   durationMs: number;          // Time it took to complete the backtest in milliseconds
+  // Additional metrics
+  maxDrawdown: number;         // Maximum drawdown percentage
+  profitFactor: number;        // Gross profit / Gross loss
+  winningTrades: number;       // Number of winning trades
+  losingTrades: number;        // Number of losing trades
+  avgWin: number;              // Average profit of winning trades
+  avgLoss: number;             // Average loss of losing trades (negative)
+  largestWin: number;          // Largest single winning trade
+  largestLoss: number;         // Largest single losing trade (negative)
+  expectancy: number;          // Expected value per trade
+  riskRewardRatio: number;     // Average win / Average loss (absolute)
 }
 interface BacktestModernPageProps {
   initialTrades: Trade[];
+}
+
+/**
+ * Per-caller performance statistics
+ */
+interface CallerStats {
+  caller: string;
+  totalTrades: number;
+  validTrades: number;
+  winningTrades: number;
+  losingTrades: number;
+  totalPnL: number;
+  avgTradeROI: number;
+  winRate: number;
+  profitFactor: number;
+  avgWin: number;
+  avgLoss: number;
+  largestWin: number;
+  largestLoss: number;
 }
 
 /* ---------------------------------------------------------------------
@@ -253,6 +283,7 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
   const [activeTab, setActiveTab] = useState("settings"); // Track active tab
   const [backtestDuration, setBacktestDuration] = useState<number | null>(null); // Duration in ms
   const [showInvalidTrades, setShowInvalidTrades] = useState(false); // Toggle for showing invalid trades
+  const [callerStats, setCallerStats] = useState<CallerStats[]>([]); // Per-caller performance stats
   const [apiStatus, setApiStatus] = useState<
     "checking" | "connected" | "disconnected"
   >("checking");
@@ -519,16 +550,27 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
       let totalProfit = 0;
       let realizedProfit = 0;
       let unrealizedProfit = 0;
-      let winningTrades = 0;
+      let winningTradesCount = 0;
+      let losingTradesCount = 0;
       let validTradeCount = 0;
       let invalidTradeCount = invalidBreakdowns.length;
       let sumTradeROI = 0;
       let totalCapitalDeployed = 0;
       let totalFinalValue = 0;
 
+      // For additional metrics
+      let grossProfit = 0;       // Sum of all winning trades
+      let grossLoss = 0;         // Sum of all losing trades (absolute)
+      let sumWins = 0;           // Sum of winning trade PnLs
+      let sumLosses = 0;         // Sum of losing trade PnLs (negative)
+      let largestWin = 0;
+      let largestLoss = 0;
+      const tradePnLs: number[] = [];  // For tracking equity curve
+
       validBreakdowns.forEach((breakdown) => {
         validTradeCount++;
         const tokenProfit = breakdown.total_pnl || 0;
+        tradePnLs.push(tokenProfit);
         totalProfit += tokenProfit;
         realizedProfit += breakdown.realized_pnl || 0;
         unrealizedProfit += breakdown.unrealized_pnl || 0;
@@ -542,12 +584,50 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
         const tradeROI = breakdown.trade_roi || (tradeCapital > 0 ? (tokenProfit / tradeCapital) * 100 : 0);
         sumTradeROI += tradeROI;
 
-        if (tokenProfit > 0) winningTrades++;
+        // Track winning vs losing trades
+        if (tokenProfit > 0) {
+          winningTradesCount++;
+          grossProfit += tokenProfit;
+          sumWins += tokenProfit;
+          if (tokenProfit > largestWin) largestWin = tokenProfit;
+        } else if (tokenProfit < 0) {
+          losingTradesCount++;
+          grossLoss += Math.abs(tokenProfit);
+          sumLosses += tokenProfit;  // Keep negative
+          if (tokenProfit < largestLoss) largestLoss = tokenProfit;
+        }
+
         console.log(`Token ${breakdown.token}: VALID - Trade ROI = ${tradeROI.toFixed(2)}%, PnL = $${tokenProfit.toFixed(2)}`);
       });
 
+      // Calculate max drawdown from trade-by-trade equity curve
+      let peak = initialCapital;
+      let maxDrawdown = 0;
+      let runningEquity = initialCapital;
+      tradePnLs.forEach(pnl => {
+        runningEquity += pnl;
+        if (runningEquity > peak) peak = runningEquity;
+        const drawdown = peak > 0 ? ((peak - runningEquity) / peak) * 100 : 0;
+        if (drawdown > maxDrawdown) maxDrawdown = drawdown;
+      });
+
+      // Calculate profit factor
+      const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : (grossProfit > 0 ? Infinity : 0);
+
+      // Calculate averages
+      const avgWin = winningTradesCount > 0 ? sumWins / winningTradesCount : 0;
+      const avgLoss = losingTradesCount > 0 ? sumLosses / losingTradesCount : 0;  // Negative
+
+      // Calculate risk/reward ratio
+      const riskRewardRatio = avgLoss !== 0 ? Math.abs(avgWin / avgLoss) : (avgWin > 0 ? Infinity : 0);
+
+      // Calculate expectancy (average expected profit per trade)
+      const expectancy = validTradeCount > 0 ? totalProfit / validTradeCount : 0;
+
       console.log(`\n=== SUMMARY ===`);
       console.log(`Valid trades: ${validTradeCount}, Invalid trades: ${invalidTradeCount}`);
+      console.log(`Winning: ${winningTradesCount}, Losing: ${losingTradesCount}`);
+      console.log(`Max Drawdown: ${maxDrawdown.toFixed(2)}%, Profit Factor: ${profitFactor.toFixed(2)}`);
 
       // Then get the simulation data for charts using trade-based endpoint
       const res = await fetch(`${pythonApiUrl}/api/simulate/trades`, {
@@ -617,30 +697,41 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
       // ------------------------------------------------------------------
       // CUMULATIVE PORTFOLIO CALCULATION (TOTAL EQUITY)
       // final_equity = cash_balance + sum(current_value_of_all_open_positions)
-      // Use validTradeCount (not filteredTrades.length) for proper calculation
+      //
+      // IMPORTANT: At each timestamp, only count trades that have actually started.
+      // Trades that haven't started yet have their capital still in cash.
       // ------------------------------------------------------------------
       const cumulative: any[] = [];
 
+      // Calculate position size per trade
+      const positionSizePerTrade = positionSizing.type === "percentage"
+        ? (initialCapital * positionSizing.value / 100)
+        : positionSizing.value;
+
       rows.forEach((row) => {
-        // Get all trade keys (excluding ts and date)
+        // Get all trade keys that have data at this timestamp
         const tradeKeys = Object.keys(row).filter(
           (k) => k !== 'ts' && k !== 'date' && k.includes('_')
         );
 
-        // Calculate the total value of all positions at this timestamp
+        // Count active positions (trades with values at this timestamp)
         let totalPositionValue = 0;
+        let activePositionsCount = 0;
         tradeKeys.forEach(tradeKey => {
-          totalPositionValue += row[tradeKey] || 0;
+          const value = row[tradeKey];
+          if (value !== undefined && value !== null && !isNaN(value)) {
+            totalPositionValue += value;
+            activePositionsCount++;
+          }
         });
 
-        // Calculate cash not deployed (initial capital minus capital used for valid trades)
-        // Use validTradeCount which tracks actual valid trades from breakdown
-        const capitalUsed = positionSizing.type === "percentage"
-          ? (initialCapital * positionSizing.value / 100) * validTradeCount
-          : positionSizing.value * validTradeCount;
-        const cashNotDeployed = Math.max(0, initialCapital - capitalUsed);
+        // Calculate capital deployed only for trades that have started
+        // Not-yet-started trades have their capital still in cash
+        const capitalDeployed = positionSizePerTrade * activePositionsCount;
+        const cashNotDeployed = Math.max(0, initialCapital - capitalDeployed);
 
         // Total equity = position values + uninvested cash
+        // Note: position values already include the deployed capital (value = initial + PnL)
         const totalEquity = totalPositionValue + cashNotDeployed;
         cumulative.push({ ...row, cumulative: totalEquity });
       });
@@ -676,7 +767,7 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
       // ------------------------------------------------------------------
       // WIN RATE (valid trades only)
       // ------------------------------------------------------------------
-      const winRate = validTradeCount > 0 ? winningTrades / validTradeCount : 0;
+      const winRate = validTradeCount > 0 ? winningTradesCount / validTradeCount : 0;
 
       // ------------------------------------------------------------------
       // AVERAGE TRADE ROI (NOT account ROI - these are different!)
@@ -706,6 +797,122 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
       const durationMs = endTime - startTime;
       setBacktestDuration(durationMs);
 
+      // ------------------------------------------------------------------
+      // PER-CALLER PERFORMANCE BREAKDOWN
+      // Map breakdowns back to callers and calculate per-caller stats
+      // ------------------------------------------------------------------
+      const callerStatsMap = new Map<string, {
+        totalTrades: number;
+        validTrades: number;
+        winningTrades: number;
+        losingTrades: number;
+        totalPnL: number;
+        sumROI: number;
+        grossProfit: number;
+        grossLoss: number;
+        sumWins: number;
+        sumLosses: number;
+        largestWin: number;
+        largestLoss: number;
+      }>();
+
+      // Create a mapping from token address to caller
+      const tokenToCallerMap = new Map<string, string>();
+      tradesToProcess.forEach(trade => {
+        tokenToCallerMap.set(trade.ca, trade.caller);
+      });
+
+      // Process valid breakdowns to calculate per-caller stats
+      validBreakdowns.forEach((breakdown) => {
+        const caller = tokenToCallerMap.get(breakdown.token) || 'Unknown';
+        const tokenProfit = breakdown.total_pnl || 0;
+        const tradeCapital = breakdown.trade_capital || positionSizePerTrade;
+        const tradeROI = breakdown.trade_roi || (tradeCapital > 0 ? (tokenProfit / tradeCapital) * 100 : 0);
+
+        if (!callerStatsMap.has(caller)) {
+          callerStatsMap.set(caller, {
+            totalTrades: 0,
+            validTrades: 0,
+            winningTrades: 0,
+            losingTrades: 0,
+            totalPnL: 0,
+            sumROI: 0,
+            grossProfit: 0,
+            grossLoss: 0,
+            sumWins: 0,
+            sumLosses: 0,
+            largestWin: 0,
+            largestLoss: 0,
+          });
+        }
+
+        const stats = callerStatsMap.get(caller)!;
+        stats.totalTrades++;
+        stats.validTrades++;
+        stats.totalPnL += tokenProfit;
+        stats.sumROI += tradeROI;
+
+        if (tokenProfit > 0) {
+          stats.winningTrades++;
+          stats.grossProfit += tokenProfit;
+          stats.sumWins += tokenProfit;
+          if (tokenProfit > stats.largestWin) stats.largestWin = tokenProfit;
+        } else if (tokenProfit < 0) {
+          stats.losingTrades++;
+          stats.grossLoss += Math.abs(tokenProfit);
+          stats.sumLosses += tokenProfit;
+          if (tokenProfit < stats.largestLoss) stats.largestLoss = tokenProfit;
+        }
+      });
+
+      // Also count invalid trades per caller
+      invalidBreakdowns.forEach((breakdown) => {
+        const caller = tokenToCallerMap.get(breakdown.token) || 'Unknown';
+        if (!callerStatsMap.has(caller)) {
+          callerStatsMap.set(caller, {
+            totalTrades: 0,
+            validTrades: 0,
+            winningTrades: 0,
+            losingTrades: 0,
+            totalPnL: 0,
+            sumROI: 0,
+            grossProfit: 0,
+            grossLoss: 0,
+            sumWins: 0,
+            sumLosses: 0,
+            largestWin: 0,
+            largestLoss: 0,
+          });
+        }
+        callerStatsMap.get(caller)!.totalTrades++;
+      });
+
+      // Convert to CallerStats array
+      const calculatedCallerStats: CallerStats[] = Array.from(callerStatsMap.entries())
+        .map(([caller, stats]) => ({
+          caller,
+          totalTrades: stats.totalTrades,
+          validTrades: stats.validTrades,
+          winningTrades: stats.winningTrades,
+          losingTrades: stats.losingTrades,
+          totalPnL: stats.totalPnL,
+          avgTradeROI: stats.validTrades > 0 ? stats.sumROI / stats.validTrades : 0,
+          winRate: stats.validTrades > 0 ? stats.winningTrades / stats.validTrades : 0,
+          profitFactor: stats.grossLoss > 0 ? stats.grossProfit / stats.grossLoss : (stats.grossProfit > 0 ? Infinity : 0),
+          avgWin: stats.winningTrades > 0 ? stats.sumWins / stats.winningTrades : 0,
+          avgLoss: stats.losingTrades > 0 ? stats.sumLosses / stats.losingTrades : 0,
+          largestWin: stats.largestWin,
+          largestLoss: stats.largestLoss,
+        }))
+        .sort((a, b) => b.totalPnL - a.totalPnL); // Sort by total PnL
+
+      setCallerStats(calculatedCallerStats);
+
+      console.log(`\n=== PER-CALLER BREAKDOWN ===`);
+      calculatedCallerStats.forEach(cs => {
+        console.log(`${cs.caller}: ${cs.validTrades} trades, ${(cs.winRate * 100).toFixed(0)}% win rate, $${cs.totalPnL.toFixed(2)} PnL`);
+      });
+
       console.log(`\n=== BACKTEST COMPLETE ===`);
       console.log(`Duration: ${(durationMs / 1000).toFixed(2)}s`);
       console.log(`Account ROI: ${accountROI.toFixed(2)}%`);
@@ -728,6 +935,17 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
         validTrades: validTradeCount,
         invalidTrades: invalidTradeCount,
         durationMs,
+        // Additional metrics
+        maxDrawdown,
+        profitFactor,
+        winningTrades: winningTradesCount,
+        losingTrades: losingTradesCount,
+        avgWin,
+        avgLoss,
+        largestWin,
+        largestLoss,
+        expectancy,
+        riskRewardRatio,
       });
 
       // Auto-switch to results tab after backtest completes
@@ -864,8 +1082,9 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                   <Select
                     value={selectedCaller}
                     onValueChange={setSelectedCaller}
+                    disabled={isRunning}
                   >
-                    <SelectTrigger id="caller">
+                    <SelectTrigger id="caller" disabled={isRunning}>
                       <SelectValue placeholder="All callers" />
                     </SelectTrigger>
                     <SelectContent>
@@ -888,6 +1107,7 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                     min={100}
                     value={initialCapital}
                     onChange={(e) => setInitialCapital(Number(e.target.value))}
+                    disabled={isRunning}
                   />
                 </div>
 
@@ -902,6 +1122,7 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                     value={maxBacktests}
                     onChange={(e) => setMaxBacktests(Number(e.target.value))}
                     placeholder="100"
+                    disabled={isRunning}
                   />
                   <p className="text-xs text-muted-foreground">
                     Limit number of trades to backtest (0 = no limit)
@@ -914,8 +1135,9 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                   <Select
                     value={timeframe}
                     onValueChange={setTimeframe}
+                    disabled={isRunning}
                   >
-                    <SelectTrigger id="timeframe">
+                    <SelectTrigger id="timeframe" disabled={isRunning}>
                       <SelectValue placeholder="Select timeframe" />
                     </SelectTrigger>
                     <SelectContent>
@@ -942,8 +1164,9 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                       onValueChange={(val) =>
                         setPositionSizing((p) => ({ ...p, type: val as any }))
                       }
+                      disabled={isRunning}
                     >
-                      <SelectTrigger className="w-28">
+                      <SelectTrigger className="w-28" disabled={isRunning}>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -963,6 +1186,7 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                           value: Number(e.target.value)
                         }))
                       }
+                      disabled={isRunning}
                     />
                   </div>
                   <p className="text-xs text-muted-foreground">
@@ -984,6 +1208,7 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                       size="sm"
                       onClick={() => setTakeProfits([])}
                       className="text-xs text-muted-foreground hover:text-destructive"
+                      disabled={isRunning}
                     >
                       Clear all
                     </Button>
@@ -1002,6 +1227,7 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                             handleTPChange(idx, "percentage", Number(e.target.value))
                           }
                           className="w-24"
+                          disabled={isRunning}
                         />
                         <span>% gain → sell</span>
                         <Input
@@ -1012,6 +1238,7 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                             handleTPChange(idx, "sellPercentage", Number(e.target.value))
                           }
                           className="w-24"
+                          disabled={isRunning}
                         />
                         <span>% tokens</span>
                         <Button
@@ -1022,6 +1249,7 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                               prev.filter((_, i) => i !== idx)
                             )
                           }
+                          disabled={isRunning}
                         >
                           <Minus className="w-4 h-4" />
                         </Button>
@@ -1036,6 +1264,7 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                           { percentage: 0, sellPercentage: 0 }
                         ])
                       }
+                      disabled={isRunning}
                     >
                       <Plus className="w-4 h-4 mr-1" /> Add level
                     </Button>
@@ -1053,6 +1282,7 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                       size="sm"
                       onClick={() => setStopLosses([])}
                       className="text-xs text-muted-foreground hover:text-destructive"
+                      disabled={isRunning}
                     >
                       Clear all
                     </Button>
@@ -1071,6 +1301,7 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                             handleSLChange(idx, "percentage", Number(e.target.value))
                           }
                           className="w-24"
+                          disabled={isRunning}
                         />
                         <span>% drop → sell</span>
                         <Input
@@ -1081,6 +1312,7 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                             handleSLChange(idx, "sellPercentage", Number(e.target.value))
                           }
                           className="w-24"
+                          disabled={isRunning}
                         />
                         <span>% tokens</span>
                         <Button
@@ -1091,6 +1323,7 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                               prev.filter((_, i) => i !== idx)
                             )
                           }
+                          disabled={isRunning}
                         >
                           <Minus className="w-4 h-4" />
                         </Button>
@@ -1105,6 +1338,7 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                           { percentage: 0, sellPercentage: 0 }
                         ])
                       }
+                      disabled={isRunning}
                     >
                       <Plus className="w-4 h-4 mr-1" /> Add level
                     </Button>
@@ -1455,6 +1689,71 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                   </div>
                 </div>
 
+                {/* Advanced Metrics Row */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4 text-center pt-4 mt-4 border-t">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Max Drawdown</p>
+                    <p className={`text-lg font-semibold ${summary.maxDrawdown > 20 ? 'text-red-600' : summary.maxDrawdown > 10 ? 'text-yellow-600' : 'text-green-600'}`}>
+                      -{summary.maxDrawdown.toFixed(1)}%
+                    </p>
+                    <p className="text-xs text-muted-foreground">peak to trough</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Profit Factor</p>
+                    <p className={`text-lg font-semibold ${summary.profitFactor >= 1.5 ? 'text-green-600' : summary.profitFactor >= 1 ? 'text-yellow-600' : 'text-red-600'}`}>
+                      {summary.profitFactor === Infinity ? '∞' : summary.profitFactor.toFixed(2)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">gross P / gross L</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Win/Loss</p>
+                    <p className="text-lg font-semibold">
+                      <span className="text-green-600">{summary.winningTrades}</span>
+                      <span className="text-muted-foreground mx-1">/</span>
+                      <span className="text-red-600">{summary.losingTrades}</span>
+                    </p>
+                    <p className="text-xs text-muted-foreground">trades</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Avg Win / Loss</p>
+                    <p className="text-lg font-semibold">
+                      <span className="text-green-600">${formatLargeNumber(summary.avgWin)}</span>
+                      <span className="text-muted-foreground mx-1">/</span>
+                      <span className="text-red-600">${formatLargeNumber(Math.abs(summary.avgLoss))}</span>
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Risk/Reward</p>
+                    <p className={`text-lg font-semibold ${summary.riskRewardRatio >= 2 ? 'text-green-600' : summary.riskRewardRatio >= 1 ? 'text-yellow-600' : 'text-red-600'}`}>
+                      {summary.riskRewardRatio === Infinity ? '∞' : summary.riskRewardRatio.toFixed(2)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">avg win / avg loss</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Expectancy</p>
+                    <p className={`text-lg font-semibold ${summary.expectancy >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      ${formatLargeNumber(summary.expectancy)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">per trade</p>
+                  </div>
+                </div>
+
+                {/* Best/Worst Trades Row */}
+                <div className="grid grid-cols-2 gap-4 text-center pt-4 mt-4 border-t">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Largest Win</p>
+                    <p className="text-lg font-semibold text-green-600">
+                      +${formatLargeNumber(summary.largestWin)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Largest Loss</p>
+                    <p className="text-lg font-semibold text-red-600">
+                      -${formatLargeNumber(Math.abs(summary.largestLoss))}
+                    </p>
+                  </div>
+                </div>
+
                 {/* Timing and Controls Row */}
                 <div className="flex items-center justify-between pt-4 mt-4 border-t">
                   <div className="flex items-center gap-4">
@@ -1484,6 +1783,75 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                       />
                     </div>
                   )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Per-Caller Performance Breakdown - only show if multiple callers */}
+          {callerStats.length > 1 && (
+            <Card className="mb-8">
+              <CardHeader>
+                <CardTitle>Per-Caller Performance</CardTitle>
+                <CardDescription>
+                  Performance breakdown by caller. Sorted by total PnL.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left py-2">Caller</th>
+                        <th className="text-right py-2">Trades</th>
+                        <th className="text-right py-2">Win Rate</th>
+                        <th className="text-right py-2">Total PnL</th>
+                        <th className="text-right py-2">Avg ROI</th>
+                        <th className="text-right py-2">Profit Factor</th>
+                        <th className="text-right py-2">Avg Win</th>
+                        <th className="text-right py-2">Avg Loss</th>
+                        <th className="text-right py-2">Best Trade</th>
+                        <th className="text-right py-2">Worst Trade</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {callerStats.map((cs, index) => (
+                        <tr key={cs.caller} className="border-b hover:bg-muted/50">
+                          <td className="py-2 font-medium">{cs.caller}</td>
+                          <td className="text-right py-2">
+                            <span className="text-green-600">{cs.winningTrades}</span>
+                            <span className="text-muted-foreground mx-1">/</span>
+                            <span className="text-red-600">{cs.losingTrades}</span>
+                            <span className="text-muted-foreground ml-1">({cs.validTrades})</span>
+                          </td>
+                          <td className={`text-right py-2 font-semibold ${cs.winRate >= 0.5 ? 'text-green-600' : 'text-red-600'}`}>
+                            {(cs.winRate * 100).toFixed(0)}%
+                          </td>
+                          <td className={`text-right py-2 font-semibold ${cs.totalPnL >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            ${formatLargeNumber(cs.totalPnL)}
+                          </td>
+                          <td className={`text-right py-2 ${cs.avgTradeROI >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {cs.avgTradeROI >= 0 ? '+' : ''}{cs.avgTradeROI.toFixed(1)}%
+                          </td>
+                          <td className={`text-right py-2 ${cs.profitFactor >= 1 ? 'text-green-600' : 'text-red-600'}`}>
+                            {cs.profitFactor === Infinity ? '∞' : cs.profitFactor.toFixed(2)}
+                          </td>
+                          <td className="text-right py-2 text-green-600">
+                            ${formatLargeNumber(cs.avgWin)}
+                          </td>
+                          <td className="text-right py-2 text-red-600">
+                            ${formatLargeNumber(Math.abs(cs.avgLoss))}
+                          </td>
+                          <td className="text-right py-2 text-green-600">
+                            +${formatLargeNumber(cs.largestWin)}
+                          </td>
+                          <td className="text-right py-2 text-red-600">
+                            -${formatLargeNumber(Math.abs(cs.largestLoss))}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </CardContent>
             </Card>

@@ -101,11 +101,14 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
         const aRoi = calculateRoi(a) ?? -Infinity
         const bRoi = calculateRoi(b) ?? -Infinity
         return sortDirection === "asc" ? aRoi - bRoi : bRoi - aRoi
-      } else {
-        const aValue = a[sortField]
-        const bValue = b[sortField]
-        return sortDirection === "asc" ? aValue - bValue : bValue - aValue
+      } else if (sortField === "entry_price") {
+        return sortDirection === "asc" ? a.entry_price - b.entry_price : b.entry_price - a.entry_price
+      } else if (sortField === "ath_price") {
+        return sortDirection === "asc" ? a.ath_price - b.ath_price : b.ath_price - a.ath_price
+      } else if (sortField === "ath_roi") {
+        return sortDirection === "asc" ? a.ath_roi - b.ath_roi : b.ath_roi - a.ath_roi
       }
+      return 0
     })
   }, [trades, sortField, sortDirection, tokenInfos])
 
@@ -598,13 +601,14 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
                     {columnVisibility.links && (
                       <TableCell>
                         <div className="flex gap-1">
-                        <a href={`https://solscan.io/token/${trade.ca}`} target="_blank" rel="noopener noreferrer">
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <ExternalLink className="h-4 w-4" />
-                          </Button>
-                        </a>
-                      </div>
-                    </TableCell>
+                          <a href={`https://solscan.io/token/${trade.ca}`} target="_blank" rel="noopener noreferrer">
+                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                              <ExternalLink className="h-4 w-4" />
+                            </Button>
+                          </a>
+                        </div>
+                      </TableCell>
+                    )}
                   </TableRow>
                 )
               })

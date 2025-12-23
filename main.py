@@ -954,6 +954,8 @@ class Trade(BaseModel):
     high_time: str = ""
     low_time: str = ""
     entry_price: float = 0.0
+    ath_price: float = 0.0
+    ath_roi: float = 0.0
     initial_mc: float = 0.0
     current_mc: float = 0.0
     high_mc: float = 0.0
@@ -1148,7 +1150,7 @@ def dynamodb_item_to_trade(item: dict) -> Trade:
     # Optional: preserve new analytics fields under safe names if they exist,
     # but do NOT pass unknown keys into the Pydantic model
     raw_meta_keys = [
-        'ath_price', 'atl_price', 'ath_roi', 'atl_roi',
+        'atl_price', 'atl_roi',
         'ath_timestamp', 'atl_timestamp', 'price_points', 'status', 'performance'
     ]
     raw_meta = {}
@@ -1168,7 +1170,7 @@ def dynamodb_item_to_trade(item: dict) -> Trade:
         # Fallback (mirrors Trade model)
         model_fields = {
             "ca", "caller", "date_called", "high_time", "low_time",
-            "entry_price", "initial_mc", "current_mc", "high_mc", "low_mc",
+            "entry_price", "ath_price", "ath_roi", "initial_mc", "current_mc", "high_mc", "low_mc",
             "high_price", "low_price",
             "price_change_24h", "volume_24h", "liquidity", "holders",
             "market_cap_rank", "market_cap_change_24h",
@@ -1197,7 +1199,7 @@ def dynamodb_item_to_trade(item: dict) -> Trade:
 
     # Convert numeric fields from DynamoDB Decimal to Python float/int
     numeric_float_fields = [
-        "entry_price", "initial_mc", "current_mc", "high_mc", "low_mc",
+        "entry_price", "ath_price", "ath_roi", "initial_mc", "current_mc", "high_mc", "low_mc",
         "high_price", "low_price", "price_change_24h", "volume_24h", "liquidity",
         "market_cap_change_24h", "market_cap_change_percentage_24h", "market_cap_dominance",
         "fully_diluted_valuation", "total_volume", "high_24h", "low_24h",

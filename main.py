@@ -421,7 +421,7 @@ def _ledger_charts_png(sim_results: list[SimulationResult]) -> tuple[BytesIO, By
     for res in sim_results:
         if res.ledger is None:
             continue
-        rows = [pt.dict() if hasattr(pt, "dict") else pt.model_dump() for pt in res.ledger]
+        rows = [pt.model_dump() for pt in res.ledger]
         df = (pd.DataFrame(rows)
               .assign(t=lambda d: pd.to_datetime(d["ts"], unit="s"))
               .set_index("t"))
@@ -1066,9 +1066,29 @@ def dynamodb_item_to_trade(item: dict) -> Trade:
     Convert a DynamoDB item to a Trade object.
     If date_called is missing or empty but timestamp exists, convert timestamp to ISO string.
     Maps 'username' field to 'caller' if present for DynamoDB compatibility.
+    Converts DynamoDB Decimal types to float for numeric fields.
     """
     # Make a shallow copy to avoid mutating the original
     trade_dict = dict(item or {})
+
+    # Helper functions to convert DynamoDB Decimal types
+    def to_float(val):
+        """Convert DynamoDB Decimal or any numeric value to float."""
+        if val is None:
+            return 0.0
+        try:
+            return float(val)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def to_int(val):
+        """Convert DynamoDB Decimal or any numeric value to int."""
+        if val is None:
+            return 0
+        try:
+            return int(val)
+        except (TypeError, ValueError):
+            return 0
 
     # ---- Field mapping for new CSV format / legacy variants ----
     # username -> caller (legacy)
@@ -1174,6 +1194,40 @@ def dynamodb_item_to_trade(item: dict) -> Trade:
                 "profit_at_high", "profit_at_low", "profit", "is_winner",
             }
 
+        # Convert numeric fields from DynamoDB Decimal to Python float/int
+        numeric_float_fields = [
+            "initial_mc", "current_mc", "high_mc", "low_mc",
+            "high_price", "low_price", "price_change_24h", "volume_24h", "liquidity",
+            "market_cap_change_24h", "market_cap_change_percentage_24h", "market_cap_dominance",
+            "fully_diluted_valuation", "total_volume", "high_24h", "low_24h",
+            "price_change_percentage_24h", "price_change_percentage_7d",
+            "price_change_percentage_14d", "price_change_percentage_30d",
+            "price_change_percentage_60d", "price_change_percentage_200d",
+            "price_change_percentage_1y", "market_cap_change_24h_in_currency",
+            "market_cap_change_percentage_24h_in_currency",
+            "total_supply", "max_supply", "circulating_supply",
+            "price_change_percentage_1h_in_currency",
+            "price_change_percentage_24h_in_currency",
+            "price_change_percentage_7d_in_currency",
+            "price_change_percentage_14d_in_currency",
+            "price_change_percentage_30d_in_currency",
+            "price_change_percentage_60d_in_currency",
+            "price_change_percentage_200d_in_currency",
+            "price_change_percentage_1y_in_currency",
+            "roi", "roi_at_high", "roi_at_low",
+            "profit_at_high", "profit_at_low", "profit"
+        ]
+
+        numeric_int_fields = ["holders", "market_cap_rank"]
+
+        for field in numeric_float_fields:
+            if field in trade_dict:
+                trade_dict[field] = to_float(trade_dict[field])
+
+        for field in numeric_int_fields:
+            if field in trade_dict:
+                trade_dict[field] = to_int(trade_dict[field])
+
         cleaned = {k: v for k, v in trade_dict.items() if k in model_fields}
 
         # Ensure minimal required fields
@@ -1223,8 +1277,7 @@ def _aligned_ledgers(sim_results: list[SimulationResult]) -> dict[str, pd.DataFr
     for res in sim_results:
         if res.ledger is None:
             continue
-        rows = [pt.dict() if hasattr(pt, "dict") else pt.model_dump()
-                for pt in res.ledger]
+        rows = [pt.model_dump() for pt in res.ledger]
         df = (pd.DataFrame(rows)
               .assign(t=lambda d: pd.to_datetime(d["ts"], unit="s"))
               .set_index("t"))
@@ -1247,8 +1300,7 @@ def _ledger_to_equity_df(res: SimulationResult) -> pd.DataFrame:
       • index = datetime
       • columns: ['value', 'realized', 'equity', 'sell_marker']
     """
-    rows = [pt.dict() if hasattr(pt, "dict") else pt.model_dump()
-            for pt in res.ledger or []]
+    rows = [pt.model_dump() for pt in res.ledger or []]
 
     df = (pd.DataFrame(rows)
             .assign(t=lambda d: pd.to_datetime(d["ts"], unit="s"))
@@ -1467,7 +1519,7 @@ def run_simulation_with_ledger(
 
     # Realized PnL = sale proceeds - cost basis of coins sold
     # realized_pnl = sum((sell_price - avg_entry_price) * tokens_sold)
-    realised_pl = realized_proceeds - cost_basis_sold
+    realised_pl = realized - cost_basis_sold
 
     # Mark-to-market: Value of remaining tokens at current price
     # Unrealized PnL = (current_price - avg_entry_price) * remaining_tokens
@@ -1476,7 +1528,7 @@ def run_simulation_with_ledger(
 
     # Final equity = cash from realized sales + mark-to-market value of remaining tokens
     # This equals: start_cash + total_pnl
-    final_equity = realized_proceeds + mark_to_market_value
+    final_equity = realized + mark_to_market_value
 
     # Total PnL = realized + unrealized
     total_pnl = realised_pl + unrealized_pl
@@ -1503,7 +1555,7 @@ def run_simulation_with_ledger(
     realised_pl = realized - (entry_coins - coins) * entry_price   # works for both full/partial exits
 
     return {
-        "ledger":            [pt.dict() for pt in ledger],
+        "ledger":            [pt.model_dump() for pt in ledger],
         "realized_profit":   round(realised_pl, 6),
         "unrealized_profit": round(unrealized,   6),
         "coins_left":        round(coins,        6),
@@ -3747,7 +3799,7 @@ async def create_or_update_trader(trader: TraderStats) -> Dict[str, Any]:
         }
 
     try:
-        traders_table.put_item(Item=trader.dict())
+        traders_table.put_item(Item=trader.model_dump())
         return {
             "success": True,
             "message": f"Trader {trader.caller} saved successfully"
@@ -3787,7 +3839,7 @@ async def create_or_update_trade(trade: Trade) -> Dict[str, Any]:
         }
 
     try:
-        trades_table.put_item(Item=trade.dict())
+        trades_table.put_item(Item=trade.model_dump())
         return {
             "success": True,
             "message": f"Trade for {trade.caller} saved successfully"

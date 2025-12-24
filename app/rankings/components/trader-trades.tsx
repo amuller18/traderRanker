@@ -353,7 +353,9 @@ export function TraderTrades({ trades, currentPage, totalPages, totalTrades, tra
               ) : (
                 trades.map((trade) => {
                   const currentPrice = tokenInfos[trade.ca]?.currentPrice
-                  const entryPrice = trade.entry_price
+                  const entryPrice = trade.entry_price ?? 0
+                  const athPrice = trade.ath_price ?? 0
+                  const athRoi = trade.ath_roi ?? 0
                   const roi = currentPrice !== undefined && entryPrice > 0
                     ? ((currentPrice - entryPrice) / entryPrice) * 100
                     : null
@@ -372,13 +374,15 @@ export function TraderTrades({ trades, currentPage, totalPages, totalTrades, tra
                         </td>
                       )}
                       {columnVisibility.entry_price && (
-                        <td className="px-4 py-3 text-sm">{formatPrice(entryPrice)}</td>
+                        <td className="px-4 py-3 text-sm">
+                          {entryPrice > 0 ? formatPrice(entryPrice) : <span className="text-muted-foreground">N/A</span>}
+                        </td>
                       )}
                       {columnVisibility.current_price && (
                         <td className="px-4 py-3 text-sm">
                           {hasError ? (
                             <span className="text-muted-foreground">N/A</span>
-                          ) : currentPrice !== undefined ? (
+                          ) : currentPrice !== undefined && currentPrice > 0 ? (
                             formatPrice(currentPrice)
                           ) : (
                             <span className="animate-pulse text-muted-foreground">Loading...</span>
@@ -386,11 +390,13 @@ export function TraderTrades({ trades, currentPage, totalPages, totalTrades, tra
                         </td>
                       )}
                       {columnVisibility.ath_price && (
-                        <td className="px-4 py-3 text-sm">{formatPrice(trade.ath_price)}</td>
+                        <td className="px-4 py-3 text-sm">
+                          {athPrice > 0 ? formatPrice(athPrice) : <span className="text-muted-foreground">N/A</span>}
+                        </td>
                       )}
                       {columnVisibility.ath_roi && (
-                        <td className={`px-4 py-3 text-sm ${getPerformanceClass(trade.ath_roi)}`}>
-                          {trade.ath_roi.toFixed(2)}%
+                        <td className={`px-4 py-3 text-sm ${athRoi !== 0 ? getPerformanceClass(athRoi) : ''}`}>
+                          {athRoi !== 0 ? `${athRoi.toFixed(2)}%` : <span className="text-muted-foreground">N/A</span>}
                         </td>
                       )}
                       {columnVisibility.roi && (

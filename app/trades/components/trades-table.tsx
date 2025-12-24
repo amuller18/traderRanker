@@ -545,11 +545,18 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
                     {columnVisibility.entry_price && (
                       <TableCell>
                         {displayMode === 'marketcap' ? (
-                          trade.initial_mc > 0 ? (
-                            formatMarketCap(trade.initial_mc)
-                          ) : (
-                            <span className="text-muted-foreground">N/A</span>
-                          )
+                          (() => {
+                            // Try stored initial_mc first
+                            if (trade.initial_mc > 0) return formatMarketCap(trade.initial_mc)
+                            // Calculate from price using supply derived from current mc/price
+                            const tokenData = tokenInfos[trade.ca]
+                            if (tokenData?.currentMc && tokenData.currentPrice && trade.entry_price > 0) {
+                              const supply = tokenData.currentMc / tokenData.currentPrice
+                              const entryMc = trade.entry_price * supply
+                              return formatMarketCap(entryMc)
+                            }
+                            return <span className="text-muted-foreground">N/A</span>
+                          })()
                         ) : (
                           trade.entry_price > 0 ? (
                             formatPrice(trade.entry_price)
@@ -581,11 +588,18 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
                     {columnVisibility.ath_price && (
                       <TableCell>
                         {displayMode === 'marketcap' ? (
-                          trade.high_mc > 0 ? (
-                            formatMarketCap(trade.high_mc)
-                          ) : (
-                            <span className="text-muted-foreground">N/A</span>
-                          )
+                          (() => {
+                            // Try stored high_mc first
+                            if (trade.high_mc > 0) return formatMarketCap(trade.high_mc)
+                            // Calculate from price using supply derived from current mc/price
+                            const tokenData = tokenInfos[trade.ca]
+                            if (tokenData?.currentMc && tokenData.currentPrice && trade.ath_price > 0) {
+                              const supply = tokenData.currentMc / tokenData.currentPrice
+                              const athMc = trade.ath_price * supply
+                              return formatMarketCap(athMc)
+                            }
+                            return <span className="text-muted-foreground">N/A</span>
+                          })()
                         ) : (
                           trade.ath_price > 0 ? (
                             formatPrice(trade.ath_price)

@@ -387,7 +387,15 @@ export function TraderTrades({ trades, currentPage, totalPages, totalTrades, tra
                       {columnVisibility.entry_price && (
                         <td className="px-4 py-3 text-sm">
                           {displayMode === 'marketcap' ? (
-                            trade.initial_mc > 0 ? formatMarketCap(trade.initial_mc) : <span className="text-muted-foreground">N/A</span>
+                            (() => {
+                              if (trade.initial_mc > 0) return formatMarketCap(trade.initial_mc)
+                              const tokenData = tokenInfos[trade.ca]
+                              if (tokenData?.currentMc && tokenData.currentPrice && entryPrice > 0) {
+                                const supply = tokenData.currentMc / tokenData.currentPrice
+                                return formatMarketCap(entryPrice * supply)
+                              }
+                              return <span className="text-muted-foreground">N/A</span>
+                            })()
                           ) : (
                             entryPrice > 0 ? formatPrice(entryPrice) : <span className="text-muted-foreground">N/A</span>
                           )}
@@ -415,7 +423,15 @@ export function TraderTrades({ trades, currentPage, totalPages, totalTrades, tra
                       {columnVisibility.ath_price && (
                         <td className="px-4 py-3 text-sm">
                           {displayMode === 'marketcap' ? (
-                            trade.high_mc > 0 ? formatMarketCap(trade.high_mc) : <span className="text-muted-foreground">N/A</span>
+                            (() => {
+                              if (trade.high_mc > 0) return formatMarketCap(trade.high_mc)
+                              const tokenData = tokenInfos[trade.ca]
+                              if (tokenData?.currentMc && tokenData.currentPrice && athPrice > 0) {
+                                const supply = tokenData.currentMc / tokenData.currentPrice
+                                return formatMarketCap(athPrice * supply)
+                              }
+                              return <span className="text-muted-foreground">N/A</span>
+                            })()
                           ) : (
                             athPrice > 0 ? formatPrice(athPrice) : <span className="text-muted-foreground">N/A</span>
                           )}

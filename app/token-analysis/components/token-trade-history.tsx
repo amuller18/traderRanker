@@ -189,7 +189,14 @@ export function TokenTradeHistory({ trades, tokenSymbol, currentPrice, currentMc
                     {columnVisibility.entry_price && (
                       <td className="p-3">
                         {displayMode === 'marketcap'
-                          ? (trade.initial_mc > 0 ? formatMarketCap(trade.initial_mc) : 'N/A')
+                          ? (() => {
+                              if (trade.initial_mc > 0) return formatMarketCap(trade.initial_mc)
+                              if (currentMc && currentPrice && trade.entry_price > 0) {
+                                const supply = currentMc / currentPrice
+                                return formatMarketCap(trade.entry_price * supply)
+                              }
+                              return 'N/A'
+                            })()
                           : formatPrice(trade.entry_price)
                         }
                       </td>
@@ -205,7 +212,14 @@ export function TokenTradeHistory({ trades, tokenSymbol, currentPrice, currentMc
                     {columnVisibility.ath_price && (
                       <td className="p-3">
                         {displayMode === 'marketcap'
-                          ? (trade.high_mc > 0 ? formatMarketCap(trade.high_mc) : 'N/A')
+                          ? (() => {
+                              if (trade.high_mc > 0) return formatMarketCap(trade.high_mc)
+                              if (currentMc && currentPrice && trade.ath_price > 0) {
+                                const supply = currentMc / currentPrice
+                                return formatMarketCap(trade.ath_price * supply)
+                              }
+                              return 'N/A'
+                            })()
                           : formatPrice(trade.ath_price)
                         }
                       </td>

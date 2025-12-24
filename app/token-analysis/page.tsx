@@ -186,17 +186,21 @@ export default async function TokenAnalysisPage(props: TokenAnalysisPageProps) {
 
   if (!response || !response.ok) {
     return (
-      
-      <div className="container mx-auto p-4">
+      <div className="min-h-screen">
         <PageHeader/>
-        <h1 className="text-2xl font-bold mb-4">Token Data Unavailable</h1>
-        <p>The requested token data could not be fetched. This might be due to:</p>
-        <ul className="list-disc list-inside mt-2">
-          <li>Rate limiting from the data provider</li>
-          <li>Token not found in the database</li>
-          <li>Temporary service outage</li>
-        </ul>
-        <p className="mt-4">Please try again in a few moments.</p>
+        <div className="container flex flex-col items-center justify-center min-h-[70vh] gap-4 text-center max-w-2xl">
+          <h1 className="text-4xl font-bold">Token Data Unavailable</h1>
+          <p className="text-muted-foreground">The requested token data could not be fetched. This might be due to:</p>
+          <ul className="list-disc list-inside mt-2 text-muted-foreground">
+            <li>Rate limiting from the data provider</li>
+            <li>Token not found in the database</li>
+            <li>Temporary service outage</li>
+          </ul>
+          <p className="text-muted-foreground mt-4">Please try again in a few moments.</p>
+          <Link href="/token-analysis">
+            <Button>Return to Token Search</Button>
+          </Link>
+        </div>
       </div>
     )
   }
@@ -207,11 +211,14 @@ export default async function TokenAnalysisPage(props: TokenAnalysisPageProps) {
 
   if (!tokenInfo) {
     return (
-      <div>
+      <div className="min-h-screen">
         <PageHeader/>
-        <div className="container mx-auto p-4">
-          <h1 className="text-2xl font-bold mb-4">Token Not Found</h1>
-          <p>The requested token could not be found.</p>
+        <div className="container flex flex-col items-center justify-center min-h-[70vh] gap-4 text-center">
+          <h1 className="text-4xl font-bold">Token Not Found</h1>
+          <p className="text-muted-foreground">The requested token could not be found.</p>
+          <Link href="/token-analysis">
+            <Button>Return to Token Search</Button>
+          </Link>
         </div>
       </div>
     )

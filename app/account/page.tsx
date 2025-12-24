@@ -6,15 +6,18 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Wallet, Mail, User, TrendingUp, ArrowRight, Edit2, Check, X } from 'lucide-react';
+import { Wallet, Mail, User, TrendingUp, ArrowRight, Edit2, Check, X, DollarSign, BarChart3 } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { mockAccountData } from '@/app/copy-trader/dashboard/data/mock';
 import { AccountDataPoint } from '@/app/copy-trader/dashboard/types';
 import { PageHeader } from '@/app/page-header';
+import { useDisplayPreference, DisplayMode } from '@/lib/display-preference-context';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 
 export default function AccountPage() {
   const { user, updateProfile } = useAuth();
+  const { displayMode, setDisplayMode } = useDisplayPreference();
   const [isEditing, setIsEditing] = useState(false);
   const [fullName, setFullName] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
@@ -231,6 +234,49 @@ export default function AccountPage() {
                 </Button>
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        {/* Display Preferences Card */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <BarChart3 className="h-5 w-5" />
+              Display Preferences
+            </CardTitle>
+            <CardDescription>Customize how data is displayed in tables</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label className="text-sm font-medium">Price Display Mode</Label>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Choose to display prices or market caps in trade tables
+                </p>
+              </div>
+              <ToggleGroup
+                type="single"
+                value={displayMode}
+                onValueChange={(value) => {
+                  if (value) setDisplayMode(value as DisplayMode)
+                }}
+                size="sm"
+                variant="outline"
+              >
+                <ToggleGroupItem value="price" aria-label="Show prices" className="gap-2">
+                  <DollarSign className="h-4 w-4" />
+                  Price
+                </ToggleGroupItem>
+                <ToggleGroupItem value="marketcap" aria-label="Show market caps" className="gap-2">
+                  <TrendingUp className="h-4 w-4" />
+                  Market Cap
+                </ToggleGroupItem>
+              </ToggleGroup>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              This preference will be applied across all trade tables in the app.
+              {user ? ' Your preference is saved to your account.' : ' Sign in to save this preference.'}
+            </p>
           </CardContent>
         </Card>
 

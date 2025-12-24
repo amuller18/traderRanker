@@ -647,6 +647,7 @@ export default async function TokenAnalysisPage(props: TokenAnalysisPageProps) {
                     trades={filteredTrades}
                     tokenSymbol={tokenInfo.baseToken?.symbol || "this token"}
                     currentPrice={currentTokenPrice}
+                    currentMc={Number(tokenInfo.marketCap) || undefined}
                   />
                 </TabsContent>
 

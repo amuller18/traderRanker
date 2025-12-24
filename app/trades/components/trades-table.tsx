@@ -16,6 +16,8 @@ import {
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import type { Trade } from "@/lib/trader-data"
+import { useDisplayPreference } from "@/lib/display-preference-context"
+import { PriceMarketCapToggle } from "@/components/price-marketcap-toggle"
 
 interface TradesTableProps {
   trades: Trade[]
@@ -30,13 +32,14 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc")
   const [pageSize] = useState<number>(10) // Fixed at 10
   const [currentPage, setCurrentPage] = useState<number>(1)
-  const [tokenInfos, setTokenInfos] = useState<Record<string, { currentPrice: number }>>({})
+  const [tokenInfos, setTokenInfos] = useState<Record<string, { currentPrice: number; currentMc?: number }>>({})
   const [loadingStates, setLoadingStates] = useState<Record<string, boolean>>({})
   const [errorStates, setErrorStates] = useState<Record<string, boolean>>({})
   const [retryCount, setRetryCount] = useState(0)
   const [isUpdating, setIsUpdating] = useState(false)
   const fetchedTokensRef = useRef<Set<string>>(new Set())
   const router = useRouter()
+  const { displayMode } = useDisplayPreference()
 
   // Column visibility state
   const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({
@@ -174,7 +177,7 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
         console.log('Bulk price API response:', data)
 
         // Process all results at once
-        const tokenInfosUpdate: Record<string, { currentPrice: number }> = {}
+        const tokenInfosUpdate: Record<string, { currentPrice: number; currentMc?: number }> = {}
         const errorStatesUpdate: Record<string, boolean> = {}
 
         uniqueTokens.forEach(trade => {
@@ -185,6 +188,7 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
           if (tokenResult && tokenResult.price > 0) {
             tokenInfosUpdate[trade.ca] = {
               currentPrice: tokenResult.price,
+              currentMc: tokenResult.market_cap || undefined,
             }
             fetchedTokensRef.current.add(trade.ca)
           } else {
@@ -192,6 +196,7 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
             console.warn(`No price data available for ${trade.ca}`)
             tokenInfosUpdate[trade.ca] = {
               currentPrice: 0,
+              currentMc: undefined,
             }
             fetchedTokensRef.current.add(trade.ca)
           }
@@ -205,12 +210,13 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
         console.error('Error updating prices for tokens:', error)
 
         // Mark all tokens as error
-        const tokenInfosUpdate: Record<string, { currentPrice: number }> = {}
+        const tokenInfosUpdate: Record<string, { currentPrice: number; currentMc?: number }> = {}
         const errorStatesUpdate: Record<string, boolean> = {}
 
         uniqueTokens.forEach(trade => {
           tokenInfosUpdate[trade.ca] = {
             currentPrice: 0,
+            currentMc: undefined,
           }
           fetchedTokensRef.current.add(trade.ca)
           errorStatesUpdate[trade.ca] = true
@@ -315,6 +321,9 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
           )}
         </div>
         <div className="flex items-center gap-2">
+          {/* Price/Market Cap Toggle */}
+          <PriceMarketCapToggle />
+
           {/* Column Visibility Dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -413,7 +422,7 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
                     onClick={() => handleSort("entry_price")}
                     className="flex items-center gap-1 p-0 h-auto font-medium"
                   >
-                    Entry Price
+                    {displayMode === 'marketcap' ? 'Entry MC' : 'Entry Price'}
                     {sortField === "entry_price" ? (
                       sortDirection === "asc" ? (
                         <ChevronUp className="h-4 w-4" />
@@ -427,7 +436,9 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
                 </TableHead>
               )}
               {columnVisibility.current_price && (
-                <TableHead className="w-[140px] text-xs uppercase tracking-wider font-medium">Current Price</TableHead>
+                <TableHead className="w-[140px] text-xs uppercase tracking-wider font-medium">
+                  {displayMode === 'marketcap' ? 'Current MC' : 'Current Price'}
+                </TableHead>
               )}
               {columnVisibility.ath_price && (
                 <TableHead className="w-[140px]">
@@ -436,7 +447,7 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
                     onClick={() => handleSort("ath_price")}
                     className="flex items-center gap-1 p-0 h-auto font-medium"
                   >
-                    ATH Price
+                    {displayMode === 'marketcap' ? 'ATH MC' : 'ATH Price'}
                     {sortField === "ath_price" ? (
                       sortDirection === "asc" ? (
                         <ChevronUp className="h-4 w-4" />
@@ -533,10 +544,18 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
                     )}
                     {columnVisibility.entry_price && (
                       <TableCell>
-                        {trade.entry_price > 0 ? (
-                          formatPrice(trade.entry_price)
+                        {displayMode === 'marketcap' ? (
+                          trade.initial_mc > 0 ? (
+                            formatMarketCap(trade.initial_mc)
+                          ) : (
+                            <span className="text-muted-foreground">N/A</span>
+                          )
                         ) : (
-                          <span className="text-muted-foreground">N/A</span>
+                          trade.entry_price > 0 ? (
+                            formatPrice(trade.entry_price)
+                          ) : (
+                            <span className="text-muted-foreground">N/A</span>
+                          )
                         )}
                       </TableCell>
                     )}
@@ -546,6 +565,12 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
                           <span className="animate-pulse text-muted-foreground">...</span>
                         ) : hasError ? (
                           <span className="text-muted-foreground">N/A</span>
+                        ) : displayMode === 'marketcap' ? (
+                          tokenInfos[trade.ca]?.currentMc && tokenInfos[trade.ca].currentMc! > 0 ? (
+                            <span className="font-medium">{formatMarketCap(tokenInfos[trade.ca].currentMc!)}</span>
+                          ) : (
+                            <span className="text-muted-foreground">N/A</span>
+                          )
                         ) : currentPrice && currentPrice > 0 ? (
                           <span className="font-medium">{formatPrice(currentPrice)}</span>
                         ) : (
@@ -555,10 +580,18 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
                     )}
                     {columnVisibility.ath_price && (
                       <TableCell>
-                        {trade.ath_price > 0 ? (
-                          formatPrice(trade.ath_price)
+                        {displayMode === 'marketcap' ? (
+                          trade.high_mc > 0 ? (
+                            formatMarketCap(trade.high_mc)
+                          ) : (
+                            <span className="text-muted-foreground">N/A</span>
+                          )
                         ) : (
-                          <span className="text-muted-foreground">N/A</span>
+                          trade.ath_price > 0 ? (
+                            formatPrice(trade.ath_price)
+                          ) : (
+                            <span className="text-muted-foreground">N/A</span>
+                          )
                         )}
                       </TableCell>
                     )}

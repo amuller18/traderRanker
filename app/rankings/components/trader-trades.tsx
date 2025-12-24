@@ -11,6 +11,8 @@ import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { formatMarketCap, formatROI } from "@/lib/utils"
 import type { TokenInfo } from "@/lib/token-data"
+import { useDisplayPreference } from "@/lib/display-preference-context"
+import { PriceMarketCapToggle } from "@/components/price-marketcap-toggle"
 
 interface TraderTradesProps {
   trades: Trade[]
@@ -23,11 +25,12 @@ interface TraderTradesProps {
 export function TraderTrades({ trades, currentPage, totalPages, totalTrades, traderName }: TraderTradesProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const [tokenInfos, setTokenInfos] = useState<Record<string, { currentPrice: number }>>({})
+  const [tokenInfos, setTokenInfos] = useState<Record<string, { currentPrice: number; currentMc?: number }>>({})
   const [loadingStates, setLoadingStates] = useState<Record<string, boolean>>({})
   const [errorStates, setErrorStates] = useState<Record<string, boolean>>({})
   const [retryCount, setRetryCount] = useState(0)
   const fetchedTokensRef = useRef<Set<string>>(new Set())
+  const { displayMode } = useDisplayPreference()
   const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({
     date_called: true,
     token: true,
@@ -99,7 +102,7 @@ export function TraderTrades({ trades, currentPage, totalPages, totalTrades, tra
       console.log(`✅ Received ${results.length} price results`)
 
       // Update all token infos at once
-      const newTokenInfos: Record<string, { currentPrice: number }> = {}
+      const newTokenInfos: Record<string, { currentPrice: number; currentMc?: number }> = {}
 
       results.forEach((result: any) => {
         if (result.error) {
@@ -107,7 +110,8 @@ export function TraderTrades({ trades, currentPage, totalPages, totalTrades, tra
           setErrorStates(prev => ({ ...prev, [result.token]: true }))
         } else {
           newTokenInfos[result.token] = {
-            currentPrice: result.price || 0
+            currentPrice: result.price || 0,
+            currentMc: result.market_cap || undefined,
           }
           fetchedTokensRef.current.add(result.token)
         }
@@ -243,6 +247,7 @@ export function TraderTrades({ trades, currentPage, totalPages, totalTrades, tra
           Page {currentPage} of {totalPages} total pages
         </div>
         <div className="flex items-center gap-2">
+          <PriceMarketCapToggle />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm">
@@ -327,13 +332,19 @@ export function TraderTrades({ trades, currentPage, totalPages, totalTrades, tra
                   <th className="px-4 py-3 text-left text-sm font-medium">Token</th>
                 )}
                 {columnVisibility.entry_price && (
-                  <th className="px-4 py-3 text-left text-sm font-medium">Entry Price</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium">
+                    {displayMode === 'marketcap' ? 'Entry MC' : 'Entry Price'}
+                  </th>
                 )}
                 {columnVisibility.current_price && (
-                  <th className="px-4 py-3 text-left text-sm font-medium">Current Price</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium">
+                    {displayMode === 'marketcap' ? 'Current MC' : 'Current Price'}
+                  </th>
                 )}
                 {columnVisibility.ath_price && (
-                  <th className="px-4 py-3 text-left text-sm font-medium">ATH Price</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium">
+                    {displayMode === 'marketcap' ? 'ATH MC' : 'ATH Price'}
+                  </th>
                 )}
                 {columnVisibility.ath_roi && (
                   <th className="px-4 py-3 text-left text-sm font-medium">ATH ROI</th>
@@ -375,13 +386,25 @@ export function TraderTrades({ trades, currentPage, totalPages, totalTrades, tra
                       )}
                       {columnVisibility.entry_price && (
                         <td className="px-4 py-3 text-sm">
-                          {entryPrice > 0 ? formatPrice(entryPrice) : <span className="text-muted-foreground">N/A</span>}
+                          {displayMode === 'marketcap' ? (
+                            trade.initial_mc > 0 ? formatMarketCap(trade.initial_mc) : <span className="text-muted-foreground">N/A</span>
+                          ) : (
+                            entryPrice > 0 ? formatPrice(entryPrice) : <span className="text-muted-foreground">N/A</span>
+                          )}
                         </td>
                       )}
                       {columnVisibility.current_price && (
                         <td className="px-4 py-3 text-sm">
                           {hasError ? (
                             <span className="text-muted-foreground">N/A</span>
+                          ) : displayMode === 'marketcap' ? (
+                            tokenInfos[trade.ca]?.currentMc && tokenInfos[trade.ca].currentMc! > 0 ? (
+                              formatMarketCap(tokenInfos[trade.ca].currentMc!)
+                            ) : currentPrice !== undefined ? (
+                              <span className="text-muted-foreground">N/A</span>
+                            ) : (
+                              <span className="animate-pulse text-muted-foreground">Loading...</span>
+                            )
                           ) : currentPrice !== undefined && currentPrice > 0 ? (
                             formatPrice(currentPrice)
                           ) : (
@@ -391,7 +414,11 @@ export function TraderTrades({ trades, currentPage, totalPages, totalTrades, tra
                       )}
                       {columnVisibility.ath_price && (
                         <td className="px-4 py-3 text-sm">
-                          {athPrice > 0 ? formatPrice(athPrice) : <span className="text-muted-foreground">N/A</span>}
+                          {displayMode === 'marketcap' ? (
+                            trade.high_mc > 0 ? formatMarketCap(trade.high_mc) : <span className="text-muted-foreground">N/A</span>
+                          ) : (
+                            athPrice > 0 ? formatPrice(athPrice) : <span className="text-muted-foreground">N/A</span>
+                          )}
                         </td>
                       )}
                       {columnVisibility.ath_roi && (

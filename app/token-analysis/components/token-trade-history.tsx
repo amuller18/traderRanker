@@ -8,11 +8,14 @@ import { ChevronDown } from "lucide-react"
 import { format } from "date-fns"
 import Link from "next/link"
 import type { Trade } from "@/lib/trader-data"
+import { useDisplayPreference } from "@/lib/display-preference-context"
+import { PriceMarketCapToggle } from "@/components/price-marketcap-toggle"
 
 interface TokenTradeHistoryProps {
   trades: Trade[]
   tokenSymbol: string
   currentPrice: number
+  currentMc?: number
 }
 
 const formatPrice = (value: number | undefined): string => {
@@ -35,7 +38,15 @@ const formatPercentage = (value: number | null): string => {
   return value.toFixed(2) + '%'
 }
 
-export function TokenTradeHistory({ trades, tokenSymbol, currentPrice }: TokenTradeHistoryProps) {
+const formatMarketCap = (mc: number) => {
+  if (mc >= 1_000_000_000) return `$${(mc / 1_000_000_000).toFixed(2)}B`
+  if (mc >= 1_000_000) return `$${(mc / 1_000_000).toFixed(2)}M`
+  if (mc >= 1_000) return `$${(mc / 1_000).toFixed(2)}K`
+  return `$${mc.toFixed(2)}`
+}
+
+export function TokenTradeHistory({ trades, tokenSymbol, currentPrice, currentMc }: TokenTradeHistoryProps) {
+  const { displayMode } = useDisplayPreference()
   const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({
     date_called: true,
     trader: true,
@@ -67,12 +78,14 @@ export function TokenTradeHistory({ trades, tokenSymbol, currentPrice }: TokenTr
             <CardTitle>Trade History</CardTitle>
             <CardDescription>All trades for {tokenSymbol}</CardDescription>
           </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="ml-auto">
-                Columns <ChevronDown className="ml-2 h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
+          <div className="flex items-center gap-2">
+            <PriceMarketCapToggle />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm">
+                  Columns <ChevronDown className="ml-2 h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuCheckboxItem
                 checked={columnVisibility.date_called}
@@ -117,7 +130,8 @@ export function TokenTradeHistory({ trades, tokenSymbol, currentPrice }: TokenTr
                 Current ROI
               </DropdownMenuCheckboxItem>
             </DropdownMenuContent>
-          </DropdownMenu>
+            </DropdownMenu>
+          </div>
         </div>
       </CardHeader>
       <CardContent>
@@ -132,13 +146,19 @@ export function TokenTradeHistory({ trades, tokenSymbol, currentPrice }: TokenTr
                   <th className="p-3 text-left font-medium">Trader</th>
                 )}
                 {columnVisibility.entry_price && (
-                  <th className="p-3 text-left font-medium">Entry Price</th>
+                  <th className="p-3 text-left font-medium">
+                    {displayMode === 'marketcap' ? 'Entry MC' : 'Entry Price'}
+                  </th>
                 )}
                 {columnVisibility.current_price && (
-                  <th className="p-3 text-left font-medium">Current Price</th>
+                  <th className="p-3 text-left font-medium">
+                    {displayMode === 'marketcap' ? 'Current MC' : 'Current Price'}
+                  </th>
                 )}
                 {columnVisibility.ath_price && (
-                  <th className="p-3 text-left font-medium">ATH Price</th>
+                  <th className="p-3 text-left font-medium">
+                    {displayMode === 'marketcap' ? 'ATH MC' : 'ATH Price'}
+                  </th>
                 )}
                 {columnVisibility.ath_roi && (
                   <th className="p-3 text-left font-medium">ATH ROI</th>
@@ -167,13 +187,28 @@ export function TokenTradeHistory({ trades, tokenSymbol, currentPrice }: TokenTr
                       </td>
                     )}
                     {columnVisibility.entry_price && (
-                      <td className="p-3">{formatPrice(trade.entry_price)}</td>
+                      <td className="p-3">
+                        {displayMode === 'marketcap'
+                          ? (trade.initial_mc > 0 ? formatMarketCap(trade.initial_mc) : 'N/A')
+                          : formatPrice(trade.entry_price)
+                        }
+                      </td>
                     )}
                     {columnVisibility.current_price && (
-                      <td className="p-3">{formatPrice(currentPrice)}</td>
+                      <td className="p-3">
+                        {displayMode === 'marketcap'
+                          ? (currentMc && currentMc > 0 ? formatMarketCap(currentMc) : 'N/A')
+                          : formatPrice(currentPrice)
+                        }
+                      </td>
                     )}
                     {columnVisibility.ath_price && (
-                      <td className="p-3">{formatPrice(trade.ath_price)}</td>
+                      <td className="p-3">
+                        {displayMode === 'marketcap'
+                          ? (trade.high_mc > 0 ? formatMarketCap(trade.high_mc) : 'N/A')
+                          : formatPrice(trade.ath_price)
+                        }
+                      </td>
                     )}
                     {columnVisibility.ath_roi && (
                       <td className={`p-3 ${trade.ath_roi >= 0 ? "text-green-500" : "text-red-500"}`}>

@@ -2,9 +2,17 @@
 
 import { useState, useEffect, useMemo, useRef } from "react"
 import { formatDistanceToNow } from "date-fns"
-import { ChevronUp, ChevronDown, ArrowUpDown, ExternalLink, Loader2, RefreshCw } from "lucide-react"
+import { ChevronUp, ChevronDown, ArrowUpDown, ExternalLink, Loader2, RefreshCw, Columns } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import type { Trade } from "@/lib/trader-data"
@@ -14,7 +22,7 @@ interface TradesTableProps {
   loading?: boolean
 }
 
-type SortField = "date_called" | "roi" | "initial_mc" | "caller"
+type SortField = "date_called" | "roi" | "entry_price" | "caller" | "ath_price" | "ath_roi"
 type SortDirection = "asc" | "desc"
 
 export function TradesTable({ trades, loading = false }: TradesTableProps) {
@@ -22,7 +30,7 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc")
   const [pageSize] = useState<number>(10) // Fixed at 10
   const [currentPage, setCurrentPage] = useState<number>(1)
-  const [tokenInfos, setTokenInfos] = useState<Record<string, { currentMc: number }>>({})
+  const [tokenInfos, setTokenInfos] = useState<Record<string, { currentPrice: number }>>({})
   const [loadingStates, setLoadingStates] = useState<Record<string, boolean>>({})
   const [errorStates, setErrorStates] = useState<Record<string, boolean>>({})
   const [retryCount, setRetryCount] = useState(0)
@@ -30,27 +38,55 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
   const fetchedTokensRef = useRef<Set<string>>(new Set())
   const router = useRouter()
 
+  // Column visibility state
+  const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({
+    date_called: true,
+    trader: true,
+    token: true,
+    entry_price: true,
+    current_price: true,
+    ath_price: true,
+    ath_roi: true,
+    roi: true,
+    links: true,
+  })
 
 
-  // Calculate ROI for a trade (same logic as token-analysis page)
+
+  // Calculate ROI for a trade using prices
   const calculateRoi = (trade: Trade) => {
-    const currentMc = tokenInfos[trade.ca]?.currentMc
-    const initialMc = trade.initial_mc
+    const currentPrice = tokenInfos[trade.ca]?.currentPrice
+    const entryPrice = trade.entry_price
 
-    // If we don't have current market cap data yet, return null to indicate loading
-    if (currentMc === undefined) return null
+    // If we don't have current price data yet, return null to indicate loading
+    if (currentPrice === undefined) return null
 
-    // If initial MC is 0 or current MC is 0, can't calculate ROI
-    if (initialMc === 0 || currentMc === 0) return null
+    // If entry price is 0 or current price is 0, can't calculate ROI
+    if (entryPrice === 0 || currentPrice === 0) return null
 
-    // Cap extremely high ROIs for very small market caps
-    if (currentMc < 10000) {
-      const rawRoi = ((currentMc - initialMc) / initialMc) * 100
-      return Math.min(rawRoi, 1000)
-    }
-
-    return ((currentMc - initialMc) / initialMc) * 100
+    return ((currentPrice - entryPrice) / entryPrice) * 100
   }
+
+  // Toggle column visibility
+  const toggleColumn = (key: string) => {
+    setColumnVisibility(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }))
+  }
+
+  // Column options for the dropdown
+  const columnOptions = [
+    { key: "date_called", label: "Date Called" },
+    { key: "trader", label: "Trader" },
+    { key: "token", label: "Token" },
+    { key: "entry_price", label: "Entry Price" },
+    { key: "current_price", label: "Current Price" },
+    { key: "ath_price", label: "ATH Price" },
+    { key: "ath_roi", label: "ATH ROI" },
+    { key: "roi", label: "Current ROI" },
+    { key: "links", label: "Links" },
+  ]
 
   // Memoize sorted trades to prevent infinite re-renders
   const sortedTrades = useMemo(() => {
@@ -65,11 +101,14 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
         const aRoi = calculateRoi(a) ?? -Infinity
         const bRoi = calculateRoi(b) ?? -Infinity
         return sortDirection === "asc" ? aRoi - bRoi : bRoi - aRoi
-      } else {
-        const aValue = a[sortField]
-        const bValue = b[sortField]
-        return sortDirection === "asc" ? aValue - bValue : bValue - aValue
+      } else if (sortField === "entry_price") {
+        return sortDirection === "asc" ? a.entry_price - b.entry_price : b.entry_price - a.entry_price
+      } else if (sortField === "ath_price") {
+        return sortDirection === "asc" ? a.ath_price - b.ath_price : b.ath_price - a.ath_price
+      } else if (sortField === "ath_roi") {
+        return sortDirection === "asc" ? a.ath_roi - b.ath_roi : b.ath_roi - a.ath_roi
       }
+      return 0
     })
   }, [trades, sortField, sortDirection, tokenInfos])
 
@@ -135,31 +174,24 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
         console.log('Bulk price API response:', data)
 
         // Process all results at once
-        const tokenInfosUpdate: Record<string, { currentMc: number }> = {}
+        const tokenInfosUpdate: Record<string, { currentPrice: number }> = {}
         const errorStatesUpdate: Record<string, boolean> = {}
 
         uniqueTokens.forEach(trade => {
           const tokenResult = data.find((result: any) => result.token === trade.ca)
 
-          console.log(`Token ${trade.ca}: API result =`, tokenResult, `Stored current_mc =`, trade.current_mc)
+          console.log(`Token ${trade.ca}: API result =`, tokenResult)
 
-          if (tokenResult && tokenResult.market_cap > 0) {
+          if (tokenResult && tokenResult.price > 0) {
             tokenInfosUpdate[trade.ca] = {
-              currentMc: tokenResult.market_cap,
-            }
-            fetchedTokensRef.current.add(trade.ca)
-          } else if (trade.current_mc && trade.current_mc > 0) {
-            // Fallback to stored current_mc if API doesn't have data
-            console.log(`Using fallback current_mc for ${trade.ca}:`, trade.current_mc)
-            tokenInfosUpdate[trade.ca] = {
-              currentMc: trade.current_mc,
+              currentPrice: tokenResult.price,
             }
             fetchedTokensRef.current.add(trade.ca)
           } else {
-            // No data available from API or stored
-            console.warn(`No market cap data available for ${trade.ca}`)
+            // No data available from API
+            console.warn(`No price data available for ${trade.ca}`)
             tokenInfosUpdate[trade.ca] = {
-              currentMc: 0,
+              currentPrice: 0,
             }
             fetchedTokensRef.current.add(trade.ca)
           }
@@ -170,23 +202,15 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
         setErrorStates(prev => ({ ...prev, ...errorStatesUpdate }))
         
       } catch (error) {
-        console.error('Error updating ROI for tokens:', error)
+        console.error('Error updating prices for tokens:', error)
 
-        // Fallback to stored data for all tokens on error
-        const tokenInfosUpdate: Record<string, { currentMc: number }> = {}
+        // Mark all tokens as error
+        const tokenInfosUpdate: Record<string, { currentPrice: number }> = {}
         const errorStatesUpdate: Record<string, boolean> = {}
 
         uniqueTokens.forEach(trade => {
-          if (trade.current_mc && trade.current_mc > 0) {
-            console.log(`Fallback: Using stored current_mc for ${trade.ca}:`, trade.current_mc)
-            tokenInfosUpdate[trade.ca] = {
-              currentMc: trade.current_mc,
-            }
-          } else {
-            console.warn(`Fallback: No current_mc available for ${trade.ca}`)
-            tokenInfosUpdate[trade.ca] = {
-              currentMc: 0,
-            }
+          tokenInfosUpdate[trade.ca] = {
+            currentPrice: 0,
           }
           fetchedTokensRef.current.add(trade.ca)
           errorStatesUpdate[trade.ca] = true
@@ -225,6 +249,12 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
     if (mc >= 1_000_000) return `$${(mc / 1_000_000).toFixed(2)}M`
     if (mc >= 1_000) return `$${(mc / 1_000).toFixed(2)}K`
     return `$${mc.toFixed(2)}`
+  }
+
+  const formatPrice = (price: number) => {
+    if (price >= 1) return `$${price.toFixed(4)}`
+    if (price >= 0.01) return `$${price.toFixed(6)}`
+    return `$${price.toFixed(8)}`
   }
 
   const getPerformanceClass = (roi: number) => {
@@ -285,6 +315,29 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
           )}
         </div>
         <div className="flex items-center gap-2">
+          {/* Column Visibility Dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-2">
+                <Columns className="h-4 w-4" />
+                Columns
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuLabel>Toggle Columns</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {columnOptions.map((col) => (
+                <DropdownMenuCheckboxItem
+                  key={col.key}
+                  checked={columnVisibility[col.key]}
+                  onCheckedChange={() => toggleColumn(col.key)}
+                >
+                  {col.label}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           <Button
             variant="outline"
             size="sm"
@@ -312,81 +365,131 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[180px]">
-                <Button
-                  variant="ghost"
-                  onClick={() => handleSort("date_called")}
-                  className="flex items-center gap-1 p-0 h-auto font-medium"
-                >
-                  Date Called
-                  {sortField === "date_called" ? (
-                    sortDirection === "asc" ? (
-                      <ChevronUp className="h-4 w-4" />
+              {columnVisibility.date_called && (
+                <TableHead className="w-[180px]">
+                  <Button
+                    variant="ghost"
+                    onClick={() => handleSort("date_called")}
+                    className="flex items-center gap-1 p-0 h-auto font-medium"
+                  >
+                    Date Called
+                    {sortField === "date_called" ? (
+                      sortDirection === "asc" ? (
+                        <ChevronUp className="h-4 w-4" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4" />
+                      )
                     ) : (
-                      <ChevronDown className="h-4 w-4" />
-                    )
-                  ) : (
-                    <ArrowUpDown className="h-4 w-4" />
-                  )}
-                </Button>
-              </TableHead>
-              <TableHead>
-                <Button
-                  variant="ghost"
-                  onClick={() => handleSort("caller")}
-                  className="flex items-center gap-1 p-0 h-auto font-medium"
-                >
-                  Trader
-                  {sortField === "caller" ? (
-                    sortDirection === "asc" ? (
-                      <ChevronUp className="h-4 w-4" />
+                      <ArrowUpDown className="h-4 w-4" />
+                    )}
+                  </Button>
+                </TableHead>
+              )}
+              {columnVisibility.trader && (
+                <TableHead>
+                  <Button
+                    variant="ghost"
+                    onClick={() => handleSort("caller")}
+                    className="flex items-center gap-1 p-0 h-auto font-medium"
+                  >
+                    Trader
+                    {sortField === "caller" ? (
+                      sortDirection === "asc" ? (
+                        <ChevronUp className="h-4 w-4" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4" />
+                      )
                     ) : (
-                      <ChevronDown className="h-4 w-4" />
-                    )
-                  ) : (
-                    <ArrowUpDown className="h-4 w-4" />
-                  )}
-                </Button>
-              </TableHead>
-              <TableHead>Token</TableHead>
-              <TableHead className="w-[150px]">
-                <Button
-                  variant="ghost"
-                  onClick={() => handleSort("initial_mc")}
-                  className="flex items-center gap-1 p-0 h-auto font-medium"
-                >
-                  Initial MC
-                  {sortField === "initial_mc" ? (
-                    sortDirection === "asc" ? (
-                      <ChevronUp className="h-4 w-4" />
+                      <ArrowUpDown className="h-4 w-4" />
+                    )}
+                  </Button>
+                </TableHead>
+              )}
+              {columnVisibility.token && <TableHead>Token</TableHead>}
+              {columnVisibility.entry_price && (
+                <TableHead className="w-[150px]">
+                  <Button
+                    variant="ghost"
+                    onClick={() => handleSort("entry_price")}
+                    className="flex items-center gap-1 p-0 h-auto font-medium"
+                  >
+                    Entry Price
+                    {sortField === "entry_price" ? (
+                      sortDirection === "asc" ? (
+                        <ChevronUp className="h-4 w-4" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4" />
+                      )
                     ) : (
-                      <ChevronDown className="h-4 w-4" />
-                    )
-                  ) : (
-                    <ArrowUpDown className="h-4 w-4" />
-                  )}
-                </Button>
-              </TableHead>
-              <TableHead className="w-[140px] text-xs uppercase tracking-wider font-medium">Current MC</TableHead>
-              <TableHead className="w-[120px]">
-                <Button
-                  variant="ghost"
-                  onClick={() => handleSort("roi")}
-                  className="flex items-center gap-1 p-0 h-auto font-medium"
-                >
-                  ROI
-                  {sortField === "roi" ? (
-                    sortDirection === "asc" ? (
-                      <ChevronUp className="h-4 w-4" />
+                      <ArrowUpDown className="h-4 w-4" />
+                    )}
+                  </Button>
+                </TableHead>
+              )}
+              {columnVisibility.current_price && (
+                <TableHead className="w-[140px] text-xs uppercase tracking-wider font-medium">Current Price</TableHead>
+              )}
+              {columnVisibility.ath_price && (
+                <TableHead className="w-[140px]">
+                  <Button
+                    variant="ghost"
+                    onClick={() => handleSort("ath_price")}
+                    className="flex items-center gap-1 p-0 h-auto font-medium"
+                  >
+                    ATH Price
+                    {sortField === "ath_price" ? (
+                      sortDirection === "asc" ? (
+                        <ChevronUp className="h-4 w-4" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4" />
+                      )
                     ) : (
-                      <ChevronDown className="h-4 w-4" />
-                    )
-                  ) : (
-                    <ArrowUpDown className="h-4 w-4" />
-                  )}
-                </Button>
-              </TableHead>
-              <TableHead className="w-[100px]">Links</TableHead>
+                      <ArrowUpDown className="h-4 w-4" />
+                    )}
+                  </Button>
+                </TableHead>
+              )}
+              {columnVisibility.ath_roi && (
+                <TableHead className="w-[120px]">
+                  <Button
+                    variant="ghost"
+                    onClick={() => handleSort("ath_roi")}
+                    className="flex items-center gap-1 p-0 h-auto font-medium"
+                  >
+                    ATH ROI
+                    {sortField === "ath_roi" ? (
+                      sortDirection === "asc" ? (
+                        <ChevronUp className="h-4 w-4" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="h-4 w-4" />
+                    )}
+                  </Button>
+                </TableHead>
+              )}
+              {columnVisibility.roi && (
+                <TableHead className="w-[120px]">
+                  <Button
+                    variant="ghost"
+                    onClick={() => handleSort("roi")}
+                    className="flex items-center gap-1 p-0 h-auto font-medium"
+                  >
+                    Current ROI
+                    {sortField === "roi" ? (
+                      sortDirection === "asc" ? (
+                        <ChevronUp className="h-4 w-4" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="h-4 w-4" />
+                    )}
+                  </Button>
+                </TableHead>
+              )}
+              {columnVisibility.links && <TableHead className="w-[100px]">Links</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -401,79 +504,111 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
                 const roi = calculateRoi(trade)
                 const isLoading = loadingStates[trade.ca]
                 const hasError = errorStates[trade.ca]
-                const currentMc = tokenInfos[trade.ca]?.currentMc
+                const currentPrice = tokenInfos[trade.ca]?.currentPrice
 
                 return (
                   <TableRow key={`${trade.caller}-${trade.ca}-${trade.date_called}`}>
-                    <TableCell>
-                      {trade.date_called ? formatDate(trade.date_called) : <span className="text-muted-foreground">N/A</span>}
-                    </TableCell>
-                    <TableCell>
-                      <Link href={`/rankings?trader=${encodeURIComponent(trade.caller)}`} className="hover:underline text-primary">
-                        {trade.caller}
-                      </Link>
-                    </TableCell>
-                    <TableCell>
-                      <Link
-                        href={`/token-analysis?token=${encodeURIComponent(trade.ca)}`}
-                        className="hover:underline text-primary font-mono truncate max-w-[200px] block"
-                        title={trade.ca}
-                      >
-                        {trade.ca.substring(0, 6)}...{trade.ca.substring(trade.ca.length - 4)}
-                      </Link>
-                    </TableCell>
-                    <TableCell>
-                      {trade.initial_mc > 0 ? (
-                        formatMarketCap(trade.initial_mc)
-                      ) : (
-                        <span className="text-muted-foreground">N/A</span>
-                      )}
-                    </TableCell>
-                    <TableCell className={roi !== null ? getPerformanceClass(roi) : ""}>
-                      {isLoading ? (
-                        <span className="animate-pulse text-muted-foreground">•••%</span>
-                      ) : hasError ? (
-                        <span className="text-muted-foreground">N/A</span>
-                      ) : tokenInfos[trade.ca]?.currentMc ? (
-                        <span className="font-medium">{formatMarketCap(tokenInfos[trade.ca].currentMc)}</span>
-                      ) : (
-                        <span className="text-muted-foreground">N/A</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {isLoading ? (
-                        <span className="animate-pulse text-muted-foreground">Loading...</span>
-                      ) : hasError ? (
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground">Error</span>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setErrorStates(prev => ({ ...prev, [trade.ca]: false }))
-                              fetchedTokensRef.current.delete(trade.ca)
-                              setRetryCount(prev => prev + 1)
-                            }}
-                            className="h-6 w-6 p-0"
-                          >
-                            <RefreshCw className="h-4 w-4" />
-                          </Button>
+                    {columnVisibility.date_called && (
+                      <TableCell>
+                        {trade.date_called ? formatDate(trade.date_called) : <span className="text-muted-foreground">N/A</span>}
+                      </TableCell>
+                    )}
+                    {columnVisibility.trader && (
+                      <TableCell>
+                        <Link href={`/rankings?trader=${encodeURIComponent(trade.caller)}`} className="hover:underline text-primary">
+                          {trade.caller}
+                        </Link>
+                      </TableCell>
+                    )}
+                    {columnVisibility.token && (
+                      <TableCell>
+                        <Link
+                          href={`/token-analysis?token=${encodeURIComponent(trade.ca)}`}
+                          className="hover:underline text-primary font-mono truncate max-w-[200px] block"
+                          title={trade.ca}
+                        >
+                          {trade.ca.substring(0, 6)}...{trade.ca.substring(trade.ca.length - 4)}
+                        </Link>
+                      </TableCell>
+                    )}
+                    {columnVisibility.entry_price && (
+                      <TableCell>
+                        {trade.entry_price > 0 ? (
+                          formatPrice(trade.entry_price)
+                        ) : (
+                          <span className="text-muted-foreground">N/A</span>
+                        )}
+                      </TableCell>
+                    )}
+                    {columnVisibility.current_price && (
+                      <TableCell>
+                        {isLoading ? (
+                          <span className="animate-pulse text-muted-foreground">...</span>
+                        ) : hasError ? (
+                          <span className="text-muted-foreground">N/A</span>
+                        ) : currentPrice && currentPrice > 0 ? (
+                          <span className="font-medium">{formatPrice(currentPrice)}</span>
+                        ) : (
+                          <span className="text-muted-foreground">N/A</span>
+                        )}
+                      </TableCell>
+                    )}
+                    {columnVisibility.ath_price && (
+                      <TableCell>
+                        {trade.ath_price > 0 ? (
+                          formatPrice(trade.ath_price)
+                        ) : (
+                          <span className="text-muted-foreground">N/A</span>
+                        )}
+                      </TableCell>
+                    )}
+                    {columnVisibility.ath_roi && (
+                      <TableCell className={trade.ath_roi !== 0 ? getPerformanceClass(trade.ath_roi) : ""}>
+                        {trade.ath_roi !== 0 ? (
+                          `${trade.ath_roi > 0 ? '+' : ''}${trade.ath_roi.toFixed(1)}%`
+                        ) : (
+                          <span className="text-muted-foreground">N/A</span>
+                        )}
+                      </TableCell>
+                    )}
+                    {columnVisibility.roi && (
+                      <TableCell className={roi !== null ? getPerformanceClass(roi) : ""}>
+                        {isLoading ? (
+                          <span className="animate-pulse text-muted-foreground">...</span>
+                        ) : hasError ? (
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground">Error</span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setErrorStates(prev => ({ ...prev, [trade.ca]: false }))
+                                fetchedTokensRef.current.delete(trade.ca)
+                                setRetryCount(prev => prev + 1)
+                              }}
+                              className="h-6 w-6 p-0"
+                            >
+                              <RefreshCw className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ) : roi !== null ? (
+                          `${roi > 0 ? '+' : ''}${roi.toFixed(1)}%`
+                        ) : (
+                          <span className="text-muted-foreground">N/A</span>
+                        )}
+                      </TableCell>
+                    )}
+                    {columnVisibility.links && (
+                      <TableCell>
+                        <div className="flex gap-1">
+                          <a href={`https://solscan.io/token/${trade.ca}`} target="_blank" rel="noopener noreferrer">
+                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                              <ExternalLink className="h-4 w-4" />
+                            </Button>
+                          </a>
                         </div>
-                      ) : roi !== null ? (
-                        `${roi.toFixed(1)}%`
-                      ) : (
-                        <span className="text-muted-foreground">N/A</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <a href={`https://solscan.io/token/${trade.ca}`} target="_blank" rel="noopener noreferrer">
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <ExternalLink className="h-4 w-4" />
-                          </Button>
-                        </a>
-                      </div>
-                    </TableCell>
+                      </TableCell>
+                    )}
                   </TableRow>
                 )
               })

@@ -4,6 +4,7 @@ import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { AuthProvider } from "@/lib/auth-context"
 import { WalletProvider } from "@/lib/wallet-context"
+import { DisplayPreferenceProvider } from "@/lib/display-preference-context"
 import { Toaster } from "@/components/ui/sonner"
 import Script from "next/script"
 
@@ -26,10 +27,12 @@ export default function RootLayout({
       <body className="font-sans">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <AuthProvider>
-            <WalletProvider>
-              {children}
-              <Toaster />
-            </WalletProvider>
+            <DisplayPreferenceProvider>
+              <WalletProvider>
+                {children}
+                <Toaster />
+              </WalletProvider>
+            </DisplayPreferenceProvider>
           </AuthProvider>
         </ThemeProvider>
       </body>

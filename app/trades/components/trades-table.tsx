@@ -16,6 +16,8 @@ import {
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import type { Trade } from "@/lib/trader-data"
+import { useDisplayPreference } from "@/lib/display-preference-context"
+import { PriceMarketCapToggle } from "@/components/price-marketcap-toggle"
 
 interface TradesTableProps {
   trades: Trade[]
@@ -30,13 +32,14 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc")
   const [pageSize] = useState<number>(10) // Fixed at 10
   const [currentPage, setCurrentPage] = useState<number>(1)
-  const [tokenInfos, setTokenInfos] = useState<Record<string, { currentPrice: number }>>({})
+  const [tokenInfos, setTokenInfos] = useState<Record<string, { currentPrice: number; currentMc?: number }>>({})
   const [loadingStates, setLoadingStates] = useState<Record<string, boolean>>({})
   const [errorStates, setErrorStates] = useState<Record<string, boolean>>({})
   const [retryCount, setRetryCount] = useState(0)
   const [isUpdating, setIsUpdating] = useState(false)
   const fetchedTokensRef = useRef<Set<string>>(new Set())
   const router = useRouter()
+  const { displayMode } = useDisplayPreference()
 
   // Column visibility state
   const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({
@@ -138,95 +141,81 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
 
     const processUpdates = async () => {
       if (isUpdating || uniqueTokens.length === 0) return // Prevent multiple simultaneous updates
-      
+
       setIsUpdating(true)
-      try {
-        // Use bulk API call for all tokens at once (much faster)
-        const tokenAddresses = uniqueTokens.map(trade => trade.ca)
-        
-        // Mark all tokens as loading
-        const loadingStatesUpdate: Record<string, boolean> = {}
-        tokenAddresses.forEach(ca => {
-          loadingStatesUpdate[ca] = true
-        })
-        setLoadingStates(prev => ({ ...prev, ...loadingStatesUpdate }))
 
-        // Single bulk API call
-        const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/bulk-token-prices`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Cache-Control': 'no-cache',
-              'Pragma': 'no-cache'
-            },
-            body: JSON.stringify({ tokens: tokenAddresses })
-          }
-        )
+      // Mark all tokens as loading
+      const tokenAddresses = uniqueTokens.map(trade => trade.ca)
+      const loadingStatesUpdate: Record<string, boolean> = {}
+      tokenAddresses.forEach(ca => {
+        loadingStatesUpdate[ca] = true
+      })
+      setLoadingStates(prev => ({ ...prev, ...loadingStatesUpdate }))
 
-        if (!response.ok) {
-          throw new Error(`API error: ${response.status}`)
-        }
-
-        const data = await response.json()
-
-        console.log('Bulk price API response:', data)
-
-        // Process all results at once
-        const tokenInfosUpdate: Record<string, { currentPrice: number }> = {}
-        const errorStatesUpdate: Record<string, boolean> = {}
-
-        uniqueTokens.forEach(trade => {
-          const tokenResult = data.find((result: any) => result.token === trade.ca)
-
-          console.log(`Token ${trade.ca}: API result =`, tokenResult)
-
-          if (tokenResult && tokenResult.price > 0) {
-            tokenInfosUpdate[trade.ca] = {
-              currentPrice: tokenResult.price,
+      // Fetch each token individually and update state as each completes (streaming)
+      const fetchPromises = uniqueTokens.map(async (trade) => {
+        try {
+          const response = await fetch(
+            `/api/token-info?address=${encodeURIComponent(trade.ca)}`,
+            {
+              headers: {
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache'
+              }
             }
+          )
+
+          if (!response.ok) {
+            throw new Error(`API error: ${response.status}`)
+          }
+
+          const data = await response.json()
+          const tokenInfo = data.tokenInfo
+
+          if (tokenInfo && tokenInfo.priceUsd && parseFloat(tokenInfo.priceUsd) > 0) {
+            const price = parseFloat(tokenInfo.priceUsd)
+            const marketCap = tokenInfo.marketCap || tokenInfo.marketInfo?.marketCap || tokenInfo.fdv || undefined
+
+            // Update state immediately for this token (streaming effect)
+            setTokenInfos(prev => ({
+              ...prev,
+              [trade.ca]: {
+                currentPrice: price,
+                currentMc: marketCap ? Number(marketCap) : undefined,
+              }
+            }))
             fetchedTokensRef.current.add(trade.ca)
           } else {
-            // No data available from API
-            console.warn(`No price data available for ${trade.ca}`)
-            tokenInfosUpdate[trade.ca] = {
-              currentPrice: 0,
-            }
+            // No data available
+            setTokenInfos(prev => ({
+              ...prev,
+              [trade.ca]: {
+                currentPrice: 0,
+                currentMc: undefined,
+              }
+            }))
             fetchedTokensRef.current.add(trade.ca)
           }
-        })
-
-        // Update all states at once
-        setTokenInfos(prev => ({ ...prev, ...tokenInfosUpdate }))
-        setErrorStates(prev => ({ ...prev, ...errorStatesUpdate }))
-        
-      } catch (error) {
-        console.error('Error updating prices for tokens:', error)
-
-        // Mark all tokens as error
-        const tokenInfosUpdate: Record<string, { currentPrice: number }> = {}
-        const errorStatesUpdate: Record<string, boolean> = {}
-
-        uniqueTokens.forEach(trade => {
-          tokenInfosUpdate[trade.ca] = {
-            currentPrice: 0,
-          }
+        } catch (error) {
+          console.error(`Error fetching token ${trade.ca}:`, error)
+          setTokenInfos(prev => ({
+            ...prev,
+            [trade.ca]: {
+              currentPrice: 0,
+              currentMc: undefined,
+            }
+          }))
+          setErrorStates(prev => ({ ...prev, [trade.ca]: true }))
           fetchedTokensRef.current.add(trade.ca)
-          errorStatesUpdate[trade.ca] = true
-        })
+        } finally {
+          // Clear loading state for this token immediately
+          setLoadingStates(prev => ({ ...prev, [trade.ca]: false }))
+        }
+      })
 
-        setTokenInfos(prev => ({ ...prev, ...tokenInfosUpdate }))
-        setErrorStates(prev => ({ ...prev, ...errorStatesUpdate }))
-      } finally {
-        // Clear loading states for all tokens
-        const loadingStatesUpdate: Record<string, boolean> = {}
-        uniqueTokens.forEach(trade => {
-          loadingStatesUpdate[trade.ca] = false
-        })
-        setLoadingStates(prev => ({ ...prev, ...loadingStatesUpdate }))
-        setIsUpdating(false)
-      }
+      // Wait for all to complete before marking overall update as done
+      await Promise.allSettled(fetchPromises)
+      setIsUpdating(false)
     }
 
     if (uniqueTokens.length > 0) {
@@ -315,6 +304,9 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
           )}
         </div>
         <div className="flex items-center gap-2">
+          {/* Price/Market Cap Toggle */}
+          <PriceMarketCapToggle />
+
           {/* Column Visibility Dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -413,7 +405,7 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
                     onClick={() => handleSort("entry_price")}
                     className="flex items-center gap-1 p-0 h-auto font-medium"
                   >
-                    Entry Price
+                    {displayMode === 'marketcap' ? 'Entry MC' : 'Entry Price'}
                     {sortField === "entry_price" ? (
                       sortDirection === "asc" ? (
                         <ChevronUp className="h-4 w-4" />
@@ -427,7 +419,9 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
                 </TableHead>
               )}
               {columnVisibility.current_price && (
-                <TableHead className="w-[140px] text-xs uppercase tracking-wider font-medium">Current Price</TableHead>
+                <TableHead className="w-[140px] text-xs uppercase tracking-wider font-medium">
+                  {displayMode === 'marketcap' ? 'Current MC' : 'Current Price'}
+                </TableHead>
               )}
               {columnVisibility.ath_price && (
                 <TableHead className="w-[140px]">
@@ -436,7 +430,7 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
                     onClick={() => handleSort("ath_price")}
                     className="flex items-center gap-1 p-0 h-auto font-medium"
                   >
-                    ATH Price
+                    {displayMode === 'marketcap' ? 'ATH MC' : 'ATH Price'}
                     {sortField === "ath_price" ? (
                       sortDirection === "asc" ? (
                         <ChevronUp className="h-4 w-4" />
@@ -533,10 +527,25 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
                     )}
                     {columnVisibility.entry_price && (
                       <TableCell>
-                        {trade.entry_price > 0 ? (
-                          formatPrice(trade.entry_price)
+                        {displayMode === 'marketcap' ? (
+                          (() => {
+                            // Try stored initial_mc first
+                            if (trade.initial_mc > 0) return formatMarketCap(trade.initial_mc)
+                            // Calculate from price using supply derived from current mc/price
+                            const tokenData = tokenInfos[trade.ca]
+                            if (tokenData?.currentMc && tokenData.currentPrice && trade.entry_price > 0) {
+                              const supply = tokenData.currentMc / tokenData.currentPrice
+                              const entryMc = trade.entry_price * supply
+                              return formatMarketCap(entryMc)
+                            }
+                            return <span className="text-muted-foreground">N/A</span>
+                          })()
                         ) : (
-                          <span className="text-muted-foreground">N/A</span>
+                          trade.entry_price > 0 ? (
+                            formatPrice(trade.entry_price)
+                          ) : (
+                            <span className="text-muted-foreground">N/A</span>
+                          )
                         )}
                       </TableCell>
                     )}
@@ -546,6 +555,12 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
                           <span className="animate-pulse text-muted-foreground">...</span>
                         ) : hasError ? (
                           <span className="text-muted-foreground">N/A</span>
+                        ) : displayMode === 'marketcap' ? (
+                          tokenInfos[trade.ca]?.currentMc && tokenInfos[trade.ca].currentMc! > 0 ? (
+                            <span className="font-medium">{formatMarketCap(tokenInfos[trade.ca].currentMc!)}</span>
+                          ) : (
+                            <span className="text-muted-foreground">N/A</span>
+                          )
                         ) : currentPrice && currentPrice > 0 ? (
                           <span className="font-medium">{formatPrice(currentPrice)}</span>
                         ) : (
@@ -555,10 +570,25 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
                     )}
                     {columnVisibility.ath_price && (
                       <TableCell>
-                        {trade.ath_price > 0 ? (
-                          formatPrice(trade.ath_price)
+                        {displayMode === 'marketcap' ? (
+                          (() => {
+                            // Try stored high_mc first
+                            if (trade.high_mc > 0) return formatMarketCap(trade.high_mc)
+                            // Calculate from price using supply derived from current mc/price
+                            const tokenData = tokenInfos[trade.ca]
+                            if (tokenData?.currentMc && tokenData.currentPrice && trade.ath_price > 0) {
+                              const supply = tokenData.currentMc / tokenData.currentPrice
+                              const athMc = trade.ath_price * supply
+                              return formatMarketCap(athMc)
+                            }
+                            return <span className="text-muted-foreground">N/A</span>
+                          })()
                         ) : (
-                          <span className="text-muted-foreground">N/A</span>
+                          trade.ath_price > 0 ? (
+                            formatPrice(trade.ath_price)
+                          ) : (
+                            <span className="text-muted-foreground">N/A</span>
+                          )
                         )}
                       </TableCell>
                     )}

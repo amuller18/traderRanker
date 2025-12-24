@@ -153,7 +153,7 @@ RATE_LIMIT_RETRY_DELAY = 5  # Wait 5 seconds after 429 error before retry
 MAX_RETRIES_PER_REQUEST = 3  # Maximum retries per request
 
 # Load API keys from environment variables
-BIRDEYE_API_KEYS_RAW = '0c96b594d358413d939d025b646d466c'#os.getenv("BIRDEYE_API_KEY", "0c96b594d358413d939d025b646d466c")
+BIRDEYE_API_KEYS_RAW = '8d2904ad03bd402089968b91590a12be'#os.getenv("BIRDEYE_API_KEY", "0c96b594d358413d939d025b646d466c")
 COINGECKO_API_KEY = os.getenv("COINGECKO_API_KEY", "CG-8jAASUaSyaz4VEsDjonVgjNr")
 
 # Parse multiple Birdeye API keys if provided

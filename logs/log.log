@@ -140257,3 +140257,52 @@ ValueError: Trade conversion returned None
 2025-12-22 18:01:15,765 - INFO - 22 changes detected
 2025-12-22 18:01:16,125 - INFO - 22 changes detected
 2025-12-22 18:01:16,535 - INFO - 1 change detected
+2025-12-24 02:49:07,365 - INFO - ============================================================
+2025-12-24 02:49:07,366 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-12-24 02:49:07,366 - INFO - ============================================================
+2025-12-24 02:49:07,366 - INFO - Using explicit AWS credentials from environment variables
+2025-12-24 02:49:07,777 - INFO -  DynamoDB table 'officialStats' verified and ready
+2025-12-24 02:49:07,813 - INFO -  DynamoDB table 'officialCalls' verified and ready
+2025-12-24 02:49:07,813 - INFO - Loaded 1 Birdeye API keys
+2025-12-24 02:49:07,813 - INFO -   Key 1: 0c96b594d3...466c
+2025-12-24 02:49:07,813 - INFO - CoinGecko API Key: CG-8jAASUa...gjNr
+2025-12-24 02:49:07,813 - INFO - Development Mode: True
+2025-12-24 02:49:07,813 - INFO - Request Delay: 2 seconds
+2025-12-24 02:49:07,813 - INFO - ============================================================
+2025-12-24 02:49:08,247 - WARNING - SUPABASE_SERVICE_ROLE_KEY not set in environment
+2025-12-24 02:49:08,264 - INFO - Wallet authentication routes loaded successfully
+2025-12-24 02:49:09,980 - INFO - ============================================================
+2025-12-24 02:49:09,980 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-12-24 02:49:09,980 - INFO - ============================================================
+2025-12-24 02:49:09,980 - INFO - Using explicit AWS credentials from environment variables
+2025-12-24 02:49:10,363 - INFO -  DynamoDB table 'officialStats' verified and ready
+2025-12-24 02:49:10,397 - INFO -  DynamoDB table 'officialCalls' verified and ready
+2025-12-24 02:49:10,397 - INFO - Loaded 1 Birdeye API keys
+2025-12-24 02:49:10,397 - INFO -   Key 1: 0c96b594d3...466c
+2025-12-24 02:49:10,397 - INFO - CoinGecko API Key: CG-8jAASUa...gjNr
+2025-12-24 02:49:10,397 - INFO - Development Mode: True
+2025-12-24 02:49:10,397 - INFO - Request Delay: 2 seconds
+2025-12-24 02:49:10,397 - INFO - ============================================================
+2025-12-24 02:49:10,831 - WARNING - SUPABASE_SERVICE_ROLE_KEY not set in environment
+2025-12-24 02:49:10,850 - INFO - Wallet authentication routes loaded successfully
+2025-12-24 02:49:10,999 - INFO - ============================================================
+2025-12-24 02:49:10,999 - INFO - Starting FastAPI server with ladder TP/SL support
+2025-12-24 02:49:10,999 - INFO - ============================================================
+2025-12-24 02:49:10,999 - INFO - Using explicit AWS credentials from environment variables
+2025-12-24 02:49:11,131 - INFO -  DynamoDB table 'officialStats' verified and ready
+2025-12-24 02:49:11,165 - INFO -  DynamoDB table 'officialCalls' verified and ready
+2025-12-24 02:49:11,165 - INFO - Loaded 1 Birdeye API keys
+2025-12-24 02:49:11,165 - INFO -   Key 1: 0c96b594d3...466c
+2025-12-24 02:49:11,165 - INFO - CoinGecko API Key: CG-8jAASUa...gjNr
+2025-12-24 02:49:11,165 - INFO - Development Mode: True
+2025-12-24 02:49:11,165 - INFO - Request Delay: 2 seconds
+2025-12-24 02:49:11,165 - INFO - ============================================================
+2025-12-24 02:49:11,219 - INFO - Wallet authentication routes loaded successfully
+2025-12-24 02:49:12,220 - INFO - GET /api/trades/filtered | roiMin=-1000.0, roiMax=1000.0, dateFrom=0, dateTo=1766562550, search=None, trader=None
+2025-12-24 02:49:13,231 - INFO - /api/trades/filtered returning 3025 trades (from 3289 scanned)
+2025-12-24 02:49:14,714 - INFO - DexScreener v1 bulk: found 4/10 tokens
+2025-12-24 02:49:14,714 - INFO -  DexScreener v1: 4 found in 0.70s, 6 remaining
+2025-12-24 02:49:17,114 - WARNING - Birdeye bulk API error: 401
+2025-12-24 02:49:17,114 - INFO - Birdeye bulk: found 0/6 tokens
+2025-12-24 02:49:17,114 - INFO - Birdeye: 0 found in 2.40s, 6 remaining
+2025-12-24 02:49:19,263 - INFO - CoinGecko: done in 2.15s, 6 remaining

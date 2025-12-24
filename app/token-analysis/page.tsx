@@ -270,8 +270,7 @@ export default async function TokenAnalysisPage(props: TokenAnalysisPageProps) {
   // Debug log to check market cap values
   console.log('Market Cap Data:', {
     raw: tokenInfo.marketCap,
-    formatted: marketCap,
-    currentMc: currentMc
+    formatted: marketCap
   })
 
   // Extract social links

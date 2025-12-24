@@ -6,18 +6,17 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Wallet, Mail, User, TrendingUp, ArrowRight, Edit2, Check, X, DollarSign, BarChart3 } from 'lucide-react';
+import { Wallet, Mail, User, TrendingUp, ArrowRight, Edit2, Check, X, BarChart3, ArrowLeftRight } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { mockAccountData } from '@/app/copy-trader/dashboard/data/mock';
 import { AccountDataPoint } from '@/app/copy-trader/dashboard/types';
 import { PageHeader } from '@/app/page-header';
-import { useDisplayPreference, DisplayMode } from '@/lib/display-preference-context';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { useDisplayPreference } from '@/lib/display-preference-context';
 
 export default function AccountPage() {
   const { user, updateProfile } = useAuth();
-  const { displayMode, setDisplayMode } = useDisplayPreference();
+  const { displayMode, toggleDisplayMode } = useDisplayPreference();
   const [isEditing, setIsEditing] = useState(false);
   const [fullName, setFullName] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
@@ -254,24 +253,14 @@ export default function AccountPage() {
                   Choose to display prices or market caps in trade tables
                 </p>
               </div>
-              <ToggleGroup
-                type="single"
-                value={displayMode}
-                onValueChange={(value) => {
-                  if (value) setDisplayMode(value as DisplayMode)
-                }}
-                size="sm"
+              <Button
                 variant="outline"
+                size="sm"
+                onClick={toggleDisplayMode}
               >
-                <ToggleGroupItem value="price" aria-label="Show prices" className="gap-2">
-                  <DollarSign className="h-4 w-4" />
-                  Price
-                </ToggleGroupItem>
-                <ToggleGroupItem value="marketcap" aria-label="Show market caps" className="gap-2">
-                  <TrendingUp className="h-4 w-4" />
-                  Market Cap
-                </ToggleGroupItem>
-              </ToggleGroup>
+                <ArrowLeftRight className="h-4 w-4 mr-2" />
+                {displayMode === 'price' ? 'Price' : 'Market Cap'}
+              </Button>
             </div>
             <p className="text-xs text-muted-foreground">
               This preference will be applied across all trade tables in the app.

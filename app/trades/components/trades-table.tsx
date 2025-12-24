@@ -141,98 +141,81 @@ export function TradesTable({ trades, loading = false }: TradesTableProps) {
 
     const processUpdates = async () => {
       if (isUpdating || uniqueTokens.length === 0) return // Prevent multiple simultaneous updates
-      
+
       setIsUpdating(true)
-      try {
-        // Use bulk API call for all tokens at once (much faster)
-        const tokenAddresses = uniqueTokens.map(trade => trade.ca)
-        
-        // Mark all tokens as loading
-        const loadingStatesUpdate: Record<string, boolean> = {}
-        tokenAddresses.forEach(ca => {
-          loadingStatesUpdate[ca] = true
-        })
-        setLoadingStates(prev => ({ ...prev, ...loadingStatesUpdate }))
 
-        // Single bulk API call
-        const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/bulk-token-prices`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Cache-Control': 'no-cache',
-              'Pragma': 'no-cache'
-            },
-            body: JSON.stringify({ tokens: tokenAddresses })
-          }
-        )
+      // Mark all tokens as loading
+      const tokenAddresses = uniqueTokens.map(trade => trade.ca)
+      const loadingStatesUpdate: Record<string, boolean> = {}
+      tokenAddresses.forEach(ca => {
+        loadingStatesUpdate[ca] = true
+      })
+      setLoadingStates(prev => ({ ...prev, ...loadingStatesUpdate }))
 
-        if (!response.ok) {
-          throw new Error(`API error: ${response.status}`)
-        }
-
-        const data = await response.json()
-
-        console.log('Bulk price API response:', data)
-
-        // Process all results at once
-        const tokenInfosUpdate: Record<string, { currentPrice: number; currentMc?: number }> = {}
-        const errorStatesUpdate: Record<string, boolean> = {}
-
-        uniqueTokens.forEach(trade => {
-          const tokenResult = data.find((result: any) => result.token === trade.ca)
-
-          console.log(`Token ${trade.ca}: API result =`, tokenResult)
-
-          if (tokenResult && tokenResult.price > 0) {
-            tokenInfosUpdate[trade.ca] = {
-              currentPrice: tokenResult.price,
-              currentMc: tokenResult.market_cap || undefined,
+      // Fetch each token individually and update state as each completes (streaming)
+      const fetchPromises = uniqueTokens.map(async (trade) => {
+        try {
+          const response = await fetch(
+            `/api/token-info?address=${encodeURIComponent(trade.ca)}`,
+            {
+              headers: {
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache'
+              }
             }
+          )
+
+          if (!response.ok) {
+            throw new Error(`API error: ${response.status}`)
+          }
+
+          const data = await response.json()
+          const tokenInfo = data.tokenInfo
+
+          if (tokenInfo && tokenInfo.priceUsd && parseFloat(tokenInfo.priceUsd) > 0) {
+            const price = parseFloat(tokenInfo.priceUsd)
+            const marketCap = tokenInfo.marketCap || tokenInfo.marketInfo?.marketCap || tokenInfo.fdv || undefined
+
+            // Update state immediately for this token (streaming effect)
+            setTokenInfos(prev => ({
+              ...prev,
+              [trade.ca]: {
+                currentPrice: price,
+                currentMc: marketCap ? Number(marketCap) : undefined,
+              }
+            }))
             fetchedTokensRef.current.add(trade.ca)
           } else {
-            // No data available from API
-            console.warn(`No price data available for ${trade.ca}`)
-            tokenInfosUpdate[trade.ca] = {
+            // No data available
+            setTokenInfos(prev => ({
+              ...prev,
+              [trade.ca]: {
+                currentPrice: 0,
+                currentMc: undefined,
+              }
+            }))
+            fetchedTokensRef.current.add(trade.ca)
+          }
+        } catch (error) {
+          console.error(`Error fetching token ${trade.ca}:`, error)
+          setTokenInfos(prev => ({
+            ...prev,
+            [trade.ca]: {
               currentPrice: 0,
               currentMc: undefined,
             }
-            fetchedTokensRef.current.add(trade.ca)
-          }
-        })
-
-        // Update all states at once
-        setTokenInfos(prev => ({ ...prev, ...tokenInfosUpdate }))
-        setErrorStates(prev => ({ ...prev, ...errorStatesUpdate }))
-        
-      } catch (error) {
-        console.error('Error updating prices for tokens:', error)
-
-        // Mark all tokens as error
-        const tokenInfosUpdate: Record<string, { currentPrice: number; currentMc?: number }> = {}
-        const errorStatesUpdate: Record<string, boolean> = {}
-
-        uniqueTokens.forEach(trade => {
-          tokenInfosUpdate[trade.ca] = {
-            currentPrice: 0,
-            currentMc: undefined,
-          }
+          }))
+          setErrorStates(prev => ({ ...prev, [trade.ca]: true }))
           fetchedTokensRef.current.add(trade.ca)
-          errorStatesUpdate[trade.ca] = true
-        })
+        } finally {
+          // Clear loading state for this token immediately
+          setLoadingStates(prev => ({ ...prev, [trade.ca]: false }))
+        }
+      })
 
-        setTokenInfos(prev => ({ ...prev, ...tokenInfosUpdate }))
-        setErrorStates(prev => ({ ...prev, ...errorStatesUpdate }))
-      } finally {
-        // Clear loading states for all tokens
-        const loadingStatesUpdate: Record<string, boolean> = {}
-        uniqueTokens.forEach(trade => {
-          loadingStatesUpdate[trade.ca] = false
-        })
-        setLoadingStates(prev => ({ ...prev, ...loadingStatesUpdate }))
-        setIsUpdating(false)
-      }
+      // Wait for all to complete before marking overall update as done
+      await Promise.allSettled(fetchPromises)
+      setIsUpdating(false)
     }
 
     if (uniqueTokens.length > 0) {

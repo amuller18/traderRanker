@@ -75,57 +75,83 @@ export function TraderTrades({ trades, currentPage, totalPages, totalTrades, tra
     return value.toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 })
   }
 
-  // Fetch all token prices in one bulk request
+  // Fetch token prices individually and update state as each completes (streaming)
   const fetchAllTokenPrices = async (tokenAddresses: string[]) => {
     if (tokenAddresses.length === 0) return
 
-    try {
-      console.log(`📊 Fetching prices for ${tokenAddresses.length} tokens in bulk...`)
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/bulk-token-prices`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache'
-          },
-          body: JSON.stringify({ tokens: tokenAddresses })
-        }
-      )
+    console.log(`📊 Streaming prices for ${tokenAddresses.length} tokens...`)
 
-      if (!response.ok) {
-        throw new Error(`Failed to fetch bulk prices: ${response.status}`)
-      }
+    // Mark all tokens as loading
+    const loadingUpdate: Record<string, boolean> = {}
+    tokenAddresses.forEach(token => {
+      loadingUpdate[token] = true
+    })
+    setLoadingStates(prev => ({ ...prev, ...loadingUpdate }))
 
-      const results = await response.json()
-      console.log(`✅ Received ${results.length} price results`)
-
-      // Update all token infos at once
-      const newTokenInfos: Record<string, { currentPrice: number; currentMc?: number }> = {}
-
-      results.forEach((result: any) => {
-        if (result.error) {
-          console.warn(`⚠️ Error for token ${result.token}:`, result.error)
-          setErrorStates(prev => ({ ...prev, [result.token]: true }))
-        } else {
-          newTokenInfos[result.token] = {
-            currentPrice: result.price || 0,
-            currentMc: result.market_cap || undefined,
+    // Fetch each token individually and update state immediately
+    const fetchPromises = tokenAddresses.map(async (token) => {
+      try {
+        const response = await fetch(
+          `/api/token-info?address=${encodeURIComponent(token)}`,
+          {
+            headers: {
+              'Cache-Control': 'no-cache',
+              'Pragma': 'no-cache'
+            }
           }
-          fetchedTokensRef.current.add(result.token)
+        )
+
+        if (!response.ok) {
+          throw new Error(`API error: ${response.status}`)
         }
-      })
 
-      setTokenInfos(prev => ({ ...prev, ...newTokenInfos }))
+        const data = await response.json()
+        const tokenInfo = data.tokenInfo
 
-    } catch (error) {
-      console.error('Error fetching bulk token prices:', error)
-      // Mark all tokens as failed
-      tokenAddresses.forEach(token => {
+        if (tokenInfo && tokenInfo.priceUsd && parseFloat(tokenInfo.priceUsd) > 0) {
+          const price = parseFloat(tokenInfo.priceUsd)
+          const marketCap = tokenInfo.marketCap || tokenInfo.marketInfo?.marketCap || tokenInfo.fdv || undefined
+
+          // Update state immediately for this token (streaming effect)
+          setTokenInfos(prev => ({
+            ...prev,
+            [token]: {
+              currentPrice: price,
+              currentMc: marketCap ? Number(marketCap) : undefined,
+            }
+          }))
+          fetchedTokensRef.current.add(token)
+        } else {
+          // No data available
+          setTokenInfos(prev => ({
+            ...prev,
+            [token]: {
+              currentPrice: 0,
+              currentMc: undefined,
+            }
+          }))
+          fetchedTokensRef.current.add(token)
+        }
+      } catch (error) {
+        console.error(`Error fetching token ${token}:`, error)
+        setTokenInfos(prev => ({
+          ...prev,
+          [token]: {
+            currentPrice: 0,
+            currentMc: undefined,
+          }
+        }))
         setErrorStates(prev => ({ ...prev, [token]: true }))
-      })
-    }
+        fetchedTokensRef.current.add(token)
+      } finally {
+        // Clear loading state for this token immediately
+        setLoadingStates(prev => ({ ...prev, [token]: false }))
+      }
+    })
+
+    // Wait for all to complete
+    await Promise.allSettled(fetchPromises)
+    console.log(`✅ Finished streaming all ${tokenAddresses.length} tokens`)
   }
 
   // Calculate performance stats

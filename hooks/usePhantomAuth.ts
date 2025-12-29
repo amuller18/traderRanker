@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
+import { createClient } from '@/lib/supabase/client';
 
 /**
  * Phantom wallet authentication hook for Next.js
@@ -61,6 +62,7 @@ interface VerifyResponse {
   email?: string;
   user_metadata?: Record<string, any>;
   access_token?: string;
+  refresh_token?: string;
   message?: string;
 }
 
@@ -230,6 +232,15 @@ export function usePhantomAuth() {
       }
 
       const result: VerifyResponse = await response.json();
+
+      // Set Supabase session with the returned tokens
+      if (result.access_token && result.refresh_token) {
+        const supabase = createClient();
+        await supabase.auth.setSession({
+          access_token: result.access_token,
+          refresh_token: result.refresh_token,
+        });
+      }
 
       setState(prev => ({ ...prev, isVerifying: false }));
 

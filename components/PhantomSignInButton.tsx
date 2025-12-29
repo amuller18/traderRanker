@@ -2,17 +2,15 @@
 
 import React from 'react';
 import { useRouter } from 'next/navigation';
-import { useSupabaseWeb3Auth } from '@/hooks/useSupabaseWeb3Auth';
+import { usePhantomAuth } from '@/hooks/usePhantomAuth';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Wallet } from 'lucide-react';
 import { toast } from 'sonner';
 
 /**
- * Phantom Wallet Sign-In Button (Supabase Web3 Auth)
+ * Phantom Wallet Sign-In Button
  *
- * Uses Supabase's native signInWithWeb3() for authentication.
- * Much simpler than custom nonce/signature verification!
+ * Uses backend nonce/signature verification for secure wallet authentication.
  *
  * Features:
  * - One-click sign-in with Phantom wallet
@@ -43,14 +41,15 @@ export function PhantomSignInButton({
 }: PhantomSignInButtonProps) {
   const router = useRouter();
   const {
-    signInWithPhantom,
+    signInWithWallet,
     isLoading,
     isConnecting,
     isSigning,
+    isVerifying,
     error,
     clearError,
     isPhantomInstalled,
-  } = useSupabaseWeb3Auth();
+  } = usePhantomAuth();
 
   /**
    * Get current status message based on loading state
@@ -58,6 +57,7 @@ export function PhantomSignInButton({
   const getStatusMessage = (): string => {
     if (isConnecting) return 'Connecting to Phantom...';
     if (isSigning) return 'Waiting for signature...';
+    if (isVerifying) return 'Verifying signature...';
     return 'Sign in with Phantom';
   };
 
@@ -80,17 +80,17 @@ export function PhantomSignInButton({
         return;
       }
 
-      // Execute sign-in flow using Supabase Web3 auth
-      const result = await signInWithPhantom();
+      // Execute sign-in flow using backend nonce/signature verification
+      const result = await signInWithWallet();
 
-      if (result?.user) {
+      if (result) {
         // Check if this is a new user
-        const isNewUser = result.user.created_at === result.user.last_sign_in_at;
+        const isNewUser = result.created_new_user;
 
         toast.success(
           isNewUser ? 'Account created successfully!' : 'Welcome back!',
           {
-            description: `Signed in with ${result.user.identities?.[0]?.identity_data?.sub?.slice(0, 8)}...`,
+            description: `Signed in with wallet`,
           }
         );
 

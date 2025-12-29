@@ -33,7 +33,8 @@ import {
   Columns,
   RotateCcw,
   Trophy,
-  ArrowUpDown
+  ArrowUpDown,
+  Plus
 } from "lucide-react"
 import { formatROI } from "@/lib/utils"
 import { fetchTraderStats } from "@/lib/api-client"
@@ -380,13 +381,25 @@ export function TraderRankings() {
             </Button>
           )}
 
+          {/* Submit Group Button */}
+          <Link href="/submit">
+            <Button
+              variant="default"
+              size="sm"
+              className="gap-2 ml-auto"
+            >
+              <Plus className="h-4 w-4" />
+              Submit Group
+            </Button>
+          </Link>
+
           {/* Refresh Button */}
           <Button
             onClick={handleRefresh}
             disabled={refreshing}
             variant="outline"
             size="sm"
-            className="gap-2 ml-auto"
+            className="gap-2"
           >
             <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
             {refreshing ? 'Refreshing...' : 'Refresh'}

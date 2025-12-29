@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
+import { createClient } from '@/lib/supabase/client';
 
 /**
  * Phantom wallet authentication hook for Next.js
@@ -43,6 +44,7 @@ interface Window {
   phantom?: {
     solana?: PhantomProvider;
   };
+  solana?: PhantomProvider;
 }
 
 declare const window: Window;
@@ -61,6 +63,7 @@ interface VerifyResponse {
   email?: string;
   user_metadata?: Record<string, any>;
   access_token?: string;
+  refresh_token?: string;
   message?: string;
 }
 
@@ -86,7 +89,8 @@ export function usePhantomAuth() {
    */
   const isPhantomInstalled = useCallback((): boolean => {
     if (typeof window === 'undefined') return false;
-    return window.phantom?.solana?.isPhantom === true;
+    // Check both window.phantom.solana and window.solana (legacy)
+    return !!(window.phantom?.solana?.isPhantom || window.solana?.isPhantom);
   }, []);
 
   /**
@@ -94,8 +98,10 @@ export function usePhantomAuth() {
    */
   const getProvider = useCallback((): PhantomProvider | null => {
     if (typeof window === 'undefined') return null;
-    if (!window.phantom?.solana?.isPhantom) return null;
-    return window.phantom.solana;
+    // Try window.phantom.solana first, then fallback to window.solana
+    const provider = window.phantom?.solana || window.solana;
+    if (!provider?.isPhantom) return null;
+    return provider;
   }, []);
 
   /**
@@ -230,6 +236,15 @@ export function usePhantomAuth() {
       }
 
       const result: VerifyResponse = await response.json();
+
+      // Set Supabase session with the returned tokens
+      if (result.access_token && result.refresh_token) {
+        const supabase = createClient();
+        await supabase.auth.setSession({
+          access_token: result.access_token,
+          refresh_token: result.refresh_token,
+        });
+      }
 
       setState(prev => ({ ...prev, isVerifying: false }));
 

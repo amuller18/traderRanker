@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense, useMemo } from "react";
+import { useState, useEffect, useRef, Suspense, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,10 @@ function ConfirmEmailContent() {
   const searchParams = useSearchParams();
   const email = searchParams.get("email");
   const [isChecking, setIsChecking] = useState(false);
-  const [checkCount, setCheckCount] = useState(0);
+
+  // Use refs to track values without causing re-renders
+  const checkCountRef = useRef(0);
+  const hasRedirectedRef = useRef(false);
 
   // CRITICAL: Use useMemo to ensure we get the same client instance across renders
   // This prevents infinite loops from recreating the client on every render
@@ -36,8 +39,11 @@ function ConfirmEmailContent() {
 
     // Check every 3 seconds if the email has been confirmed
     const checkEmailConfirmation = async () => {
+      // Prevent multiple redirects
+      if (hasRedirectedRef.current) return true;
+
       setIsChecking(true);
-      setCheckCount(prev => prev + 1);
+      checkCountRef.current += 1;
 
       try {
         // Try to get the current session
@@ -45,6 +51,8 @@ function ConfirmEmailContent() {
 
         if (session?.user) {
           console.log("✅ Email confirmed! Session found:", session.user.id);
+          hasRedirectedRef.current = true;
+
           toast.success("Email confirmed! Redirecting...");
 
           // Wait a moment for the profile to be created
@@ -54,7 +62,7 @@ function ConfirmEmailContent() {
           return true;
         }
 
-        console.log(`🔍 Check ${checkCount}: No session yet`);
+        console.log(`🔍 Check ${checkCountRef.current}: No session yet`);
         return false;
       } catch (error) {
         console.error("Error checking session:", error);
@@ -81,7 +89,9 @@ function ConfirmEmailContent() {
       clearTimeout(initialTimeout);
       clearInterval(interval);
     };
-  }, [email, router, supabase]);
+    // Only depend on email and supabase (both stable) to prevent effect re-running
+    // Router is intentionally excluded as it's used only for navigation side-effects
+  }, [email, supabase]);
 
   return (
     <div className="flex flex-col min-h-screen">

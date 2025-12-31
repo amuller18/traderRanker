@@ -42,6 +42,7 @@ function ConfirmEmailContent() {
       // Prevent multiple redirects
       if (hasRedirectedRef.current) return true;
 
+      const startTime = Date.now();
       setIsChecking(true);
       checkCountRef.current += 1;
 
@@ -68,6 +69,14 @@ function ConfirmEmailContent() {
         console.error("Error checking session:", error);
         return false;
       } finally {
+        // Ensure the indicator stays visible for at least 2 seconds to prevent layout shift
+        const elapsedTime = Date.now() - startTime;
+        const remainingTime = Math.max(0, 2000 - elapsedTime);
+
+        if (remainingTime > 0) {
+          await new Promise(resolve => setTimeout(resolve, remainingTime));
+        }
+
         setIsChecking(false);
       }
     };

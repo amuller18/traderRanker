@@ -33,9 +33,11 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser()
 
   const isAuthPage = request.nextUrl.pathname.startsWith('/auth')
+  const isConfirmEmailPage = request.nextUrl.pathname === '/auth/confirm-email'
 
   // Redirect authenticated users away from auth pages
-  if (isAuthPage && user) {
+  // EXCEPT for the confirm-email page (needed during email confirmation flow)
+  if (isAuthPage && user && !isConfirmEmailPage) {
     return NextResponse.redirect(new URL('/rankings', request.url))
   }
 

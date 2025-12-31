@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
@@ -16,7 +16,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2, AlertCircle, CheckCircle } from "lucide-react";
 import { PageHeader } from "@/app/page-header";
 import { PhantomSignInButton } from "@/components/PhantomSignInButton";
 
@@ -28,9 +28,73 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [emailCheckStatus, setEmailCheckStatus] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle');
+  const [emailCheckMessage, setEmailCheckMessage] = useState("");
+
+  // Check email availability when email changes
+  useEffect(() => {
+    // Reset state if email is empty
+    if (!email || email.trim() === '') {
+      setEmailCheckStatus('idle');
+      setEmailCheckMessage('');
+      return;
+    }
+
+    // Basic email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setEmailCheckStatus('idle');
+      setEmailCheckMessage('');
+      return;
+    }
+
+    // Debounce the API call
+    const timeoutId = setTimeout(async () => {
+      setEmailCheckStatus('checking');
+      setEmailCheckMessage('Checking...');
+
+      try {
+        const response = await fetch('/api/auth/check-email', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ email }),
+        });
+
+        if (!response.ok) {
+          setEmailCheckStatus('idle');
+          setEmailCheckMessage('');
+          return;
+        }
+
+        const data = await response.json();
+
+        if (data.exists) {
+          setEmailCheckStatus('taken');
+          setEmailCheckMessage('This email is already registered');
+        } else {
+          setEmailCheckStatus('available');
+          setEmailCheckMessage('Email is available');
+        }
+      } catch (error) {
+        console.error('Error checking email:', error);
+        setEmailCheckStatus('idle');
+        setEmailCheckMessage('');
+      }
+    }, 500); // 500ms debounce
+
+    return () => clearTimeout(timeoutId);
+  }, [email]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Check if email is already taken
+    if (emailCheckStatus === 'taken') {
+      toast.error("This email is already registered. Please sign in instead.");
+      return;
+    }
 
     if (password !== confirmPassword) {
       toast.error("Passwords do not match");
@@ -102,15 +166,44 @@ export default function RegisterPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                disabled={isLoading}
-              />
+              <div className="relative">
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  disabled={isLoading}
+                  className={
+                    emailCheckStatus === 'taken'
+                      ? 'border-red-500 pr-10'
+                      : emailCheckStatus === 'available'
+                      ? 'border-green-500 pr-10'
+                      : ''
+                  }
+                />
+                {emailCheckStatus === 'checking' && (
+                  <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+                )}
+                {emailCheckStatus === 'taken' && (
+                  <AlertCircle className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-red-500" />
+                )}
+                {emailCheckStatus === 'available' && (
+                  <CheckCircle className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-green-500" />
+                )}
+              </div>
+              {emailCheckMessage && (
+                <p className={`text-xs ${
+                  emailCheckStatus === 'taken'
+                    ? 'text-red-500'
+                    : emailCheckStatus === 'available'
+                    ? 'text-green-500'
+                    : 'text-muted-foreground'
+                }`}>
+                  {emailCheckMessage}
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>

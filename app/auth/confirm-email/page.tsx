@@ -81,22 +81,30 @@ function ConfirmEmailContent() {
       }
     };
 
+    let intervalId: NodeJS.Timeout | null = null;
+
     // Initial check after 2 seconds
     const initialTimeout = setTimeout(() => {
       checkEmailConfirmation();
     }, 2000);
 
     // Then check every 3 seconds
-    const interval = setInterval(async () => {
+    intervalId = setInterval(async () => {
+      // If already redirecting, stop polling immediately
+      if (hasRedirectedRef.current) {
+        if (intervalId) clearInterval(intervalId);
+        return;
+      }
+
       const confirmed = await checkEmailConfirmation();
-      if (confirmed) {
-        clearInterval(interval);
+      if (confirmed && intervalId) {
+        clearInterval(intervalId);
       }
     }, 3000);
 
     return () => {
       clearTimeout(initialTimeout);
-      clearInterval(interval);
+      if (intervalId) clearInterval(intervalId);
     };
     // Only depend on email and supabase (both stable) to prevent effect re-running
     // Router is intentionally excluded as it's used only for navigation side-effects

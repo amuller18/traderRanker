@@ -20,7 +20,6 @@ function ConfirmEmailContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const email = searchParams.get("email");
-  const [isChecking, setIsChecking] = useState(false);
 
   // Use refs to track values without causing re-renders
   const checkCountRef = useRef(0);
@@ -42,8 +41,6 @@ function ConfirmEmailContent() {
       // Prevent multiple redirects
       if (hasRedirectedRef.current) return true;
 
-      const startTime = Date.now();
-      setIsChecking(true);
       checkCountRef.current += 1;
 
       try {
@@ -68,16 +65,6 @@ function ConfirmEmailContent() {
       } catch (error) {
         console.error("Error checking session:", error);
         return false;
-      } finally {
-        // Ensure the indicator stays visible for at least 2 seconds to prevent layout shift
-        const elapsedTime = Date.now() - startTime;
-        const remainingTime = Math.max(0, 2000 - elapsedTime);
-
-        if (remainingTime > 0) {
-          await new Promise(resolve => setTimeout(resolve, remainingTime));
-        }
-
-        setIsChecking(false);
       }
     };
 
@@ -108,7 +95,7 @@ function ConfirmEmailContent() {
     };
     // Only depend on email and supabase (both stable) to prevent effect re-running
     // Router is intentionally excluded as it's used only for navigation side-effects
-  }, [email, supabase]);
+  }, [email, supabase, router]);
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -144,13 +131,6 @@ function ConfirmEmailContent() {
                 <span>If you don't see the email, check your spam folder</span>
               </p>
             </div>
-
-            {isChecking && (
-              <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground py-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span>Checking for confirmation...</span>
-              </div>
-            )}
 
             <div className="bg-muted/50 rounded-lg p-3 text-xs text-muted-foreground">
               <p className="font-medium mb-1">Need help?</p>

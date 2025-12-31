@@ -97,8 +97,8 @@ export function PhantomSignInButton({
         // Call success callback
         onSuccess?.();
 
-        // Refresh the page to update auth state
-        router.refresh();
+        // Navigate to account page (this triggers auth context update)
+        router.push('/account');
       }
     } catch (err: any) {
       console.error('Phantom sign-in error:', err);

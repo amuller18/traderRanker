@@ -258,6 +258,9 @@ export function usePhantomAuth() {
           access_token: result.access_token,
           refresh_token: result.refresh_token,
         });
+
+        // Wait a moment for the session to be fully set
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
 
       setState(prev => ({ ...prev, isVerifying: false }));

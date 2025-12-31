@@ -31,9 +31,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if email exists in auth.users using admin client
-    const { data, error } = await supabaseAdmin.auth.admin.listUsers();
+    // Use getUserByEmail which is more efficient than listing all users
+    const { data: userData, error } = await supabaseAdmin.auth.admin.getUserByEmail(email);
 
-    if (error) {
+    // If there's an error and it's not "user not found", return error
+    if (error && error.message !== 'User not found') {
       console.error('Error checking email:', error);
       return NextResponse.json(
         { error: 'Failed to check email availability' },
@@ -41,10 +43,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if any user has this email
-    const emailExists = data.users.some(
-      user => user.email?.toLowerCase() === email.toLowerCase()
-    );
+    // Email exists if we got user data back (no error or user found)
+    const emailExists = !!userData?.user;
 
     return NextResponse.json({
       exists: emailExists,

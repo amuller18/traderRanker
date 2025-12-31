@@ -38,9 +38,14 @@ export function PageHeader() {
   const [open, setOpen] = useState(false)
 
   const handleLogout = async () => {
-    await logout()
-    toast.success("Successfully logged out")
-    router.push("/")
+    try {
+      await logout()
+      toast.success("Successfully logged out")
+      router.push("/")
+    } catch (error) {
+      console.error("Logout error:", error)
+      toast.error("Failed to log out. Please try again.")
+    }
   }
 
   const getUserInitials = (username: string) => {
@@ -125,7 +130,13 @@ export function PageHeader() {
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleLogout}>
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.preventDefault()
+                    handleLogout()
+                  }}
+                  className="cursor-pointer"
+                >
                   <LogOut className="mr-2 h-4 w-4" />
                   <span>Log out</span>
                 </DropdownMenuItem>
@@ -204,8 +215,8 @@ export function PageHeader() {
                     <Button
                       variant="ghost"
                       className="w-full justify-start text-foreground/70 hover:text-foreground"
-                      onClick={() => {
-                        handleLogout()
+                      onClick={async () => {
+                        await handleLogout()
                         setOpen(false)
                       }}
                     >

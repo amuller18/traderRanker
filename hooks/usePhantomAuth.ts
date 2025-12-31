@@ -160,8 +160,15 @@ export function usePhantomAuth() {
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.detail || 'Failed to request nonce');
+        let errorMessage = 'Failed to request nonce';
+        try {
+          const error = await response.json();
+          errorMessage = error.detail || error.message || errorMessage;
+        } catch {
+          // If response is not JSON, use status text
+          errorMessage = `Failed to request nonce: ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
       }
 
       return await response.json();
@@ -231,8 +238,15 @@ export function usePhantomAuth() {
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.detail || 'Signature verification failed');
+        let errorMessage = 'Signature verification failed';
+        try {
+          const error = await response.json();
+          errorMessage = error.detail || error.message || errorMessage;
+        } catch {
+          // If response is not JSON, use status text
+          errorMessage = `Signature verification failed: ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
       }
 
       const result: VerifyResponse = await response.json();
@@ -244,6 +258,9 @@ export function usePhantomAuth() {
           access_token: result.access_token,
           refresh_token: result.refresh_token,
         });
+
+        // Wait a moment for the session to be fully set
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
 
       setState(prev => ({ ...prev, isVerifying: false }));

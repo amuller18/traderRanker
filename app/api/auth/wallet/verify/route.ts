@@ -174,11 +174,16 @@ export async function POST(request: NextRequest) {
       }
 
       // Create profile for new user
+      // Generate username from wallet address (first 8 chars)
+      const username = `wallet_${public_key.slice(0, 8)}`;
+
       await supabaseAdmin
         .from('profiles')
         .upsert({
           id: userId,
+          username: username,
           wallet_address: public_key,
+          wallet_pubkeys: public_key,
           updated_at: new Date().toISOString()
         });
     }

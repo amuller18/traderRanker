@@ -6,7 +6,6 @@ import { AuthProvider } from "@/lib/auth-context"
 import { WalletProvider } from "@/lib/wallet-context"
 import { DisplayPreferenceProvider } from "@/lib/display-preference-context"
 import { Toaster } from "@/components/ui/sonner"
-import Script from "next/script"
 
 export const metadata: Metadata = {
   title: "TraderRanker - Solana Trading Performance Analytics",
@@ -21,9 +20,6 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <head>
-        <Script src="https://terminal.jup.ag/main-v4.js" strategy="beforeInteractive" />
-      </head>
       <body className="font-sans">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <AuthProvider>

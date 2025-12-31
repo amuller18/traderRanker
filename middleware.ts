@@ -33,9 +33,11 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser()
 
   const isAuthPage = request.nextUrl.pathname.startsWith('/auth')
+  const isConfirmEmailPage = request.nextUrl.pathname === '/auth/confirm-email'
 
   // Redirect authenticated users away from auth pages
-  if (isAuthPage && user) {
+  // EXCEPT for the confirm-email page (needed during email confirmation flow)
+  if (isAuthPage && user && !isConfirmEmailPage) {
     return NextResponse.redirect(new URL('/rankings', request.url))
   }
 
@@ -49,11 +51,12 @@ export const config = {
   matcher: [
     /*
      * Match all request paths except for the ones starting with:
+     * - api (API routes)
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
      * - public folder
      */
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }

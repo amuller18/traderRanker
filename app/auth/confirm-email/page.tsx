@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense, useMemo } from "react";
+import { useState, useEffect, useRef, Suspense, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -20,8 +20,10 @@ function ConfirmEmailContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const email = searchParams.get("email");
-  const [isChecking, setIsChecking] = useState(false);
-  const [checkCount, setCheckCount] = useState(0);
+
+  // Use refs to track values without causing re-renders
+  const checkCountRef = useRef(0);
+  const hasRedirectedRef = useRef(false);
 
   // CRITICAL: Use useMemo to ensure we get the same client instance across renders
   // This prevents infinite loops from recreating the client on every render
@@ -36,8 +38,10 @@ function ConfirmEmailContent() {
 
     // Check every 3 seconds if the email has been confirmed
     const checkEmailConfirmation = async () => {
-      setIsChecking(true);
-      setCheckCount(prev => prev + 1);
+      // Prevent multiple redirects
+      if (hasRedirectedRef.current) return true;
+
+      checkCountRef.current += 1;
 
       try {
         // Try to get the current session
@@ -45,6 +49,8 @@ function ConfirmEmailContent() {
 
         if (session?.user) {
           console.log("✅ Email confirmed! Session found:", session.user.id);
+          hasRedirectedRef.current = true;
+
           toast.success("Email confirmed! Redirecting...");
 
           // Wait a moment for the profile to be created
@@ -54,15 +60,15 @@ function ConfirmEmailContent() {
           return true;
         }
 
-        console.log(`🔍 Check ${checkCount}: No session yet`);
+        console.log(`🔍 Check ${checkCountRef.current}: No session yet`);
         return false;
       } catch (error) {
         console.error("Error checking session:", error);
         return false;
-      } finally {
-        setIsChecking(false);
       }
     };
+
+    let intervalId: NodeJS.Timeout | null = null;
 
     // Initial check after 2 seconds
     const initialTimeout = setTimeout(() => {
@@ -70,18 +76,26 @@ function ConfirmEmailContent() {
     }, 2000);
 
     // Then check every 3 seconds
-    const interval = setInterval(async () => {
+    intervalId = setInterval(async () => {
+      // If already redirecting, stop polling immediately
+      if (hasRedirectedRef.current) {
+        if (intervalId) clearInterval(intervalId);
+        return;
+      }
+
       const confirmed = await checkEmailConfirmation();
-      if (confirmed) {
-        clearInterval(interval);
+      if (confirmed && intervalId) {
+        clearInterval(intervalId);
       }
     }, 3000);
 
     return () => {
       clearTimeout(initialTimeout);
-      clearInterval(interval);
+      if (intervalId) clearInterval(intervalId);
     };
-  }, [email, router, supabase]);
+    // Only depend on email and supabase (both stable) to prevent effect re-running
+    // Router is intentionally excluded as it's used only for navigation side-effects
+  }, [email, supabase, router]);
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -117,13 +131,6 @@ function ConfirmEmailContent() {
                 <span>If you don't see the email, check your spam folder</span>
               </p>
             </div>
-
-            {isChecking && (
-              <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground py-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span>Checking for confirmation...</span>
-              </div>
-            )}
 
             <div className="bg-muted/50 rounded-lg p-3 text-xs text-muted-foreground">
               <p className="font-medium mb-1">Need help?</p>

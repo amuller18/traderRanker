@@ -6,22 +6,34 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Wallet, Mail, User, TrendingUp, ArrowRight, Edit2, Check, X, BarChart3, ArrowLeftRight } from 'lucide-react';
+import { Wallet, Mail, User, TrendingUp, ArrowRight, Edit2, Check, X, BarChart3, ArrowLeftRight, Loader2, Plus, Link as LinkIcon } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { mockAccountData } from '@/app/copy-trader/dashboard/data/mock';
 import { AccountDataPoint } from '@/app/copy-trader/dashboard/types';
 import { PageHeader } from '@/app/page-header';
 import { useDisplayPreference } from '@/lib/display-preference-context';
+import { usePhantomAuth } from '@/hooks/usePhantomAuth';
+import { toast } from 'sonner';
 
 export default function AccountPage() {
-  const { user, updateProfile } = useAuth();
+  const { user, updateProfile, linkWallet } = useAuth();
   const { displayMode, toggleDisplayMode } = useDisplayPreference();
+  const { linkWalletIfLoggedIn, isPhantomInstalled, isLoading: isWalletLoading, error: walletError } = usePhantomAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [fullName, setFullName] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [accountData, setAccountData] = useState<AccountDataPoint[]>([]);
+  const [isLinkingWallet, setIsLinkingWallet] = useState(false);
+  const [isAddingEmail, setIsAddingEmail] = useState(false);
+  const [newEmail, setNewEmail] = useState('');
+  const [emailPassword, setEmailPassword] = useState('');
+  const [isSavingEmail, setIsSavingEmail] = useState(false);
+
+  // Check if user is wallet-only (has fake @wallet.traderranker.com email)
+  const isWalletOnlyAccount = user?.email?.endsWith('@wallet.traderranker.com') ?? false;
+  const hasWalletLinked = !!(user?.wallet_pubkeys || user?.wallet_address);
 
   useEffect(() => {
     if (user) {
@@ -58,6 +70,65 @@ export default function AccountPage() {
       setAvatarUrl(user.avatar_url || '');
     }
     setIsEditing(false);
+  };
+
+  const handleLinkWallet = async () => {
+    if (!isPhantomInstalled()) {
+      toast.error('Phantom wallet is not installed. Please install it from https://phantom.app/');
+      return;
+    }
+
+    setIsLinkingWallet(true);
+    try {
+      const result = await linkWalletIfLoggedIn();
+      // Update local state via auth context
+      await linkWallet(result.public_key);
+      toast.success('Wallet linked successfully!');
+    } catch (error) {
+      console.error('Failed to link wallet:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to link wallet');
+    } finally {
+      setIsLinkingWallet(false);
+    }
+  };
+
+  const handleAddEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!newEmail || !emailPassword) {
+      toast.error('Please fill in all fields');
+      return;
+    }
+
+    if (emailPassword.length < 6) {
+      toast.error('Password must be at least 6 characters');
+      return;
+    }
+
+    setIsSavingEmail(true);
+    try {
+      const response = await fetch('/api/auth/add-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email: newEmail, password: emailPassword }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.detail || 'Failed to add email');
+      }
+
+      toast.success('Email added! Please check your inbox to confirm.');
+      setIsAddingEmail(false);
+      setNewEmail('');
+      setEmailPassword('');
+    } catch (error) {
+      console.error('Failed to add email:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to add email');
+    } finally {
+      setIsSavingEmail(false);
+    }
   };
 
   if (!user) {
@@ -188,7 +259,73 @@ export default function AccountPage() {
                 </div>
               </div>
 
-              {user.email && (
+              {/* Email section - hide for wallet-only accounts or show add email option */}
+              {isWalletOnlyAccount ? (
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                  <Mail className="h-5 w-5 text-muted-foreground" />
+                  <div className="flex-1">
+                    <Label className="text-xs text-muted-foreground">Email</Label>
+                    {isAddingEmail ? (
+                      <form onSubmit={handleAddEmail} className="space-y-2 mt-2">
+                        <Input
+                          type="email"
+                          placeholder="your@email.com"
+                          value={newEmail}
+                          onChange={(e) => setNewEmail(e.target.value)}
+                          disabled={isSavingEmail}
+                          required
+                        />
+                        <Input
+                          type="password"
+                          placeholder="Create a password (min 6 chars)"
+                          value={emailPassword}
+                          onChange={(e) => setEmailPassword(e.target.value)}
+                          disabled={isSavingEmail}
+                          required
+                        />
+                        <div className="flex gap-2">
+                          <Button type="submit" size="sm" disabled={isSavingEmail}>
+                            {isSavingEmail ? (
+                              <>
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                Adding...
+                              </>
+                            ) : (
+                              'Add Email'
+                            )}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setIsAddingEmail(false);
+                              setNewEmail('');
+                              setEmailPassword('');
+                            }}
+                            disabled={isSavingEmail}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </form>
+                    ) : (
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-muted-foreground text-sm">No email linked</span>
+                        <Button
+                          variant="link"
+                          size="sm"
+                          className="h-auto p-0 text-primary"
+                          onClick={() => setIsAddingEmail(true)}
+                        >
+                          <Plus className="h-3 w-3 mr-1" />
+                          Add Email
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : user.email ? (
                 <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
                   <Mail className="h-5 w-5 text-muted-foreground" />
                   <div className="flex-1">
@@ -196,19 +333,41 @@ export default function AccountPage() {
                     <p className="font-medium">{user.email}</p>
                   </div>
                 </div>
-              )}
+              ) : null}
 
+              {/* Wallet section */}
               <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
                 <Wallet className="h-5 w-5 text-muted-foreground" />
                 <div className="flex-1">
                   <Label className="text-xs text-muted-foreground">Wallet Address</Label>
-                  <p className="font-medium font-mono text-sm">
-                    {(user.wallet_pubkeys || user.wallet_address) ? (
-                      `${(user.wallet_pubkeys || user.wallet_address)!.slice(0, 6)}...${(user.wallet_pubkeys || user.wallet_address)!.slice(-4)}`
-                    ) : (
-                      <span className="text-muted-foreground">No wallet linked</span>
-                    )}
-                  </p>
+                  {hasWalletLinked ? (
+                    <p className="font-medium font-mono text-sm">
+                      {`${(user.wallet_pubkeys || user.wallet_address)!.slice(0, 6)}...${(user.wallet_pubkeys || user.wallet_address)!.slice(-4)}`}
+                    </p>
+                  ) : (
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-muted-foreground text-sm">No wallet linked</span>
+                      <Button
+                        variant="link"
+                        size="sm"
+                        className="h-auto p-0 text-primary"
+                        onClick={handleLinkWallet}
+                        disabled={isLinkingWallet}
+                      >
+                        {isLinkingWallet ? (
+                          <>
+                            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                            Linking...
+                          </>
+                        ) : (
+                          <>
+                            <LinkIcon className="h-3 w-3 mr-1" />
+                            Link Wallet
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

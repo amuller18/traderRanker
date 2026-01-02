@@ -431,6 +431,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password: string): Promise<void> => {
     console.debug('🔐 Login attempt for:', email);
 
+    // Block login attempts for wallet-only accounts
+    // These accounts should sign in with Phantom wallet
+    if (email.endsWith('@wallet.traderranker.com')) {
+      throw new Error('This is a wallet account. Please sign in with Phantom wallet instead.');
+    }
+
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -439,7 +445,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) {
       console.error('❌ Login failed:', error.message);
       safeLogSupabaseError('login', error);
+
+      // Check if the error is for a wallet-only account (user_metadata check)
+      // This catches cases where the email doesn't match our pattern but is still a wallet account
+      if (data?.user?.user_metadata?.wallet_created && !data?.user?.user_metadata?.has_real_email) {
+        throw new Error('This is a wallet account. Please sign in with Phantom wallet instead.');
+      }
+
       throw error;
+    }
+
+    // Additional check: if login succeeded but it's a wallet-only account
+    // (shouldn't happen, but belt-and-suspenders)
+    if (data.user?.email?.endsWith('@wallet.traderranker.com')) {
+      // Sign them out - they shouldn't be able to login with password
+      await supabase.auth.signOut();
+      throw new Error('This is a wallet account. Please sign in with Phantom wallet instead.');
     }
 
     if (data.user) {

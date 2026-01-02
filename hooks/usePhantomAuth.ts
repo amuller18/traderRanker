@@ -302,12 +302,65 @@ export function usePhantomAuth() {
 
   /**
    * Link wallet to existing authenticated user
+   * Returns the linked wallet public key on success
    */
-  const linkWalletIfLoggedIn = useCallback(async (): Promise<void> => {
-    // TODO: Implement wallet linking flow
-    // This requires passing the authentication token to the /link endpoint
-    throw new Error('Wallet linking not yet implemented');
-  }, []);
+  const linkWalletIfLoggedIn = useCallback(async (): Promise<{ public_key: string; is_primary: boolean }> => {
+    try {
+      // Step 1: Connect to wallet
+      const publicKey = await connectWallet();
+
+      // Step 2: Request nonce
+      const { nonce } = await requestNonce(publicKey);
+
+      // Step 3: Sign nonce
+      const signature = await signNonce(nonce);
+
+      // Step 4: Link wallet via API
+      setState(prev => ({ ...prev, isVerifying: true, error: null }));
+
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || '';
+      const response = await fetch(`${apiUrl}/api/auth/wallet/link`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include', // Important: include cookies for auth
+        body: JSON.stringify({
+          public_key: publicKey,
+          signature,
+          nonce,
+        }),
+      });
+
+      if (!response.ok) {
+        let errorMessage = 'Failed to link wallet';
+        try {
+          const error = await response.json();
+          errorMessage = error.detail || error.message || errorMessage;
+        } catch {
+          errorMessage = `Failed to link wallet: ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
+      }
+
+      const result = await response.json();
+
+      setState(prev => ({ ...prev, isVerifying: false }));
+
+      return {
+        public_key: result.public_key,
+        is_primary: result.is_primary
+      };
+    } catch (error: any) {
+      const errorMessage = error?.message || 'Failed to link wallet';
+      setState(prev => ({
+        ...prev,
+        isVerifying: false,
+        error: errorMessage,
+      }));
+      throw new Error(errorMessage);
+    }
+  }, [connectWallet, requestNonce, signNonce]);
 
   /**
    * Disconnect wallet

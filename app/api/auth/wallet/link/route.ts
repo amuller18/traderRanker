@@ -153,10 +153,29 @@ export async function POST(request: NextRequest) {
 
     if (existingWallet) {
       if (existingWallet.user_id === user.id) {
-        return NextResponse.json(
-          { detail: 'This wallet is already linked to your account' },
-          { status: 400 }
-        );
+        // Wallet already linked to this user - return success (idempotent)
+        // Also make sure profile has the wallet data
+        await adminClient
+          .from('profiles')
+          .update({
+            wallet_address: public_key,
+            wallet_pubkeys: public_key,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', user.id);
+
+        // Mark nonce as used
+        await adminClient
+          .from('wallet_nonces')
+          .update({ used: true })
+          .eq('id', nonceRecord.id);
+
+        return NextResponse.json({
+          status: 'ok',
+          message: 'Wallet is already linked to your account',
+          public_key,
+          is_primary: existingWallet.is_primary
+        });
       } else {
         return NextResponse.json(
           { detail: 'This wallet is already linked to another account' },

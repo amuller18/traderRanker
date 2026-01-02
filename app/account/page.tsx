@@ -84,10 +84,11 @@ export default function AccountPage() {
       // Update local state via auth context
       await linkWallet(result.public_key);
       toast.success('Wallet linked successfully!');
+      // Force page refresh to update all components
+      window.location.reload();
     } catch (error) {
       console.error('Failed to link wallet:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to link wallet');
-    } finally {
       setIsLinkingWallet(false);
     }
   };

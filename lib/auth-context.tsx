@@ -328,12 +328,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return null;
       }
 
+      // STEP 7.5: Fetch wallet info from user_wallets table if not in profile
+      let walletAddress = profile.wallet_address;
+      let walletPubkeys = profile.wallet_pubkeys;
+
+      if (!walletAddress && !walletPubkeys) {
+        console.log('🔍 No wallet in profile, checking user_wallets table...');
+        const { data: walletData } = await supabase
+          .from('user_wallets')
+          .select('public_key')
+          .eq('user_id', currentUser.id)
+          .eq('is_primary', true)
+          .single();
+
+        if (walletData?.public_key) {
+          console.log('✅ Found wallet in user_wallets:', walletData.public_key.slice(0, 8) + '...');
+          walletAddress = walletData.public_key;
+          walletPubkeys = walletData.public_key;
+        }
+      }
+
       const userProfile: User = {
         id: currentUser.id,
         email: currentUser.email || undefined,  // Can be undefined for Web3-only users
         username: profile.username || '',
-        wallet_address: profile.wallet_address,  // Legacy field
-        wallet_pubkeys: profile.wallet_pubkeys,  // New field for Phantom wallet
+        wallet_address: walletAddress,  // From profile or user_wallets
+        wallet_pubkeys: walletPubkeys,  // From profile or user_wallets
         full_name: profile.full_name,
         avatar_url: profile.avatar_url,
       };

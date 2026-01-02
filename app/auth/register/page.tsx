@@ -62,10 +62,11 @@ export default function RegisterPage() {
         console.debug('Registration successful - auth state updated');
         toast.success("Account created successfully!");
 
-        // Small delay to ensure auth state and profile propagate
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Wait for auth state and profile to propagate before navigating
+        await new Promise(resolve => setTimeout(resolve, 300));
 
         router.push("/account");
+        router.refresh();
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Registration failed";

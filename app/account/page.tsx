@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Wallet, Mail, User, TrendingUp, ArrowRight, Edit2, Check, X, BarChart3, ArrowLeftRight, Loader2, Plus, Link as LinkIcon } from 'lucide-react';
+import { Wallet, Mail, User, TrendingUp, ArrowRight, Edit2, Check, X, BarChart3, ArrowLeftRight, Loader2, Plus, Link as LinkIcon, Unlink } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { mockAccountData } from '@/app/copy-trader/dashboard/data/mock';
@@ -17,7 +17,7 @@ import { usePhantomAuth } from '@/hooks/usePhantomAuth';
 import { toast } from 'sonner';
 
 export default function AccountPage() {
-  const { user, updateProfile, linkWallet } = useAuth();
+  const { user, updateProfile, linkWallet, unlinkWallet } = useAuth();
   const { displayMode, toggleDisplayMode } = useDisplayPreference();
   const { linkWalletIfLoggedIn, isPhantomInstalled, isLoading: isWalletLoading, error: walletError } = usePhantomAuth();
   const [isEditing, setIsEditing] = useState(false);
@@ -26,6 +26,7 @@ export default function AccountPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [accountData, setAccountData] = useState<AccountDataPoint[]>([]);
   const [isLinkingWallet, setIsLinkingWallet] = useState(false);
+  const [isUnlinkingWallet, setIsUnlinkingWallet] = useState(false);
   const [isAddingEmail, setIsAddingEmail] = useState(false);
   const [newEmail, setNewEmail] = useState('');
   const [emailPassword, setEmailPassword] = useState('');
@@ -90,6 +91,25 @@ export default function AccountPage() {
       console.error('Failed to link wallet:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to link wallet');
       setIsLinkingWallet(false);
+    }
+  };
+
+  const handleUnlinkWallet = async () => {
+    // Don't allow wallet-only accounts to unlink their wallet
+    if (isWalletOnlyAccount) {
+      toast.error('Cannot disconnect wallet. Please add an email first to keep access to your account.');
+      return;
+    }
+
+    setIsUnlinkingWallet(true);
+    try {
+      await unlinkWallet();
+      toast.success('Wallet disconnected successfully!');
+    } catch (error) {
+      console.error('Failed to unlink wallet:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to disconnect wallet');
+    } finally {
+      setIsUnlinkingWallet(false);
     }
   };
 
@@ -342,9 +362,25 @@ export default function AccountPage() {
                 <div className="flex-1">
                   <Label className="text-xs text-muted-foreground">Wallet Address</Label>
                   {hasWalletLinked ? (
-                    <p className="font-medium font-mono text-sm">
-                      {`${(user.wallet_pubkeys || user.wallet_address)!.slice(0, 6)}...${(user.wallet_pubkeys || user.wallet_address)!.slice(-4)}`}
-                    </p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <p className="font-medium font-mono text-sm">
+                        {`${(user.wallet_pubkeys || user.wallet_address)!.slice(0, 6)}...${(user.wallet_pubkeys || user.wallet_address)!.slice(-4)}`}
+                      </p>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-auto p-1 text-muted-foreground hover:text-destructive"
+                        onClick={handleUnlinkWallet}
+                        disabled={isUnlinkingWallet}
+                        title={isWalletOnlyAccount ? "Add an email first to disconnect wallet" : "Disconnect wallet"}
+                      >
+                        {isUnlinkingWallet ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <Unlink className="h-3 w-3" />
+                        )}
+                      </Button>
+                    </div>
                   ) : (
                     <div className="flex items-center gap-2 mt-1">
                       <span className="text-muted-foreground text-sm">No wallet linked</span>

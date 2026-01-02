@@ -617,6 +617,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error('User must be logged in to unlink wallet');
     }
 
+    // Remove from user_wallets table first
+    const { error: walletError } = await supabase
+      .from('user_wallets')
+      .delete()
+      .eq('user_id', user.id);
+
+    if (walletError) {
+      safeLogSupabaseError('unlinkWallet - user_wallets', walletError);
+      // Continue anyway to clear profile
+    }
+
+    // Clear wallet from profile
     const { error } = await supabase
       .from('profiles')
       .update({

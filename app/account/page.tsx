@@ -154,6 +154,8 @@ export default function AccountPage() {
 
   if (!user) {
     return (
+    <div>
+      <PageHeader />
       <div className="container mx-auto px-4 py-16 max-w-2xl">
         <Card>
           <CardContent className="pt-6">
@@ -166,6 +168,7 @@ export default function AccountPage() {
           </CardContent>
         </Card>
       </div>
+    </div>
     );
   }
 

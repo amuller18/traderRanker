@@ -617,29 +617,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error('User must be logged in to unlink wallet');
     }
 
-    // Remove from user_wallets table first
-    const { error: walletError } = await supabase
-      .from('user_wallets')
-      .delete()
-      .eq('user_id', user.id);
+    // Use API endpoint to unlink wallet (bypasses RLS)
+    const response = await fetch('/api/auth/wallet/unlink', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+    });
 
-    if (walletError) {
-      safeLogSupabaseError('unlinkWallet - user_wallets', walletError);
-      // Continue anyway to clear profile
-    }
-
-    // Clear wallet from profile
-    const { error } = await supabase
-      .from('profiles')
-      .update({
-        wallet_address: null,
-        wallet_pubkeys: null
-      })
-      .eq('id', user.id);
-
-    if (error) {
-      safeLogSupabaseError('unlinkWallet', error);
-      throw error;
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.detail || 'Failed to disconnect wallet');
     }
 
     setUser({ ...user, wallet_address: undefined, wallet_pubkeys: undefined });

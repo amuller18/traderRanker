@@ -212,6 +212,25 @@ except Exception as e:
     logger.warning(f"✗ DynamoDB initialization failed: {e}. API will return empty data.")
 
 # ---------------------------------------------------------------------------
+# DynamoDB Price Cache Table (for official price data)
+# ---------------------------------------------------------------------------
+PRICE_CACHE_TABLE = os.getenv('DYNAMODB_PRICE_CACHE_TABLE', 'officialPriceData')
+price_cache_table = None
+try:
+    if dynamodb:
+        price_cache_table = dynamodb.Table(PRICE_CACHE_TABLE)
+        # Test access
+        price_cache_table.table_status
+        logger.info(f"✓ DynamoDB price cache table '{PRICE_CACHE_TABLE}' connected")
+except ClientError as e:
+    if e.response['Error']['Code'] == 'ResourceNotFoundException':
+        logger.warning(f"✗ DynamoDB price cache table '{PRICE_CACHE_TABLE}' does not exist. Official price data feature disabled.")
+    else:
+        logger.warning(f"✗ Cannot access price cache table '{PRICE_CACHE_TABLE}': {e}. Official price data feature disabled.")
+except Exception as e:
+    logger.warning(f"✗ Price cache table initialization failed: {e}. Official price data feature disabled.")
+
+# ---------------------------------------------------------------------------
 # Constants / config
 # ---------------------------------------------------------------------------
 HTTP_TIMEOUT = 30  # Increased timeout
@@ -1004,6 +1023,7 @@ class TradeBasedSimulationRequest(BaseModel):
     amount_usd: float = Field(1000, gt=0)
     timeframe_minutes: int = Field(15, ge=1, le=1440)  # Default to 15 minutes, max 24 hours
     use_auto_timeframe: bool = Field(True, description="Whether to automatically calculate optimal timeframe")
+    use_official_price_data: bool = Field(False, description="When true, use only cached prices from officialPriceData table instead of Birdeye API. Fails if required prices are missing.")
     tp: Optional[List[str]] = Field(None, description="List of 'ratio:sell' strings")
     sl: Optional[List[str]] = Field(None, description="List of 'ratio:sell' strings")
 
@@ -1674,33 +1694,156 @@ def _price_chart_png(df_ohlc: pd.DataFrame) -> BytesIO:
 # This prevents unbounded memory growth while keeping hot data cached
 history_cache = TTLCache(max_size=1000, ttl=3600)
 
+# ---------------------------------------------------------------------------
+# Official Price Data Fetch (from DynamoDB price cache table)
+# ---------------------------------------------------------------------------
+from boto3.dynamodb.conditions import Key
+
+def _fetch_official_price_data_sync(
+    mint: str,
+    start_ts: int,
+    end_ts: int,
+    interval: str = None,
+) -> list[dict] | None:
+    """
+    Fetch price data from DynamoDB price cache table (officialPriceData).
+
+    Table structure:
+    - ca (String): partition key - token contract address
+    - timestamp (Number): sort key - unix timestamp
+    - interval: interval type (e.g., "4H", "1H", "15m")
+    - price: the price value
+    - volume: volume (can be null)
+
+    Returns list of dicts with 'unixTime' and 'value' keys to match Birdeye format,
+    or None if table is not available or no data found.
+    """
+    if price_cache_table is None:
+        logger.error("Official price data requested but price_cache_table is not available")
+        return None
+
+    try:
+        # Query DynamoDB for price data in the time range
+        # Using ca as partition key and timestamp as sort key
+        response = price_cache_table.query(
+            KeyConditionExpression=Key('ca').eq(mint) & Key('timestamp').between(start_ts, end_ts),
+            ScanIndexForward=True  # Sort ascending by timestamp
+        )
+
+        items = response.get('Items', [])
+
+        # Handle pagination if there are more items
+        while 'LastEvaluatedKey' in response:
+            response = price_cache_table.query(
+                KeyConditionExpression=Key('ca').eq(mint) & Key('timestamp').between(start_ts, end_ts),
+                ScanIndexForward=True,
+                ExclusiveStartKey=response['LastEvaluatedKey']
+            )
+            items.extend(response.get('Items', []))
+
+        if not items:
+            logger.warning(f"No official price data found for {mint} between {start_ts} and {end_ts}")
+            return None
+
+        # Convert to Birdeye-compatible format
+        result = []
+        for item in items:
+            price = item.get('price')
+            timestamp = item.get('timestamp')
+            if price is not None and timestamp is not None:
+                # Convert Decimal to float if needed
+                if hasattr(price, '__float__'):
+                    price = float(price)
+                if hasattr(timestamp, '__int__'):
+                    timestamp = int(timestamp)
+                result.append({
+                    'unixTime': timestamp,
+                    'value': price
+                })
+
+        logger.info(f"Fetched {len(result)} official price data points for {mint}")
+        return result if result else None
+
+    except ClientError as e:
+        logger.error(f"DynamoDB error fetching official price data for {mint}: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Error fetching official price data for {mint}: {e}")
+        return None
+
+async def _fetch_official_price_data(
+    mint: str,
+    start_ts: int,
+    end_ts: int,
+    interval: str = None,
+) -> tuple[str, list[dict]] | None:
+    """
+    Async wrapper for fetching official price data from DynamoDB.
+    Returns (mint, items) tuple or None if no data found.
+    """
+    # Run the sync DynamoDB query in a thread pool to not block the event loop
+    loop = asyncio.get_event_loop()
+    items = await loop.run_in_executor(
+        None,
+        _fetch_official_price_data_sync,
+        mint,
+        start_ts,
+        end_ts,
+        interval
+    )
+
+    if items is None:
+        return None
+
+    return mint, items
+
 async def _cached_history(
     session: aiohttp.ClientSession,
     mint: str,
     start_ts: int,
     tf: int,
     end_ts: int,
+    use_official_price_data: bool = False,
 ) -> tuple[str, list[dict]] | None:
     """
-    Bounded TTL cache for price history to avoid hammering Birdeye API.
-    Entries expire after 1 hour and oldest entries are evicted when at capacity.
+    Bounded TTL cache for price history.
+
+    When use_official_price_data=False (default):
+        Uses Birdeye API exactly as before. Entries expire after 1 hour.
+
+    When use_official_price_data=True:
+        Fetches ONLY from DynamoDB price cache table (officialPriceData).
+        Does NOT fall back to Birdeye - fails with None if data is missing.
     """
-    key = (mint, start_ts, tf)
+    key = (mint, start_ts, tf, use_official_price_data)
     logger.info(f"Checking cache for key: {key}")
     cached_items = history_cache.get(key)
     if cached_items is not None:
         logger.info(f"Cache hit for {mint}, returning {len(cached_items)} items")
         return mint, cached_items
 
-    logger.info(f"Cache miss for {mint}, fetching from API...")
-    res = await fetch_history_price(session, mint, start_ts, tf, end_ts)
-    if res is None:         # already logged inside fetch_history_price
-        logger.error(f"fetch_history_price returned None for {mint}")
-        return None
-    mint, items = res
-    logger.info(f"Fetched {len(items)} items for {mint}, caching...")
-    history_cache.set(key, items)
-    return mint, items
+    if use_official_price_data:
+        # Use ONLY official price data from DynamoDB - no fallback to Birdeye
+        logger.info(f"Fetching official price data for {mint} (use_official_price_data=True)...")
+        result = await _fetch_official_price_data(mint, start_ts, end_ts)
+        if result is None:
+            logger.error(f"Official price data not found for {mint} - backtest will fail (no fallback to Birdeye)")
+            return None
+        mint, items = result
+        logger.info(f"Fetched {len(items)} official price data items for {mint}, caching...")
+        history_cache.set(key, items)
+        return mint, items
+    else:
+        # Original behavior: use Birdeye API
+        logger.info(f"Cache miss for {mint}, fetching from Birdeye API...")
+        res = await fetch_history_price(session, mint, start_ts, tf, end_ts)
+        if res is None:         # already logged inside fetch_history_price
+            logger.error(f"fetch_history_price returned None for {mint}")
+            return None
+        mint, items = res
+        logger.info(f"Fetched {len(items)} items for {mint}, caching...")
+        history_cache.set(key, items)
+        return mint, items
 from fastapi.responses import StreamingResponse, Response
 from starlette.responses import JSONResponse
 from zipfile import ZipFile, ZIP_DEFLATED
@@ -2779,6 +2922,7 @@ async def _process_single_trade_breakdown(
     tp_s: list,
     sl_r: list,
     sl_s: list,
+    use_official_price_data: bool = False,
 ) -> TokenBreakdown:
     """
     Process a single trade simulation with breakdown. Helper for parallel execution.
@@ -2851,16 +2995,21 @@ async def _process_single_trade_breakdown(
             logger.info(f"Using manual timeframe: {optimal_timeframe} minutes for {mint}")
 
         # Fetch history for this specific trade with optimal timeframe
-        logger.info(f"Fetching history for {mint} from {start_ts} to {now_ts} with {optimal_timeframe}m timeframe...")
-        res_hist = await _cached_history(session, mint, start_ts, optimal_timeframe, now_ts)
+        logger.info(f"Fetching history for {mint} from {start_ts} to {now_ts} with {optimal_timeframe}m timeframe (use_official_price_data={use_official_price_data})...")
+        res_hist = await _cached_history(session, mint, start_ts, optimal_timeframe, now_ts, use_official_price_data=use_official_price_data)
         if res_hist is None:
-            logger.error(f"History fetch failed for {mint}")
+            if use_official_price_data:
+                error_msg = f"Official price data not found for {mint} - no cached price data available in database"
+                logger.error(error_msg)
+            else:
+                error_msg = "Price data fetch failed"
+                logger.error(f"History fetch failed for {mint}")
             return TokenBreakdown(
                 token=mint,
                 time_called=trade.date_called,
                 is_valid=False,
-                validation_errors=["Price data fetch failed"],
-                error="Price data fetch failed"
+                validation_errors=[error_msg],
+                error=error_msg
             )
 
         mint, items = res_hist
@@ -3093,6 +3242,7 @@ async def simulate_with_breakdown_trades(req: TradeBasedSimulationRequest) -> Li
                     tp_s=tp_s,
                     sl_r=sl_r,
                     sl_s=sl_s,
+                    use_official_price_data=req.use_official_price_data,
                 )
             )
             for trade in req.trades
@@ -3133,6 +3283,7 @@ async def _process_single_trade(
     tp_s: list,
     sl_r: list,
     sl_s: list,
+    use_official_price_data: bool = False,
 ) -> SimulationResult:
     """
     Process a single trade simulation. Helper for parallel execution.
@@ -3177,11 +3328,15 @@ async def _process_single_trade(
             logger.info(f"Using manual timeframe: {optimal_timeframe} minutes for {mint}")
 
         # Fetch history for this specific trade with optimal timeframe
-        logger.info(f"Fetching history for {mint} from {start_ts} to {now_ts} with {optimal_timeframe}m timeframe...")
-        res_hist = await _cached_history(session, mint, start_ts, optimal_timeframe, now_ts)
+        logger.info(f"Fetching history for {mint} from {start_ts} to {now_ts} with {optimal_timeframe}m timeframe (use_official_price_data={use_official_price_data})...")
+        res_hist = await _cached_history(session, mint, start_ts, optimal_timeframe, now_ts, use_official_price_data=use_official_price_data)
         if res_hist is None:
-            logger.error(f"History fetch failed for {mint}")
-            return SimulationResult(token=mint, error="Price data fetch failed")
+            if use_official_price_data:
+                error_msg = f"Official price data not found for {mint} - no cached price data available in database"
+            else:
+                error_msg = "Price data fetch failed"
+            logger.error(f"History fetch failed for {mint}: {error_msg}")
+            return SimulationResult(token=mint, error=error_msg)
 
         mint, items = res_hist
         logger.info(f"Got {len(items)} history items for {mint}")
@@ -3307,6 +3462,7 @@ async def simulate_trades(req: TradeBasedSimulationRequest) -> list[SimulationRe
                     tp_s=tp_s,
                     sl_r=sl_r,
                     sl_s=sl_s,
+                    use_official_price_data=req.use_official_price_data,
                 )
             )
             for trade in req.trades

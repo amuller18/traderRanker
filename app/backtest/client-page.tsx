@@ -271,6 +271,7 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
   const [maxBacktests, setMaxBacktests] = useState(100); // New parameter for max backtests
   const [timeframe, setTimeframe] = useState<string>("auto");
   const [useAutoTimeframe, setUseAutoTimeframe] = useState<boolean>(true);
+  const [useOfficialPriceData, setUseOfficialPriceData] = useState<boolean>(false);
   const [selectedCaller, setSelectedCaller] = useState("all");
   const [visibleTokens, setVisibleTokens] = useState<Set<string>>(new Set());
   const [legendSearch, setLegendSearch] = useState<string>("");
@@ -469,6 +470,7 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
       amount_usd: positionSizePerTrade, // Use position size per trade, not total capital
       timeframe_minutes: timeframe === "auto" ? DEFAULT_TIMEFRAME : parseInt(timeframe),
       use_auto_timeframe: timeframe === "auto",
+      use_official_price_data: useOfficialPriceData, // When true, use only cached prices from database
       tp: ladderToString(takeProfits),
       sl: ladderToString(stopLosses)
     } as const;
@@ -1011,6 +1013,9 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
         <span className="text-muted-foreground">
           • Timeframe: {timeframe === "auto" ? "Auto" : TIMEFRAME_OPTIONS.find(opt => opt.value === timeframe)?.label || timeframe}
         </span>
+        <span className="text-muted-foreground">
+          • Prices: {useOfficialPriceData ? "Cached" : "Live"}
+        </span>
         {summary && (
           <>
             <span className="text-muted-foreground">
@@ -1149,9 +1154,32 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    {timeframe === "auto" 
-                      ? "Auto-selects optimal timeframe based on trade duration" 
+                    {timeframe === "auto"
+                      ? "Auto-selects optimal timeframe based on trade duration"
                       : "Manual timeframe selection"}
+                  </p>
+                </div>
+
+                {/* Price Data Source */}
+                <div className="space-y-2">
+                  <Label htmlFor="priceDataSource">Price Data Source</Label>
+                  <Select
+                    value={useOfficialPriceData ? "cached" : "live"}
+                    onValueChange={(val) => setUseOfficialPriceData(val === "cached")}
+                    disabled={isRunning}
+                  >
+                    <SelectTrigger id="priceDataSource" disabled={isRunning}>
+                      <SelectValue placeholder="Select price data source" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="live">Live (Birdeye API)</SelectItem>
+                      <SelectItem value="cached">Cached (Database)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    {useOfficialPriceData
+                      ? "Use only cached prices from database. Fails if prices are missing."
+                      : "Fetch live prices from Birdeye API (default)"}
                   </p>
                 </div>
 

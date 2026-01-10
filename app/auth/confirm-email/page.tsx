@@ -20,6 +20,7 @@ function ConfirmEmailContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const email = searchParams.get("email");
+  const [isConfirmed, setIsConfirmed] = useState(false);
 
   // Use refs to track values without causing re-renders
   const checkCountRef = useRef(0);
@@ -29,6 +30,21 @@ function ConfirmEmailContent() {
   // This prevents infinite loops from recreating the client on every render
   const supabase = useMemo(() => createClient(), []);
 
+  // Handle successful confirmation - redirect to account
+  const handleConfirmationSuccess = async () => {
+    if (hasRedirectedRef.current) return;
+    hasRedirectedRef.current = true;
+    setIsConfirmed(true);
+
+    console.log("✅ Email confirmed! Redirecting...");
+    toast.success("Email confirmed! Redirecting...");
+
+    // Wait a moment for the profile to be created
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    router.push("/account");
+  };
+
   useEffect(() => {
     if (!email) {
       toast.error("No email provided");
@@ -36,7 +52,20 @@ function ConfirmEmailContent() {
       return;
     }
 
-    // Check every 3 seconds if the email has been confirmed
+    // Listen for auth state changes - this is the PRIMARY detection method
+    // This fires when the user confirms email in the same or different tab
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log("🔔 Auth state changed:", event, session?.user?.id);
+
+        // SIGNED_IN event fires when email is confirmed and session is created
+        if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') && session?.user) {
+          await handleConfirmationSuccess();
+        }
+      }
+    );
+
+    // Also poll getSession as a fallback - catches session from other tabs via cookies
     const checkEmailConfirmation = async () => {
       // Prevent multiple redirects
       if (hasRedirectedRef.current) return true;
@@ -45,18 +74,11 @@ function ConfirmEmailContent() {
 
       try {
         // Try to get the current session
-        const { data: { session }, error } = await supabase.auth.getSession();
+        const { data: { session } } = await supabase.auth.getSession();
 
         if (session?.user) {
-          console.log("✅ Email confirmed! Session found:", session.user.id);
-          hasRedirectedRef.current = true;
-
-          toast.success("Email confirmed! Redirecting...");
-
-          // Wait a moment for the profile to be created
-          await new Promise(resolve => setTimeout(resolve, 500));
-
-          router.push("/account");
+          console.log("✅ Email confirmed via polling! Session found:", session.user.id);
+          await handleConfirmationSuccess();
           return true;
         }
 
@@ -90,12 +112,39 @@ function ConfirmEmailContent() {
     }, 3000);
 
     return () => {
+      subscription.unsubscribe();
       clearTimeout(initialTimeout);
       if (intervalId) clearInterval(intervalId);
     };
     // Only depend on email and supabase (both stable) to prevent effect re-running
     // Router is intentionally excluded as it's used only for navigation side-effects
   }, [email, supabase, router]);
+
+  // Show confirmed state
+  if (isConfirmed) {
+    return (
+      <div className="flex flex-col min-h-screen">
+        <PageHeader />
+        <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-background to-muted p-4">
+          <Card className="w-full max-w-md">
+            <CardHeader className="space-y-1 text-center">
+              <div className="mx-auto mb-4 rounded-full bg-green-500/10 p-3 w-fit">
+                <CheckCircle2 className="h-6 w-6 text-green-500" />
+              </div>
+              <CardTitle className="text-2xl font-bold">Email Confirmed!</CardTitle>
+              <CardDescription>
+                Your account is now active
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex justify-center">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              <span className="ml-2 text-muted-foreground">Redirecting to your account...</span>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col min-h-screen">

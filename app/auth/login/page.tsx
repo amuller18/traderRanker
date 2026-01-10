@@ -36,10 +36,11 @@ export default function LoginPage() {
       console.debug('Login successful - auth state updated');
       toast.success("Successfully logged in!");
 
-      // Small delay to ensure auth state propagates
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // Wait for auth state to propagate before navigating
+      await new Promise(resolve => setTimeout(resolve, 300));
 
       router.push("/account");
+      router.refresh();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Login failed");
     } finally {
@@ -114,7 +115,7 @@ export default function LoginPage() {
           {/* Phantom Wallet Sign-In */}
           <PhantomSignInButton
             onSuccess={() => {
-              router.push('/');
+              router.push('/account');
               router.refresh();
             }}
             onError={(error) => {

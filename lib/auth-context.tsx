@@ -328,12 +328,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return null;
       }
 
+      // STEP 7.5: Fetch wallet info from user_wallets table if not in profile
+      let walletAddress = profile.wallet_address;
+      let walletPubkeys = profile.wallet_pubkeys;
+
+      if (!walletAddress && !walletPubkeys) {
+        console.log('🔍 No wallet in profile, checking user_wallets table...');
+        const { data: walletData } = await supabase
+          .from('user_wallets')
+          .select('public_key')
+          .eq('user_id', currentUser.id)
+          .eq('is_primary', true)
+          .single();
+
+        if (walletData?.public_key) {
+          console.log('✅ Found wallet in user_wallets:', walletData.public_key.slice(0, 8) + '...');
+          walletAddress = walletData.public_key;
+          walletPubkeys = walletData.public_key;
+        }
+      }
+
       const userProfile: User = {
         id: currentUser.id,
         email: currentUser.email || undefined,  // Can be undefined for Web3-only users
         username: profile.username || '',
-        wallet_address: profile.wallet_address,  // Legacy field
-        wallet_pubkeys: profile.wallet_pubkeys,  // New field for Phantom wallet
+        wallet_address: walletAddress,  // From profile or user_wallets
+        wallet_pubkeys: walletPubkeys,  // From profile or user_wallets
         full_name: profile.full_name,
         avatar_url: profile.avatar_url,
       };
@@ -431,6 +451,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password: string): Promise<void> => {
     console.debug('🔐 Login attempt for:', email);
 
+    // Block login attempts for wallet-only accounts
+    // These accounts should sign in with Phantom wallet
+    if (email.endsWith('@wallet.traderranker.com')) {
+      throw new Error('This is a wallet account. Please sign in with Phantom wallet instead.');
+    }
+
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -439,7 +465,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) {
       console.error('❌ Login failed:', error.message);
       safeLogSupabaseError('login', error);
+
+      // Check if the error is for a wallet-only account (user_metadata check)
+      // This catches cases where the email doesn't match our pattern but is still a wallet account
+      if (data?.user?.user_metadata?.wallet_created && !data?.user?.user_metadata?.has_real_email) {
+        throw new Error('This is a wallet account. Please sign in with Phantom wallet instead.');
+      }
+
       throw error;
+    }
+
+    // Additional check: if login succeeded but it's a wallet-only account
+    // (shouldn't happen, but belt-and-suspenders)
+    if (data.user?.email?.endsWith('@wallet.traderranker.com')) {
+      // Sign them out - they shouldn't be able to login with password
+      await supabase.auth.signOut();
+      throw new Error('This is a wallet account. Please sign in with Phantom wallet instead.');
     }
 
     if (data.user) {
@@ -576,17 +617,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error('User must be logged in to unlink wallet');
     }
 
-    const { error } = await supabase
-      .from('profiles')
-      .update({
-        wallet_address: null,
-        wallet_pubkeys: null
-      })
-      .eq('id', user.id);
+    // Use API endpoint to unlink wallet (bypasses RLS)
+    const response = await fetch('/api/auth/wallet/unlink', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+    });
 
-    if (error) {
-      safeLogSupabaseError('unlinkWallet', error);
-      throw error;
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.detail || 'Failed to disconnect wallet');
     }
 
     setUser({ ...user, wallet_address: undefined, wallet_pubkeys: undefined });

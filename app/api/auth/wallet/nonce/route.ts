@@ -1,13 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 
-// Use service role for server-side operations
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-  process.env.SUPABASE_SERVICE_ROLE_KEY || '',
-  { auth: { persistSession: false } }
-);
+// Lazy-create admin client to avoid build-time errors
+let supabaseAdmin: SupabaseClient | null = null;
+
+function getSupabaseAdmin(): SupabaseClient {
+  if (!supabaseAdmin) {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!supabaseUrl || !serviceRoleKey) {
+      throw new Error('Missing Supabase environment variables');
+    }
+
+    supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { persistSession: false }
+    });
+  }
+  return supabaseAdmin;
+}
 
 // Simple in-memory rate limiting
 const rateLimitStore: Map<string, number[]> = new Map();
@@ -78,8 +90,11 @@ export async function POST(request: NextRequest) {
     const nonce = generateNonce();
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
 
+    // Get admin client
+    const adminClient = getSupabaseAdmin();
+
     // Store nonce in database
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await adminClient
       .from('wallet_nonces')
       .insert({
         public_key,

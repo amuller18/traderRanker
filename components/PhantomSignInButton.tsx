@@ -94,11 +94,18 @@ export function PhantomSignInButton({
           }
         );
 
-        // Call success callback
-        onSuccess?.();
+        // Wait for auth state to propagate before navigating
+        // This ensures the header updates properly
+        await new Promise(resolve => setTimeout(resolve, 300));
 
-        // Navigate to account page (this triggers auth context update)
-        router.push('/account');
+        // Call success callback if provided, otherwise navigate to account
+        if (onSuccess) {
+          onSuccess();
+        } else {
+          // Default navigation if no callback provided
+          router.push('/account');
+          router.refresh();
+        }
       }
     } catch (err: any) {
       console.error('Phantom sign-in error:', err);

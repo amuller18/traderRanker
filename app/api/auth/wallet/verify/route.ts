@@ -1,15 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import nacl from 'tweetnacl';
 import bs58 from 'bs58';
 import crypto from 'crypto';
 
-// Use service role for server-side operations
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-  process.env.SUPABASE_SERVICE_ROLE_KEY || '',
-  { auth: { persistSession: false } }
-);
+// Lazy-create admin client to avoid build-time errors
+let supabaseAdmin: SupabaseClient | null = null;
+
+function getSupabaseAdmin(): SupabaseClient {
+  if (!supabaseAdmin) {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!supabaseUrl || !serviceRoleKey) {
+      throw new Error('Missing Supabase environment variables');
+    }
+
+    supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { persistSession: false }
+    });
+  }
+  return supabaseAdmin;
+}
 
 // Generate a deterministic password from wallet signature
 // This allows the user to sign in again by signing the same way
@@ -65,8 +77,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Get admin client
+    const adminClient = getSupabaseAdmin();
+
     // Step 1: Validate nonce exists and is not expired/used
-    const { data: nonceRecord, error: nonceError } = await supabaseAdmin
+    const { data: nonceRecord, error: nonceError } = await adminClient
       .from('wallet_nonces')
       .select('*')
       .eq('public_key', public_key)
@@ -106,7 +121,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Step 3: Check if wallet is already linked to a user
-    const { data: walletRecord } = await supabaseAdmin
+    const { data: walletRecord } = await adminClient
       .from('user_wallets')
       .select('*')
       .eq('public_key', public_key)
@@ -122,19 +137,19 @@ export async function POST(request: NextRequest) {
       userId = walletRecord.user_id;
 
       // Update last_used_at
-      await supabaseAdmin
+      await adminClient
         .from('user_wallets')
         .update({ last_used_at: new Date().toISOString() })
         .eq('id', walletRecord.id);
 
       // Update user's password to current derived password (in case signature differs)
-      await supabaseAdmin.auth.admin.updateUserById(userId, {
+      await adminClient.auth.admin.updateUserById(userId, {
         password: walletPassword
       });
 
     } else {
       // Create new user with wallet
-      const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
+      const { data: newUser, error: createError } = await adminClient.auth.admin.createUser({
         email: walletEmail,
         password: walletPassword,
         email_confirm: true,
@@ -157,7 +172,7 @@ export async function POST(request: NextRequest) {
       createdNewUser = true;
 
       // Link wallet to new user
-      const { error: linkError } = await supabaseAdmin
+      const { error: linkError } = await adminClient
         .from('user_wallets')
         .insert({
           user_id: userId,
@@ -177,7 +192,7 @@ export async function POST(request: NextRequest) {
       // Generate username from wallet address (first 8 chars)
       const username = `wallet_${public_key.slice(0, 8)}`;
 
-      await supabaseAdmin
+      await adminClient
         .from('profiles')
         .upsert({
           id: userId,
@@ -189,7 +204,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Mark nonce as used
-    await supabaseAdmin
+    await adminClient
       .from('wallet_nonces')
       .update({ used: true })
       .eq('id', nonceRecord.id);

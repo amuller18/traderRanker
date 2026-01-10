@@ -272,6 +272,8 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
   const [timeframe, setTimeframe] = useState<string>("auto");
   const [useAutoTimeframe, setUseAutoTimeframe] = useState<boolean>(true);
   const [useOfficialPriceData, setUseOfficialPriceData] = useState<boolean>(false);
+  const [cachedTokens, setCachedTokens] = useState<Set<string>>(new Set());
+  const [cachedTokensLoading, setCachedTokensLoading] = useState<boolean>(false);
   const [selectedCaller, setSelectedCaller] = useState("all");
   const [visibleTokens, setVisibleTokens] = useState<Set<string>>(new Set());
   const [legendSearch, setLegendSearch] = useState<string>("");
@@ -351,6 +353,13 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
         ? trades
         : trades.filter((t) => t.caller === selectedCaller);
 
+      // When using cached mode, filter to only include tokens with cached price data
+      if (useOfficialPriceData && cachedTokens.size > 0) {
+        const beforeFilter = filtered.length;
+        filtered = filtered.filter((t) => cachedTokens.has(t.ca));
+        console.log(`Cached mode: filtered ${beforeFilter} -> ${filtered.length} trades (only tokens with cached data)`);
+      }
+
       // Limit to max backtests
       if (maxBacktests > 0 && filtered.length > maxBacktests) {
         filtered = filtered.slice(0, maxBacktests);
@@ -358,7 +367,7 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
 
       return filtered;
     },
-    [trades, selectedCaller, maxBacktests]
+    [trades, selectedCaller, maxBacktests, useOfficialPriceData, cachedTokens]
   );
 
   /* ─────────────────────── effects ───────────────────── */
@@ -374,6 +383,34 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
     const id = setInterval(ping, 30_000);
     return () => clearInterval(id);
   }, [pythonApiUrl]);
+
+  // Fetch cached tokens when user switches to cached mode
+  useEffect(() => {
+    if (useOfficialPriceData) {
+      const fetchCachedTokens = async () => {
+        setCachedTokensLoading(true);
+        try {
+          console.log("Fetching tokens with cached price data...");
+          const res = await fetch(`${pythonApiUrl}/api/cached-tokens?limit=1000`);
+          if (res.ok) {
+            const data = await res.json();
+            const tokens = new Set<string>(data.tokens || []);
+            setCachedTokens(tokens);
+            console.log(`Loaded ${tokens.size} tokens with cached price data`);
+          } else {
+            console.error("Failed to fetch cached tokens:", res.status);
+            setCachedTokens(new Set());
+          }
+        } catch (error) {
+          console.error("Error fetching cached tokens:", error);
+          setCachedTokens(new Set());
+        } finally {
+          setCachedTokensLoading(false);
+        }
+      };
+      fetchCachedTokens();
+    }
+  }, [useOfficialPriceData, pythonApiUrl]);
 
   /* ─────────────────────── helpers ───────────────────── */
   const handleTPChange = (idx: number, field: keyof TakeProfitLevel, value: number) => {
@@ -1166,9 +1203,9 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                   <Select
                     value={useOfficialPriceData ? "cached" : "live"}
                     onValueChange={(val) => setUseOfficialPriceData(val === "cached")}
-                    disabled={isRunning}
+                    disabled={isRunning || cachedTokensLoading}
                   >
-                    <SelectTrigger id="priceDataSource" disabled={isRunning}>
+                    <SelectTrigger id="priceDataSource" disabled={isRunning || cachedTokensLoading}>
                       <SelectValue placeholder="Select price data source" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1177,9 +1214,11 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    {useOfficialPriceData
-                      ? "Use only cached prices from database. Fails if prices are missing."
-                      : "Fetch live prices from Birdeye API (default)"}
+                    {cachedTokensLoading
+                      ? "Loading cached tokens..."
+                      : useOfficialPriceData
+                        ? `Using cached prices only. ${cachedTokens.size} tokens available, ${filteredTrades.length} matching trades.`
+                        : "Fetch live prices from Birdeye API (default)"}
                   </p>
                 </div>
 

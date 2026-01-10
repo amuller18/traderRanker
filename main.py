@@ -1797,6 +1797,114 @@ async def _fetch_official_price_data(
 
     return mint, items
 
+# Cache for tokens with price data - refreshed periodically
+_cached_tokens_with_price_data: set[str] = set()
+_cached_tokens_last_refresh: float = 0
+_CACHED_TOKENS_TTL = 300  # 5 minutes TTL
+
+def _get_tokens_with_cached_price_data_sync(limit: int = 500) -> set[str]:
+    """
+    Efficiently scan DynamoDB to find unique token addresses that have cached price data.
+    Uses a scan with projection to only fetch the 'ca' attribute.
+
+    Args:
+        limit: Maximum number of unique tokens to return (default 500)
+
+    Returns:
+        Set of token addresses (ca) that have at least one price data point
+    """
+    global _cached_tokens_with_price_data, _cached_tokens_last_refresh
+
+    # Check if we have a recent cache
+    current_time = time.time()
+    if _cached_tokens_with_price_data and (current_time - _cached_tokens_last_refresh) < _CACHED_TOKENS_TTL:
+        logger.info(f"Using cached tokens list ({len(_cached_tokens_with_price_data)} tokens, age: {int(current_time - _cached_tokens_last_refresh)}s)")
+        return _cached_tokens_with_price_data
+
+    if price_cache_table is None:
+        logger.error("Cannot get cached tokens - price_cache_table is not available")
+        return set()
+
+    try:
+        tokens = set()
+        scan_kwargs = {
+            'ProjectionExpression': 'ca',  # Only fetch the partition key
+            'Limit': 1000  # Scan in batches
+        }
+
+        logger.info(f"Scanning price cache table for tokens with price data (limit: {limit})...")
+
+        while len(tokens) < limit:
+            response = price_cache_table.scan(**scan_kwargs)
+
+            for item in response.get('Items', []):
+                ca = item.get('ca')
+                if ca:
+                    tokens.add(ca)
+                    if len(tokens) >= limit:
+                        break
+
+            # Check if there are more items
+            if 'LastEvaluatedKey' not in response or len(tokens) >= limit:
+                break
+
+            scan_kwargs['ExclusiveStartKey'] = response['LastEvaluatedKey']
+
+        logger.info(f"Found {len(tokens)} unique tokens with cached price data")
+
+        # Update cache
+        _cached_tokens_with_price_data = tokens
+        _cached_tokens_last_refresh = current_time
+
+        return tokens
+
+    except ClientError as e:
+        logger.error(f"DynamoDB error scanning for cached tokens: {e}")
+        return set()
+    except Exception as e:
+        logger.error(f"Error scanning for cached tokens: {e}")
+        return set()
+
+async def get_tokens_with_cached_price_data(limit: int = 500) -> set[str]:
+    """
+    Async wrapper for getting tokens with cached price data.
+    """
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(
+        None,
+        _get_tokens_with_cached_price_data_sync,
+        limit
+    )
+
+def check_token_has_cached_price_data_sync(token: str) -> bool:
+    """
+    Check if a specific token has any cached price data.
+    More efficient than full scan for single token check.
+    """
+    if price_cache_table is None:
+        return False
+
+    try:
+        # Query with limit 1 to just check existence
+        response = price_cache_table.query(
+            KeyConditionExpression=Key('ca').eq(token),
+            Limit=1,
+            ProjectionExpression='ca'
+        )
+        return len(response.get('Items', [])) > 0
+    except Exception as e:
+        logger.error(f"Error checking if token {token} has cached data: {e}")
+        return False
+
+async def check_token_has_cached_price_data(token: str) -> bool:
+    """Async wrapper for checking if token has cached price data."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(
+        None,
+        check_token_has_cached_price_data_sync,
+        token
+    )
+
 async def _cached_history(
     session: aiohttp.ClientSession,
     mint: str,
@@ -1917,6 +2025,44 @@ async def chart_cumulative(req: SimulationRequest):
 @app.get("/ping")
 async def ping():
     return {"status": "ok"}
+
+@app.get("/api/cached-tokens")
+async def get_cached_tokens(limit: int = 500):
+    """
+    Get a list of token addresses that have cached price data in the database.
+    This is used to pre-filter trades when using cached price data mode.
+
+    Args:
+        limit: Maximum number of tokens to return (default 500)
+
+    Returns:
+        List of token addresses with cached price data and total count
+    """
+    logger.info(f"Getting cached tokens (limit: {limit})...")
+
+    if price_cache_table is None:
+        logger.error("Price cache table not available")
+        return {
+            "tokens": [],
+            "count": 0,
+            "error": "Price cache table not configured"
+        }
+
+    try:
+        tokens = await get_tokens_with_cached_price_data(limit)
+        token_list = list(tokens)
+        logger.info(f"Returning {len(token_list)} cached tokens")
+        return {
+            "tokens": token_list,
+            "count": len(token_list)
+        }
+    except Exception as e:
+        logger.error(f"Error getting cached tokens: {e}")
+        return {
+            "tokens": [],
+            "count": 0,
+            "error": str(e)
+        }
 
 @app.get("/api/validate-keys")
 async def validate_api_keys():
@@ -3203,10 +3349,12 @@ async def simulate_with_breakdown_trades(req: TradeBasedSimulationRequest) -> Li
     logger.info(f"Request trades: {len(req.trades)}")
     logger.info(f"Request amount_usd: {req.amount_usd}")
     logger.info(f"Request timeframe_minutes: {req.timeframe_minutes}")
+    logger.info(f"Request use_official_price_data: {req.use_official_price_data}")
     logger.info(f"Request tp: {req.tp}")
     logger.info(f"Request sl: {req.sl}")
 
-    if not BIRDEYE_API_KEYS:
+    # When using cached mode, we don't need Birdeye API keys
+    if not req.use_official_price_data and not BIRDEYE_API_KEYS:
         logger.error("BIRDEYE_API_KEY not set")
         raise HTTPException(500, "BIRDEYE_API_KEY not set")
 
@@ -3215,6 +3363,30 @@ async def simulate_with_breakdown_trades(req: TradeBasedSimulationRequest) -> Li
     if bad:
         logger.error(f"Invalid Solana address(es): {', '.join(bad)}")
         raise HTTPException(400, f"Invalid Solana address(es): {', '.join(bad)}")
+
+    # When using official price data, pre-filter trades to only include tokens with cached data
+    trades_to_process = req.trades
+    if req.use_official_price_data:
+        logger.info("Using CACHED price data mode - pre-filtering trades to only include tokens with cached data...")
+
+        # Get the set of tokens that have cached price data
+        cached_tokens = await get_tokens_with_cached_price_data(limit=1000)
+        logger.info(f"Found {len(cached_tokens)} tokens with cached price data")
+
+        if not cached_tokens:
+            logger.error("No tokens with cached price data found in database")
+            raise HTTPException(400, "No tokens with cached price data available in database")
+
+        # Filter trades to only include those with cached data
+        original_count = len(trades_to_process)
+        trades_to_process = [t for t in trades_to_process if t.token in cached_tokens]
+        filtered_count = len(trades_to_process)
+
+        logger.info(f"Filtered trades: {original_count} -> {filtered_count} (excluded {original_count - filtered_count} trades without cached data)")
+
+        if not trades_to_process:
+            logger.error("No trades have cached price data")
+            raise HTTPException(400, "None of the requested trades have cached price data available")
 
     logger.info("Parsing ladder levels...")
     tp_r, tp_s = _parse_ladder(req.tp)
@@ -3228,7 +3400,7 @@ async def simulate_with_breakdown_trades(req: TradeBasedSimulationRequest) -> Li
     session = aiohttp.ClientSession()
     try:
         # Create all trade processing tasks in parallel
-        logger.info(f"Creating {len(req.trades)} parallel trade breakdown tasks...")
+        logger.info(f"Creating {len(trades_to_process)} parallel trade breakdown tasks...")
         trade_tasks = [
             asyncio.create_task(
                 _process_single_trade_breakdown(
@@ -3245,7 +3417,7 @@ async def simulate_with_breakdown_trades(req: TradeBasedSimulationRequest) -> Li
                     use_official_price_data=req.use_official_price_data,
                 )
             )
-            for trade in req.trades
+            for trade in trades_to_process
         ]
 
         # Wait for all tasks to complete
@@ -3423,10 +3595,12 @@ async def simulate_trades(req: TradeBasedSimulationRequest) -> list[SimulationRe
     logger.info(f"Request trades: {len(req.trades)}")
     logger.info(f"Request amount_usd: {req.amount_usd}")
     logger.info(f"Request timeframe_minutes: {req.timeframe_minutes}")
+    logger.info(f"Request use_official_price_data: {req.use_official_price_data}")
     logger.info(f"Request tp: {req.tp}")
     logger.info(f"Request sl: {req.sl}")
 
-    if not BIRDEYE_API_KEYS:
+    # When using cached mode, we don't need Birdeye API keys
+    if not req.use_official_price_data and not BIRDEYE_API_KEYS:
         logger.error("BIRDEYE_API_KEY not set")
         raise HTTPException(500, "BIRDEYE_API_KEY not set")
 
@@ -3435,6 +3609,30 @@ async def simulate_trades(req: TradeBasedSimulationRequest) -> list[SimulationRe
     if bad:
         logger.error(f"Invalid Solana address(es): {', '.join(bad)}")
         raise HTTPException(400, f"Invalid Solana address(es): {', '.join(bad)}")
+
+    # When using official price data, pre-filter trades to only include tokens with cached data
+    trades_to_process = req.trades
+    if req.use_official_price_data:
+        logger.info("Using CACHED price data mode - pre-filtering trades to only include tokens with cached data...")
+
+        # Get the set of tokens that have cached price data
+        cached_tokens = await get_tokens_with_cached_price_data(limit=1000)
+        logger.info(f"Found {len(cached_tokens)} tokens with cached price data")
+
+        if not cached_tokens:
+            logger.error("No tokens with cached price data found in database")
+            raise HTTPException(400, "No tokens with cached price data available in database")
+
+        # Filter trades to only include those with cached data
+        original_count = len(trades_to_process)
+        trades_to_process = [t for t in trades_to_process if t.token in cached_tokens]
+        filtered_count = len(trades_to_process)
+
+        logger.info(f"Filtered trades: {original_count} -> {filtered_count} (excluded {original_count - filtered_count} trades without cached data)")
+
+        if not trades_to_process:
+            logger.error("No trades have cached price data")
+            raise HTTPException(400, "None of the requested trades have cached price data available")
 
     logger.info("Parsing ladder levels...")
     tp_r, tp_s = _parse_ladder(req.tp)
@@ -3448,7 +3646,7 @@ async def simulate_trades(req: TradeBasedSimulationRequest) -> list[SimulationRe
     session = aiohttp.ClientSession()
     try:
         # Create all trade processing tasks in parallel
-        logger.info(f"Creating {len(req.trades)} parallel trade simulation tasks...")
+        logger.info(f"Creating {len(trades_to_process)} parallel trade simulation tasks...")
         trade_tasks = [
             asyncio.create_task(
                 _process_single_trade(
@@ -3465,7 +3663,7 @@ async def simulate_trades(req: TradeBasedSimulationRequest) -> list[SimulationRe
                     use_official_price_data=req.use_official_price_data,
                 )
             )
-            for trade in req.trades
+            for trade in trades_to_process
         ]
 
         # Wait for all tasks to complete

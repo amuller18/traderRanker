@@ -252,7 +252,7 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
   /* ─────────────────────── state ─────────────────────── */
   // Trades loaded from DynamoDB
   const [trades, setTrades] = useState<Trade[]>(initialTrades);
-  const [tradesLoading, setTradesLoading] = useState(true);
+  const [tradesLoading, setTradesLoading] = useState(false); // Start false so UI loads immediately
   const [tradesError, setTradesError] = useState<string | null>(null);
 
   const [takeProfits, setTakeProfits] = useState<TakeProfitLevel[]>([
@@ -355,9 +355,7 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
 
       // When using cached mode, filter to only include tokens with cached price data
       if (useOfficialPriceData && cachedTokens.size > 0) {
-        const beforeFilter = filtered.length;
         filtered = filtered.filter((t) => cachedTokens.has(t.ca));
-        console.log(`Cached mode: filtered ${beforeFilter} -> ${filtered.length} trades (only tokens with cached data)`);
       }
 
       // Limit to max backtests
@@ -409,6 +407,10 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
         }
       };
       fetchCachedTokens();
+    } else {
+      // Reset when switching back to live mode
+      setCachedTokens(new Set());
+      setCachedTokensLoading(false);
     }
   }, [useOfficialPriceData, pythonApiUrl]);
 
@@ -1203,9 +1205,9 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                   <Select
                     value={useOfficialPriceData ? "cached" : "live"}
                     onValueChange={(val) => setUseOfficialPriceData(val === "cached")}
-                    disabled={isRunning || cachedTokensLoading}
+                    disabled={isRunning}
                   >
-                    <SelectTrigger id="priceDataSource" disabled={isRunning || cachedTokensLoading}>
+                    <SelectTrigger id="priceDataSource" disabled={isRunning}>
                       <SelectValue placeholder="Select price data source" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1214,11 +1216,13 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    {cachedTokensLoading
-                      ? "Loading cached tokens..."
-                      : useOfficialPriceData
-                        ? `Using cached prices only. ${cachedTokens.size} tokens available, ${filteredTrades.length} matching trades.`
-                        : "Fetch live prices from Birdeye API (default)"}
+                    {useOfficialPriceData
+                      ? cachedTokensLoading
+                        ? "Loading cached tokens..."
+                        : cachedTokens.size > 0
+                          ? `${cachedTokens.size} tokens with cached data, ${filteredTrades.length} matching trades`
+                          : "No cached tokens found. Check if price cache table has data."
+                      : "Fetch live prices from Birdeye API (default)"}
                   </p>
                 </div>
 

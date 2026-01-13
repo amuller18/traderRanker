@@ -385,11 +385,18 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
   // Fetch cached tokens when user switches to cached mode
   useEffect(() => {
     if (useOfficialPriceData) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+
       const fetchCachedTokens = async () => {
         setCachedTokensLoading(true);
         try {
           console.log("Fetching tokens with cached price data...");
-          const res = await fetch(`${pythonApiUrl}/api/cached-tokens`);
+          const res = await fetch(`${pythonApiUrl}/api/cached-tokens`, {
+            signal: controller.signal
+          });
+          clearTimeout(timeoutId);
+
           if (res.ok) {
             const data = await res.json();
             const tokens = new Set<string>(data.tokens || []);
@@ -400,13 +407,23 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
             setCachedTokens(new Set());
           }
         } catch (error) {
-          console.error("Error fetching cached tokens:", error);
+          clearTimeout(timeoutId);
+          if (error instanceof Error && error.name === 'AbortError') {
+            console.error("Cached tokens fetch timed out - is Python API running?");
+          } else {
+            console.error("Error fetching cached tokens:", error);
+          }
           setCachedTokens(new Set());
         } finally {
           setCachedTokensLoading(false);
         }
       };
       fetchCachedTokens();
+
+      return () => {
+        clearTimeout(timeoutId);
+        controller.abort();
+      };
     } else {
       // Reset when switching back to live mode
       setCachedTokens(new Set());

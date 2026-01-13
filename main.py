@@ -1802,13 +1802,10 @@ _cached_tokens_with_price_data: set[str] = set()
 _cached_tokens_last_refresh: float = 0
 _CACHED_TOKENS_TTL = 300  # 5 minutes TTL
 
-def _get_tokens_with_cached_price_data_sync(limit: int = 500) -> set[str]:
+def _get_tokens_with_cached_price_data_sync() -> set[str]:
     """
     Efficiently scan DynamoDB to find unique token addresses that have cached price data.
     Uses a scan with projection to only fetch the 'ca' attribute.
-
-    Args:
-        limit: Maximum number of unique tokens to return (default 500)
 
     Returns:
         Set of token addresses (ca) that have at least one price data point
@@ -1829,23 +1826,20 @@ def _get_tokens_with_cached_price_data_sync(limit: int = 500) -> set[str]:
         tokens = set()
         scan_kwargs = {
             'ProjectionExpression': 'ca',  # Only fetch the partition key
-            'Limit': 1000  # Scan in batches
         }
 
-        logger.info(f"Scanning price cache table for tokens with price data (limit: {limit})...")
+        logger.info("Scanning price cache table for all tokens with price data...")
 
-        while len(tokens) < limit:
+        while True:
             response = price_cache_table.scan(**scan_kwargs)
 
             for item in response.get('Items', []):
                 ca = item.get('ca')
                 if ca:
                     tokens.add(ca)
-                    if len(tokens) >= limit:
-                        break
 
             # Check if there are more items
-            if 'LastEvaluatedKey' not in response or len(tokens) >= limit:
+            if 'LastEvaluatedKey' not in response:
                 break
 
             scan_kwargs['ExclusiveStartKey'] = response['LastEvaluatedKey']
@@ -1865,7 +1859,7 @@ def _get_tokens_with_cached_price_data_sync(limit: int = 500) -> set[str]:
         logger.error(f"Error scanning for cached tokens: {e}")
         return set()
 
-async def get_tokens_with_cached_price_data(limit: int = 500) -> set[str]:
+async def get_tokens_with_cached_price_data() -> set[str]:
     """
     Async wrapper for getting tokens with cached price data.
     """
@@ -1873,7 +1867,6 @@ async def get_tokens_with_cached_price_data(limit: int = 500) -> set[str]:
     return await loop.run_in_executor(
         None,
         _get_tokens_with_cached_price_data_sync,
-        limit
     )
 
 def check_token_has_cached_price_data_sync(token: str) -> bool:
@@ -2027,18 +2020,15 @@ async def ping():
     return {"status": "ok"}
 
 @app.get("/api/cached-tokens")
-async def get_cached_tokens(limit: int = 500):
+async def get_cached_tokens_endpoint():
     """
-    Get a list of token addresses that have cached price data in the database.
+    Get a list of all token addresses that have cached price data in the database.
     This is used to pre-filter trades when using cached price data mode.
-
-    Args:
-        limit: Maximum number of tokens to return (default 500)
 
     Returns:
         List of token addresses with cached price data and total count
     """
-    logger.info(f"Getting cached tokens (limit: {limit})...")
+    logger.info("Getting all cached tokens...")
 
     if price_cache_table is None:
         logger.error("Price cache table not available")
@@ -2049,7 +2039,7 @@ async def get_cached_tokens(limit: int = 500):
         }
 
     try:
-        tokens = await get_tokens_with_cached_price_data(limit)
+        tokens = await get_tokens_with_cached_price_data()
         token_list = list(tokens)
         logger.info(f"Returning {len(token_list)} cached tokens")
         return {
@@ -3370,7 +3360,7 @@ async def simulate_with_breakdown_trades(req: TradeBasedSimulationRequest) -> Li
         logger.info("Using CACHED price data mode - pre-filtering trades to only include tokens with cached data...")
 
         # Get the set of tokens that have cached price data
-        cached_tokens = await get_tokens_with_cached_price_data(limit=1000)
+        cached_tokens = await get_tokens_with_cached_price_data()
         logger.info(f"Found {len(cached_tokens)} tokens with cached price data")
 
         if not cached_tokens:
@@ -3616,7 +3606,7 @@ async def simulate_trades(req: TradeBasedSimulationRequest) -> list[SimulationRe
         logger.info("Using CACHED price data mode - pre-filtering trades to only include tokens with cached data...")
 
         # Get the set of tokens that have cached price data
-        cached_tokens = await get_tokens_with_cached_price_data(limit=1000)
+        cached_tokens = await get_tokens_with_cached_price_data()
         logger.info(f"Found {len(cached_tokens)} tokens with cached price data")
 
         if not cached_tokens:

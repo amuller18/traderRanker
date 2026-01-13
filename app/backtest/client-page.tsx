@@ -389,7 +389,7 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
         setCachedTokensLoading(true);
         try {
           console.log("Fetching tokens with cached price data...");
-          const res = await fetch(`${pythonApiUrl}/api/cached-tokens?limit=1000`);
+          const res = await fetch(`${pythonApiUrl}/api/cached-tokens`);
           if (res.ok) {
             const data = await res.json();
             const tokens = new Set<string>(data.tokens || []);

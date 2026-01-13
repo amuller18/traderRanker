@@ -33,11 +33,12 @@ function validateApiBase(): void {
 }
 
 /**
- * Generic fetch wrapper with error handling and API key auth
+ * Generic fetch wrapper with error handling, timeout, and API key auth
  */
 async function apiFetch<T>(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  timeoutMs: number = 30000  // 30 second timeout
 ): Promise<T> {
   // Validate API base URL before making requests
   validateApiBase()
@@ -52,10 +53,15 @@ async function apiFetch<T>(
 
   const fullUrl = `${API_BASE}${endpoint}`
 
+  // Create abort controller for timeout
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
   try {
     const response = await fetch(fullUrl, {
       ...options,
       headers,
+      signal: controller.signal,
     })
 
     if (!response.ok) {
@@ -71,9 +77,22 @@ async function apiFetch<T>(
       throw new Error(errorMessage)
     }
 
+    clearTimeout(timeoutId)
     const text = await response.text()
     return text ? JSON.parse(text) : null
   } catch (error) {
+    clearTimeout(timeoutId)
+
+    // Handle timeout/abort
+    if (error instanceof Error && error.name === 'AbortError') {
+      const timeoutError = new Error(
+        `Request timeout: API at ${fullUrl} did not respond within ${timeoutMs / 1000}s. ` +
+        'The server may be slow or unresponsive.'
+      )
+      console.error(`API timeout for ${endpoint}:`, timeoutError.message)
+      throw timeoutError
+    }
+
     // Enhanced error handling for network and other errors
     if (error instanceof TypeError && error.message === 'Failed to fetch') {
       const networkError = new Error(

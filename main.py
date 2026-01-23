@@ -639,6 +639,172 @@ def _bt_core_py(
 _bt_engine = _bt_core if JIT_READY else _bt_core_py
 
 # ---------------------------------------------------------------------------
+# Numba-optimized backtesting with ledger tracking
+# ---------------------------------------------------------------------------
+if JIT_READY:
+    @njit(cache=True, fastmath=True)
+    def _bt_ledger_core(
+        timestamps: np.ndarray,
+        close: np.ndarray,
+        high: np.ndarray,
+        low: np.ndarray,
+        entry_price: float,
+        entry_coins: float,
+        tp_levels: np.ndarray,
+        tp_sizes: np.ndarray,
+        sl_levels: np.ndarray,
+        sl_sizes: np.ndarray,
+    ):
+        """
+        Numba-optimized backtesting core with ledger tracking.
+        Returns arrays for ledger construction.
+        """
+        n_candles = len(timestamps)
+
+        # Output arrays for ledger
+        ledger_ts = np.zeros(n_candles, dtype=np.int64)
+        ledger_equity = np.zeros(n_candles, dtype=np.float64)
+        ledger_coins = np.zeros(n_candles, dtype=np.float64)
+        ledger_unrealized = np.zeros(n_candles, dtype=np.float64)
+        ledger_realized = np.zeros(n_candles, dtype=np.float64)
+
+        # State tracking
+        coins = entry_coins
+        realized = 0.0
+        tp_fired = np.zeros(len(tp_levels), dtype=np.bool_)
+        sl_fired = np.zeros(len(sl_levels), dtype=np.bool_)
+
+        ledger_count = 0
+
+        for j in range(n_candles):
+            # --- check TP ladder ---
+            for i in range(len(tp_levels)):
+                if tp_fired[i] or coins <= 0:
+                    continue
+                if high[j] >= tp_levels[i]:
+                    sell_qty = entry_coins * tp_sizes[i]
+                    sell_qty = min(sell_qty, coins)
+                    coins -= sell_qty
+                    realized += sell_qty * tp_levels[i]
+                    tp_fired[i] = True
+
+            # --- check SL ladder ---
+            for i in range(len(sl_levels)):
+                if sl_fired[i] or coins <= 0:
+                    continue
+                if low[j] <= sl_levels[i]:
+                    sell_qty = entry_coins * sl_sizes[i]
+                    sell_qty = min(sell_qty, coins)
+                    coins -= sell_qty
+                    realized += sell_qty * sl_levels[i]
+                    sl_fired[i] = True
+
+            # --- book keeping ---
+            equity = coins * close[j]
+            unrealized_pnl = (close[j] - entry_price) * coins
+            realized_pnl = realized - (entry_coins - coins) * entry_price
+
+            ledger_ts[ledger_count] = timestamps[j]
+            ledger_equity[ledger_count] = equity
+            ledger_coins[ledger_count] = coins
+            ledger_unrealized[ledger_count] = unrealized_pnl
+            ledger_realized[ledger_count] = realized_pnl
+            ledger_count += 1
+
+            # early exit – no position left
+            if coins <= 0:
+                break
+
+        # Trim arrays to actual size
+        return (
+            ledger_ts[:ledger_count],
+            ledger_equity[:ledger_count],
+            ledger_coins[:ledger_count],
+            ledger_unrealized[:ledger_count],
+            ledger_realized[:ledger_count],
+            coins,
+            realized,
+            tp_fired,
+            sl_fired,
+        )
+else:
+    # Pure Python fallback
+    def _bt_ledger_core(
+        timestamps: np.ndarray,
+        close: np.ndarray,
+        high: np.ndarray,
+        low: np.ndarray,
+        entry_price: float,
+        entry_coins: float,
+        tp_levels: np.ndarray,
+        tp_sizes: np.ndarray,
+        sl_levels: np.ndarray,
+        sl_sizes: np.ndarray,
+    ):
+        """Pure Python fallback for ledger tracking."""
+        n_candles = len(timestamps)
+
+        ledger_ts = []
+        ledger_equity = []
+        ledger_coins = []
+        ledger_unrealized = []
+        ledger_realized = []
+
+        coins = entry_coins
+        realized = 0.0
+        tp_fired = np.zeros(len(tp_levels), dtype=bool)
+        sl_fired = np.zeros(len(sl_levels), dtype=bool)
+
+        for j in range(n_candles):
+            # --- check TP ladder ---
+            for i in range(len(tp_levels)):
+                if tp_fired[i] or coins <= 0:
+                    continue
+                if high[j] >= tp_levels[i]:
+                    sell_qty = entry_coins * tp_sizes[i]
+                    sell_qty = min(sell_qty, coins)
+                    coins -= sell_qty
+                    realized += sell_qty * tp_levels[i]
+                    tp_fired[i] = True
+
+            # --- check SL ladder ---
+            for i in range(len(sl_levels)):
+                if sl_fired[i] or coins <= 0:
+                    continue
+                if low[j] <= sl_levels[i]:
+                    sell_qty = entry_coins * sl_sizes[i]
+                    sell_qty = min(sell_qty, coins)
+                    coins -= sell_qty
+                    realized += sell_qty * sl_levels[i]
+                    sl_fired[i] = True
+
+            # --- book keeping ---
+            equity = coins * close[j]
+            unrealized_pnl = (close[j] - entry_price) * coins
+            realized_pnl = realized - (entry_coins - coins) * entry_price
+
+            ledger_ts.append(timestamps[j])
+            ledger_equity.append(equity)
+            ledger_coins.append(coins)
+            ledger_unrealized.append(unrealized_pnl)
+            ledger_realized.append(realized_pnl)
+
+            if coins <= 0:
+                break
+
+        return (
+            np.array(ledger_ts, dtype=np.int64),
+            np.array(ledger_equity, dtype=np.float64),
+            np.array(ledger_coins, dtype=np.float64),
+            np.array(ledger_unrealized, dtype=np.float64),
+            np.array(ledger_realized, dtype=np.float64),
+            coins,
+            realized,
+            tp_fired,
+            sl_fired,
+        )
+
+# ---------------------------------------------------------------------------
 # Data helpers (Birdeye clients cut for brevity – unchanged from original)
 # ---------------------------------------------------------------------------
 
@@ -1518,72 +1684,59 @@ def run_simulation_with_ledger(
     entry_coins = start_cash_usd / entry_price
 
     # Build absolute price levels once
-    tp_levels = [entry_price * (1 + r) for r in tp_ratios]
-    sl_levels = [entry_price * (1 - r) for r in sl_ratios]
+    tp_levels = np.array([entry_price * (1 + r) for r in tp_ratios], dtype=np.float64)
+    sl_levels = np.array([entry_price * (1 - r) for r in sl_ratios], dtype=np.float64)
+    tp_sizes_arr = np.array(tp_sizes, dtype=np.float64)
+    sl_sizes_arr = np.array(sl_sizes, dtype=np.float64)
 
-    # Internal state
-    coins = entry_coins
-    realized = 0.0
-    tp_fired: set[int] = set()   # indices of ladder levels already filled
-    sl_fired: set[int] = set()
+    # Extract numpy arrays for fast processing
+    timestamps = df_ohlc["t"].apply(lambda x: int(x.timestamp())).values.astype(np.int64)
+    close_arr = df_ohlc["close"].values.astype(np.float64)
+    high_arr = df_ohlc["high"].values.astype(np.float64)
+    low_arr = df_ohlc["low"].values.astype(np.float64)
 
+    # ---------------------------------------------------------------------- #
+    # Use Numba-optimized core for fast backtesting
+    # ---------------------------------------------------------------------- #
+    (
+        ledger_ts,
+        ledger_equity,
+        ledger_coins,
+        ledger_unrealized,
+        ledger_realized,
+        coins,
+        realized,
+        tp_fired_arr,
+        sl_fired_arr,
+    ) = _bt_ledger_core(
+        timestamps,
+        close_arr,
+        high_arr,
+        low_arr,
+        entry_price,
+        entry_coins,
+        tp_levels,
+        tp_sizes_arr,
+        sl_levels,
+        sl_sizes_arr,
+    )
+
+    # Build ledger from numpy arrays
     ledger: List[PositionPoint] = []
-
-    # ---------------------------------------------------------------------- #
-    # loop over bars
-    # ---------------------------------------------------------------------- #
-    for _, row in df_ohlc.iterrows():
-        ts     = int(row["t"].timestamp())           # <-- real unix seconds
-        price  = float(row["close"])
-
-        tp_hit = sl_hit = None
-
-        # --- check TP ladder ------------------------------------------------
-        for i, (px, sz) in enumerate(zip(tp_levels, tp_sizes)):
-            if i in tp_fired or coins <= 0:
-                continue
-            if price >= px:                 # hit!
-                sell_qty = entry_coins * sz
-                sell_qty = min(sell_qty, coins)   # do not short
-                coins -= sell_qty
-                realized += sell_qty * px
-                tp_fired.add(i)
-                tp_hit = px
-
-        # --- check SL ladder ------------------------------------------------
-        for i, (px, sz) in enumerate(zip(sl_levels, sl_sizes)):
-            if i in sl_fired or coins <= 0:
-                continue
-            if price <= px:                 # hit!
-                sell_qty = entry_coins * sz
-                sell_qty = min(sell_qty, coins)
-                coins -= sell_qty
-                realized += sell_qty * px
-                sl_fired.add(i)
-                sl_hit = px
-
-        # --- book keeping ---------------------------------------------------
-        equity = coins * price
-        unrealized = equity + realized - start_cash_usd
-
+    for i in range(len(ledger_ts)):
         ledger.append(
             PositionPoint(
-                ts=int(ts),
-                value=float(equity),
-                coins_held=float(coins),
-                unrealized=float(unrealized),
-                realized=float(realized),
+                ts=int(ledger_ts[i]),
+                value=float(ledger_equity[i]),
+                coins_held=float(ledger_coins[i]),
+                unrealized=float(ledger_unrealized[i]),
+                realized=float(ledger_realized[i]),
             )
         )
 
-        # early exit – no position left
-        if coins <= 0:
-            break
-
-    # Final point with the *live* Birdeye price if newer than last bar --------
-
-    equity     = coins * current_price
-    unrealized = equity + realized - start_cash_usd
+    # Convert fired arrays to sets for return values
+    tp_fired = {i for i in range(len(tp_fired_arr)) if tp_fired_arr[i]}
+    sl_fired = {i for i in range(len(sl_fired_arr)) if sl_fired_arr[i]}
 
     # ---------------------------------------------------------------------- #
     # CRITICAL: Proper PnL Calculations (per specification)
@@ -1627,13 +1780,10 @@ def run_simulation_with_ledger(
             )
         )
 
-    # realised P/L = sale proceeds – cost basis of coins sold
-    realised_pl = realized - (entry_coins - coins) * entry_price   # works for both full/partial exits
-
     return {
         "ledger":            [pt.model_dump() for pt in ledger],
         "realized_profit":   round(realised_pl, 6),
-        "unrealized_profit": round(unrealized,   6),
+        "unrealized_profit": round(unrealized_pl, 6),  # FIX: Use unrealized_pl not unrealized
         "coins_left":        round(coins,        6),
         "tps_hit":           [tp_levels[i] for i in sorted(tp_fired)],
         "sls_hit":           [sl_levels[i] for i in sorted(sl_fired)],

@@ -155,6 +155,7 @@ load_dotenv()
 # Initialize DynamoDB client with proper credential handling and table verification
 traders_table = None
 trades_table = None
+price_data_table = None
 
 try:
     # Get AWS configuration from environment (falls back to default boto3 credential chain)
@@ -175,6 +176,7 @@ try:
 
     TRADERS_TABLE = os.getenv('DYNAMODB_TRADER_STATISTICS', 'officialStats')
     TRADES_TABLE = os.getenv('DYNAMODB_TRADES_TABLE', 'officialCalls')
+    PRICE_DATA_TABLE = os.getenv('DYNAMODB_PRICE_DATA_TABLE', 'officialPriceData')
 
     # Verify tables exist before using them
     client = boto3.client('dynamodb', **dynamodb_kwargs)
@@ -199,6 +201,16 @@ try:
             logger.warning(f"✗ DynamoDB table '{TRADES_TABLE}' does not exist. Trade endpoints will return empty data.")
         else:
             logger.warning(f"✗ Cannot access table '{TRADES_TABLE}': {e}. Trade endpoints will return empty data.")
+
+    try:
+        client.describe_table(TableName=PRICE_DATA_TABLE)
+        price_data_table = dynamodb.Table(PRICE_DATA_TABLE)
+        logger.info(f" DynamoDB table '{PRICE_DATA_TABLE}' verified and ready")
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'ResourceNotFoundException':
+            logger.warning(f"✗ DynamoDB table '{PRICE_DATA_TABLE}' does not exist. Backtesting from DynamoDB will not work.")
+        else:
+            logger.warning(f"✗ Cannot access table '{PRICE_DATA_TABLE}': {e}. Backtesting from DynamoDB will not work.")
 
 except NoCredentialsError:
     logger.error(
@@ -1654,6 +1666,126 @@ def _parse_ladder(raw: List[str]) -> Tuple[List[float], List[float]]:
         raise HTTPException(status_code=400, detail="Sum of sell fractions exceeds 1.0")
     return ratios, sells
 
+# ---------------------------------------------------------------------------
+# DynamoDB Price Data Functions
+# ---------------------------------------------------------------------------
+def fetch_price_history_from_dynamodb(ca: str) -> pd.DataFrame:
+    """
+    Fetch all price history for a given contract address from DynamoDB.
+
+    Parameters
+    ----------
+    ca : str
+        Contract address (token CA)
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with columns: timestamp, price, volume, interval, ca
+        Sorted by timestamp ascending
+    """
+    if price_data_table is None:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Price data table '{PRICE_DATA_TABLE}' not available. Check DynamoDB configuration."
+        )
+
+    try:
+        # Query DynamoDB for all price data for this CA
+        response = price_data_table.query(
+            KeyConditionExpression=Key('ca').eq(ca),
+            ScanIndexForward=True  # Sort ascending by timestamp
+        )
+
+        items = response.get('Items', [])
+
+        # Handle pagination if there are more items
+        while 'LastEvaluatedKey' in response:
+            response = price_data_table.query(
+                KeyConditionExpression=Key('ca').eq(ca),
+                ScanIndexForward=True,
+                ExclusiveStartKey=response['LastEvaluatedKey']
+            )
+            items.extend(response.get('Items', []))
+
+        if not items:
+            logger.warning(f"No price data found in DynamoDB for CA: {ca}")
+            return pd.DataFrame()
+
+        # Convert to DataFrame
+        df = pd.DataFrame(items)
+
+        # Ensure proper data types
+        df["price"] = df["price"].astype(float)
+        df["timestamp"] = df["timestamp"].astype(int)
+
+        # Sort by timestamp
+        df = df.sort_values('timestamp')
+
+        logger.info(f"Fetched {len(df)} price points from DynamoDB for {ca}")
+        return df
+
+    except ClientError as e:
+        logger.error(f"DynamoDB error fetching price history for {ca}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database error: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"Error fetching price history for {ca}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching price data: {str(e)}"
+        )
+
+def convert_price_data_to_ohlc(df_price: pd.DataFrame, interval_minutes: int = 5) -> pd.DataFrame:
+    """
+    Convert raw price data from DynamoDB to OHLC format for backtesting.
+
+    If the data already has interval information, we'll use it as-is.
+    Otherwise, we'll resample to the specified interval.
+
+    Parameters
+    ----------
+    df_price : pd.DataFrame
+        Raw price data with columns: timestamp, price, (optional: interval)
+    interval_minutes : int
+        Target interval in minutes (default: 5)
+
+    Returns
+    -------
+    pd.DataFrame
+        OHLC DataFrame with columns: t (datetime), open, high, low, close, volume
+    """
+    if df_price.empty:
+        return pd.DataFrame()
+
+    # Create datetime column
+    df = df_price.copy()
+    df['t'] = pd.to_datetime(df['timestamp'], unit='s')
+
+    # If data already has consistent intervals (from API), create OHLC from individual points
+    # Since each point is a snapshot, we'll use the price as all OHLC values
+    ohlc_bars = []
+    for idx, row in df.iterrows():
+        bar = {
+            't': row['t'],
+            'open': row['price'],
+            'high': row['price'],
+            'low': row['price'],
+            'close': row['price'],
+            'volume': row.get('volume', np.nan)
+        }
+        ohlc_bars.append(bar)
+
+    result = pd.DataFrame(ohlc_bars)
+
+    logger.info(f"Converted {len(result)} price points to OHLC format")
+    logger.info(f"Time range: {result['t'].min()} to {result['t'].max()}")
+    logger.info(f"Price range: ${result['close'].min():.8f} to ${result['close'].max():.8f}")
+
+    return result
+
 def run_simulation_with_ledger(
     df_ohlc: pd.DataFrame,
     start_cash_usd: float,
@@ -2150,6 +2282,138 @@ async def simulate(req: SimulationRequest) -> list[SimulationResult]:
             successful_tokens += 1
     
     logger.info(f"Summary: {successful_tokens} successful, {failed_tokens} failed out of {len(req.tokens)} total tokens")
+    return out
+
+
+# ---------------------------------------------------------------------------
+# DynamoDB-Only Backtest Endpoint (No External API Calls)
+# ---------------------------------------------------------------------------
+@app.post("/api/simulate/dynamodb", response_model=list[SimulationResult])
+async def simulate_from_dynamodb(req: SimulationRequest) -> list[SimulationResult]:
+    """
+    Backtesting endpoint that uses ONLY DynamoDB data - zero external API calls.
+
+    Data flow:
+    1. Fetch price history from DynamoDB (officialPriceData table)
+    2. Convert to OHLC format
+    3. Get current price from most recent DynamoDB entry
+    4. Run backtest simulation with TP/SL ladders
+    5. Return results with full position ledger
+
+    Parameters
+    ----------
+    req : SimulationRequest
+        Request with tokens (CAs), amount_usd, tp/sl ladders
+
+    Returns
+    -------
+    list[SimulationResult]
+        Simulation results for each token
+    """
+    logger.info("=== DYNAMODB SIMULATION REQUEST START ===")
+    logger.info(f"Request tokens: {req.tokens}")
+    logger.info(f"Request amount_usd: {req.amount_usd}")
+    logger.info(f"Request tp: {req.tp}")
+    logger.info(f"Request sl: {req.sl}")
+
+    if price_data_table is None:
+        logger.error(f"Price data table '{PRICE_DATA_TABLE}' not available")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Price data table not available. Check DynamoDB configuration."
+        )
+
+    # Validate input
+    bad = [t for t in req.tokens if not is_valid_solana_address(t)]
+    if bad:
+        logger.error(f"Invalid Solana address(es): {', '.join(bad)}")
+        raise HTTPException(400, f"Invalid Solana address(es): {', '.join(bad)}")
+
+    # Parse ladder levels
+    logger.info("Parsing ladder levels...")
+    tp_r, tp_s = _parse_ladder(req.tp)
+    sl_r, sl_s = _parse_ladder(req.sl)
+    logger.info(f"TP ratios: {tp_r}, TP sizes: {tp_s}")
+    logger.info(f"SL ratios: {sl_r}, SL sizes: {sl_s}")
+
+    out: list[SimulationResult] = []
+
+    # Process each token
+    for ca in req.tokens:
+        logger.info(f"=== Processing token: {ca} ===")
+        try:
+            # Fetch price history from DynamoDB
+            logger.info(f"Fetching price history from DynamoDB for {ca}...")
+            df_price = fetch_price_history_from_dynamodb(ca)
+
+            if df_price.empty:
+                logger.warning(f"No price data found in DynamoDB for {ca}")
+                out.append(SimulationResult(
+                    token=ca,
+                    error="No price data available in DynamoDB"
+                ))
+                continue
+
+            if len(df_price) < 10:
+                logger.warning(f"Not enough data for {ca}: {len(df_price)} points (need >= 10)")
+                out.append(SimulationResult(
+                    token=ca,
+                    error=f"Not enough data points: {len(df_price)} (need >= 10)"
+                ))
+                continue
+
+            # Convert to OHLC format
+            logger.info(f"Converting {len(df_price)} price points to OHLC format...")
+            df_ohlc = convert_price_data_to_ohlc(df_price)
+
+            if df_ohlc.empty:
+                logger.error(f"Failed to convert price data to OHLC for {ca}")
+                out.append(SimulationResult(token=ca, error="Failed to convert to OHLC"))
+                continue
+
+            # Get current price from most recent entry
+            current_price = float(df_price['price'].iloc[-1])
+            logger.info(f"Current price for {ca}: ${current_price:.8f}")
+
+            # Run simulation
+            logger.info(f"Running simulation for {ca}...")
+            sim = run_simulation_with_ledger(
+                df_ohlc,
+                req.amount_usd,
+                current_price,
+                tp_r,
+                tp_s,
+                sl_r,
+                sl_s,
+            )
+
+            logger.info(f"Simulation successful for {ca}")
+            logger.info(f"  Realized profit: ${sim['realized_profit']}")
+            logger.info(f"  Unrealized profit: ${sim['unrealized_profit']}")
+            logger.info(f"  Ledger points: {len(sim['ledger'])}")
+
+            out.append(SimulationResult(token=ca, **sim))
+
+        except HTTPException:
+            # Propagate HTTP exceptions
+            raise
+        except Exception as exc:
+            logger.exception(f"Simulation failed for {ca}")
+            out.append(SimulationResult(token=ca, error=str(exc)))
+
+    # Summary
+    logger.info(f"=== DYNAMODB SIMULATION COMPLETE ===")
+    successful = sum(1 for r in out if not r.error)
+    failed = sum(1 for r in out if r.error)
+    logger.info(f"Summary: {successful} successful, {failed} failed out of {len(req.tokens)} total tokens")
+
+    for result in out:
+        if result.error:
+            logger.error(f"  Token {result.token}: ERROR - {result.error}")
+        else:
+            ledger_count = len(result.ledger) if result.ledger else 0
+            logger.info(f"  Token {result.token}: SUCCESS - {ledger_count} ledger points")
+
     return out
 
 

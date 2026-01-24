@@ -120,6 +120,79 @@ Runs backtesting simulation using only DynamoDB data.
 ]
 ```
 
+---
+
+### POST `/api/simulate/dynamodb/trades`
+
+**NEW!** Trade-based backtesting that starts each token from its specific call date.
+
+This endpoint is perfect for backtesting historical trade calls where each token was called at a different time. Each trade starts at its `date_called` timestamp and runs until the most recent price data in DynamoDB.
+
+#### Request Body
+
+```json
+{
+  "trades": [
+    {
+      "token": "6FtbGaqgZzti1TxJksBV4PSya5of9VqA9vJNDxPwbonk",
+      "date_called": "2025-07-04T07:54:50"
+    },
+    {
+      "token": "B8Y1gUd2KKtoMH7s2euYBfafcKKnZvEi2QkE51gfpump",
+      "date_called": "2025-10-12T12:05:21"
+    }
+  ],
+  "amount_usd": 10,
+  "timeframe_minutes": 15,
+  "use_auto_timeframe": true,
+  "tp": ["0.2:0.5", "0.5:0.3", "1:0.2"],
+  "sl": ["0.1:1"]
+}
+```
+
+**Parameters:**
+- `trades` - Array of trade objects with:
+  - `token` - Solana contract address (CA)
+  - `date_called` - ISO datetime string when the trade was called (e.g., "2025-07-04T07:54:50")
+- `amount_usd` - Investment amount in USD per trade
+- `timeframe_minutes` - Time interval in minutes (optional, for future use)
+- `use_auto_timeframe` - Whether to auto-calculate timeframe (optional)
+- `tp` - Take profit ladder: `["ratio:sell_fraction", ...]`
+- `sl` - Stop loss ladder: same format as TP
+
+#### Response
+
+Same format as `/api/simulate/dynamodb` - returns array of SimulationResult objects, one per trade.
+
+#### Example cURL
+
+```bash
+curl -X POST http://localhost:8000/api/simulate/dynamodb/trades \
+  -H "Content-Type: application/json" \
+  -d '{
+    "trades": [
+      {
+        "token": "6FtbGaqgZzti1TxJksBV4PSya5of9VqA9vJNDxPwbonk",
+        "date_called": "2025-07-04T07:54:50"
+      }
+    ],
+    "amount_usd": 100,
+    "tp": ["0.2:0.5", "0.5:0.3"],
+    "sl": ["0.1:1"]
+  }'
+```
+
+#### Key Differences from `/api/simulate/dynamodb`
+
+| Feature | `/api/simulate/dynamodb` | `/api/simulate/dynamodb/trades` |
+|---------|-------------------------|--------------------------------|
+| Input | Array of tokens | Array of trades (token + date) |
+| Start time | All same | Each trade has its own start |
+| Use case | Backtest multiple tokens from same entry | Backtest historical calls from different dates |
+| Data filtering | Uses all available data | Filters to only data after date_called |
+
+---
+
 ## Example Usage
 
 ### cURL
@@ -176,6 +249,83 @@ const response = await fetch('http://localhost:8000/api/simulate/dynamodb', {
 
 const results = await response.json();
 console.log(results);
+```
+
+### Python (Trades Endpoint)
+
+```python
+import requests
+
+response = requests.post(
+    "http://localhost:8000/api/simulate/dynamodb/trades",
+    json={
+        "trades": [
+            {
+                "token": "6FtbGaqgZzti1TxJksBV4PSya5of9VqA9vJNDxPwbonk",
+                "date_called": "2025-07-04T07:54:50"
+            },
+            {
+                "token": "B8Y1gUd2KKtoMH7s2euYBfafcKKnZvEi2QkE51gfpump",
+                "date_called": "2025-10-12T12:05:21"
+            }
+        ],
+        "amount_usd": 10,
+        "tp": ["0.2:0.5", "0.5:0.3", "1:0.2"],
+        "sl": ["0.1:1"]
+    }
+)
+
+results = response.json()
+for result in results:
+    if result["error"]:
+        print(f"Token {result['token']}: Error - {result['error']}")
+    else:
+        total_pnl = result['realized_profit'] + result['unrealized_profit']
+        roi_pct = (total_pnl / 10) * 100  # amount_usd = 10
+        print(f"Token {result['token']}:")
+        print(f"  Realized: ${result['realized_profit']:.2f}")
+        print(f"  Unrealized: ${result['unrealized_profit']:.2f}")
+        print(f"  Total P/L: ${total_pnl:.2f} ({roi_pct:+.2f}%)")
+        print(f"  TPs hit: {result['tps_hit']}")
+        print(f"  SLs hit: {result['sls_hit']}")
+```
+
+### JavaScript/Fetch (Trades Endpoint)
+
+```javascript
+const response = await fetch('http://localhost:8000/api/simulate/dynamodb/trades', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    trades: [
+      {
+        token: '6FtbGaqgZzti1TxJksBV4PSya5of9VqA9vJNDxPwbonk',
+        date_called: '2025-07-04T07:54:50'
+      },
+      {
+        token: 'B8Y1gUd2KKtoMH7s2euYBfafcKKnZvEi2QkE51gfpump',
+        date_called: '2025-10-12T12:05:21'
+      }
+    ],
+    amount_usd: 10,
+    tp: ['0.2:0.5', '0.5:0.3', '1:0.2'],
+    sl: ['0.1:1']
+  })
+});
+
+const results = await response.json();
+
+results.forEach(result => {
+  if (result.error) {
+    console.log(`${result.token}: Error - ${result.error}`);
+  } else {
+    const totalPnL = result.realized_profit + result.unrealized_profit;
+    const roiPct = (totalPnL / 10) * 100;
+    console.log(`${result.token}:`);
+    console.log(`  Total P/L: $${totalPnL.toFixed(2)} (${roiPct.toFixed(2)}%)`);
+    console.log(`  TPs hit: ${result.tps_hit}`);
+  }
+});
 ```
 
 ## Advantages over Birdeye API

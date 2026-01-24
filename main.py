@@ -2418,6 +2418,180 @@ async def simulate_from_dynamodb(req: SimulationRequest) -> list[SimulationResul
 
 
 # ---------------------------------------------------------------------------
+# DynamoDB-Only Backtest Endpoint for Trades (No External API Calls)
+# ---------------------------------------------------------------------------
+@app.post("/api/simulate/dynamodb/trades", response_model=list[SimulationResult])
+async def simulate_trades_from_dynamodb(req: TradeBasedSimulationRequest) -> list[SimulationResult]:
+    """
+    Trade-based backtesting endpoint that uses ONLY DynamoDB data - zero external API calls.
+
+    Each trade starts at its specific date_called timestamp and runs until the most recent
+    price data available in DynamoDB.
+
+    Data flow:
+    1. For each trade, fetch price history from DynamoDB (officialPriceData table)
+    2. Filter price data to start from date_called timestamp
+    3. Convert to OHLC format
+    4. Get current price from most recent DynamoDB entry
+    5. Run backtest simulation with TP/SL ladders
+    6. Return results with full position ledger
+
+    Parameters
+    ----------
+    req : TradeBasedSimulationRequest
+        Request with trades (token + date_called), amount_usd, tp/sl ladders
+
+    Returns
+    -------
+    list[SimulationResult]
+        Simulation results for each trade
+    """
+    logger.info("=== DYNAMODB TRADE-BASED SIMULATION REQUEST START ===")
+    logger.info(f"Request trades: {len(req.trades)}")
+    logger.info(f"Request amount_usd: {req.amount_usd}")
+    logger.info(f"Request timeframe_minutes: {req.timeframe_minutes}")
+    logger.info(f"Request use_auto_timeframe: {req.use_auto_timeframe}")
+    logger.info(f"Request tp: {req.tp}")
+    logger.info(f"Request sl: {req.sl}")
+
+    if price_data_table is None:
+        logger.error(f"Price data table '{PRICE_DATA_TABLE}' not available")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Price data table not available. Check DynamoDB configuration."
+        )
+
+    # Validate all tokens
+    bad = [t.token for t in req.trades if not is_valid_solana_address(t.token)]
+    if bad:
+        logger.error(f"Invalid Solana address(es): {', '.join(bad)}")
+        raise HTTPException(400, f"Invalid Solana address(es): {', '.join(bad)}")
+
+    # Parse ladder levels
+    logger.info("Parsing ladder levels...")
+    tp_r, tp_s = _parse_ladder(req.tp)
+    sl_r, sl_s = _parse_ladder(req.sl)
+    logger.info(f"TP ratios: {tp_r}, TP sizes: {tp_s}")
+    logger.info(f"SL ratios: {sl_r}, SL sizes: {sl_s}")
+
+    out: list[SimulationResult] = []
+
+    # Process each trade
+    for trade in req.trades:
+        ca = trade.token
+        logger.info(f"=== Processing trade: {ca} (called at {trade.date_called}) ===")
+
+        try:
+            # Parse date_called to timestamp
+            try:
+                date_called_dt = datetime.fromisoformat(trade.date_called.replace('Z', '+00:00'))
+                start_ts = int(date_called_dt.timestamp())
+                logger.info(f"Trade call timestamp: {start_ts} ({date_called_dt})")
+            except Exception as e:
+                logger.error(f"Invalid date_called format for {ca}: {trade.date_called}")
+                out.append(SimulationResult(
+                    token=ca,
+                    error=f"Invalid date format: {trade.date_called}"
+                ))
+                continue
+
+            # Fetch all price history from DynamoDB
+            logger.info(f"Fetching price history from DynamoDB for {ca}...")
+            df_price = fetch_price_history_from_dynamodb(ca)
+
+            if df_price.empty:
+                logger.warning(f"No price data found in DynamoDB for {ca}")
+                out.append(SimulationResult(
+                    token=ca,
+                    error="No price data available in DynamoDB"
+                ))
+                continue
+
+            # Filter to only include data from date_called onwards
+            df_price_filtered = df_price[df_price['timestamp'] >= start_ts].copy()
+
+            if df_price_filtered.empty:
+                logger.warning(f"No price data after {trade.date_called} for {ca}")
+                out.append(SimulationResult(
+                    token=ca,
+                    error=f"No price data available after trade call date {trade.date_called}"
+                ))
+                continue
+
+            if len(df_price_filtered) < 10:
+                logger.warning(f"Not enough data after {trade.date_called} for {ca}: {len(df_price_filtered)} points (need >= 10)")
+                out.append(SimulationResult(
+                    token=ca,
+                    error=f"Not enough data points after call date: {len(df_price_filtered)} (need >= 10)"
+                ))
+                continue
+
+            logger.info(f"Found {len(df_price_filtered)} price points after {trade.date_called}")
+
+            # Convert to OHLC format
+            logger.info(f"Converting {len(df_price_filtered)} price points to OHLC format...")
+            df_ohlc = convert_price_data_to_ohlc(df_price_filtered)
+
+            if df_ohlc.empty:
+                logger.error(f"Failed to convert price data to OHLC for {ca}")
+                out.append(SimulationResult(token=ca, error="Failed to convert to OHLC"))
+                continue
+
+            # Get current price from most recent entry
+            current_price = float(df_price_filtered['price'].iloc[-1])
+            entry_price = float(df_price_filtered['price'].iloc[0])
+            logger.info(f"Entry price for {ca}: ${entry_price:.8f}")
+            logger.info(f"Current price for {ca}: ${current_price:.8f}")
+            logger.info(f"Price change: {((current_price / entry_price - 1) * 100):.2f}%")
+
+            # Run simulation
+            logger.info(f"Running simulation for {ca}...")
+            sim = run_simulation_with_ledger(
+                df_ohlc,
+                req.amount_usd,
+                current_price,
+                tp_r,
+                tp_s,
+                sl_r,
+                sl_s,
+            )
+
+            logger.info(f"Simulation successful for {ca}")
+            logger.info(f"  Realized profit: ${sim['realized_profit']}")
+            logger.info(f"  Unrealized profit: ${sim['unrealized_profit']}")
+            logger.info(f"  Total P/L: ${sim['realized_profit'] + sim['unrealized_profit']}")
+            logger.info(f"  Ledger points: {len(sim['ledger'])}")
+            logger.info(f"  TPs hit: {sim['tps_hit']}")
+            logger.info(f"  SLs hit: {sim['sls_hit']}")
+
+            out.append(SimulationResult(token=ca, **sim))
+
+        except HTTPException:
+            # Propagate HTTP exceptions
+            raise
+        except Exception as exc:
+            logger.exception(f"Simulation failed for {ca}")
+            out.append(SimulationResult(token=ca, error=str(exc)))
+
+    # Summary
+    logger.info(f"=== DYNAMODB TRADE-BASED SIMULATION COMPLETE ===")
+    successful = sum(1 for r in out if not r.error)
+    failed = sum(1 for r in out if r.error)
+    logger.info(f"Summary: {successful} successful, {failed} failed out of {len(req.trades)} total trades")
+
+    for result in out:
+        if result.error:
+            logger.error(f"  Token {result.token}: ERROR - {result.error}")
+        else:
+            total_pnl = (result.realized_profit or 0) + (result.unrealized_profit or 0)
+            roi_pct = (total_pnl / req.amount_usd * 100) if req.amount_usd > 0 else 0
+            ledger_count = len(result.ledger) if result.ledger else 0
+            logger.info(f"  Token {result.token}: SUCCESS - P/L: ${total_pnl:.2f} ({roi_pct:.2f}%), {ledger_count} ledger points")
+
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Everything else – token info, trades, etc. – UNCHANGED (import from orig)
 # ---------------------------------------------------------------------------
 

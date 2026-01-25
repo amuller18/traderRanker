@@ -2591,6 +2591,254 @@ async def simulate_trades_from_dynamodb(req: TradeBasedSimulationRequest) -> lis
     return out
 
 
+@app.post("/api/simulate/breakdown/dynamodb/trades", response_model=List[TokenBreakdown])
+async def simulate_breakdown_from_dynamodb_trades(req: TradeBasedSimulationRequest) -> List[TokenBreakdown]:
+    """
+    Trade-based breakdown endpoint that uses ONLY DynamoDB data - zero external API calls.
+
+    Returns TokenBreakdown objects with detailed per-trade metrics:
+    - entry_price, final_price, ath_price
+    - total_pnl, realized_pnl, unrealized_pnl
+    - trade_roi, max_drawdown
+    - coins_left, coins_initial, trade_capital, final_value
+    - tps_hit, sls_hit
+    - is_valid, validation_errors
+
+    Each trade starts at its specific date_called timestamp and runs until the most recent
+    price data available in DynamoDB.
+    """
+    logger.info("=== DYNAMODB TRADE-BASED BREAKDOWN REQUEST START ===")
+    logger.info(f"Request trades: {len(req.trades)}")
+    logger.info(f"Request amount_usd: {req.amount_usd}")
+    logger.info(f"Request timeframe_minutes: {req.timeframe_minutes}")
+    logger.info(f"Request use_auto_timeframe: {req.use_auto_timeframe}")
+    logger.info(f"Request tp: {req.tp}")
+    logger.info(f"Request sl: {req.sl}")
+
+    if price_data_table is None:
+        logger.error(f"Price data table '{PRICE_DATA_TABLE}' not available")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Price data table not available. Check DynamoDB configuration."
+        )
+
+    # Validate all tokens
+    bad = [t.token for t in req.trades if not is_valid_solana_address(t.token)]
+    if bad:
+        logger.error(f"Invalid Solana address(es): {', '.join(bad)}")
+        raise HTTPException(400, f"Invalid Solana address(es): {', '.join(bad)}")
+
+    # Parse ladder levels
+    logger.info("Parsing ladder levels...")
+    tp_r, tp_s = _parse_ladder(req.tp)
+    sl_r, sl_s = _parse_ladder(req.sl)
+    logger.info(f"TP ratios: {tp_r}, TP sizes: {tp_s}")
+    logger.info(f"SL ratios: {sl_r}, SL sizes: {sl_s}")
+
+    out: List[TokenBreakdown] = []
+
+    # Process each trade
+    for trade in req.trades:
+        ca = trade.token
+        logger.info(f"=== Processing trade breakdown: {ca} (called at {trade.date_called}) ===")
+
+        try:
+            # Parse date_called to timestamp
+            start_ts = None
+            try:
+                date_called_dt = datetime.fromisoformat(trade.date_called.replace('Z', '+00:00'))
+                start_ts = int(date_called_dt.timestamp())
+                logger.info(f"Trade call timestamp: {start_ts} ({date_called_dt})")
+            except Exception as e:
+                logger.error(f"Invalid date_called format for {ca}: {trade.date_called}")
+                out.append(TokenBreakdown(
+                    token=ca,
+                    time_called=trade.date_called,
+                    is_valid=False,
+                    validation_errors=["Invalid date format"],
+                    error=f"Invalid date format: {trade.date_called}"
+                ))
+                continue
+
+            # Fetch all price history from DynamoDB
+            logger.info(f"Fetching price history from DynamoDB for {ca}...")
+            df_price = fetch_price_history_from_dynamodb(ca)
+
+            if df_price.empty:
+                logger.warning(f"No price data found in DynamoDB for {ca}")
+                out.append(TokenBreakdown(
+                    token=ca,
+                    time_called=trade.date_called,
+                    is_valid=False,
+                    validation_errors=["No price data available in DynamoDB"],
+                    error="No price data available in DynamoDB"
+                ))
+                continue
+
+            # Filter to only include data from date_called onwards
+            df_price_filtered = df_price[df_price['timestamp'] >= start_ts].copy()
+
+            if df_price_filtered.empty:
+                logger.warning(f"No price data after {trade.date_called} for {ca}")
+                out.append(TokenBreakdown(
+                    token=ca,
+                    time_called=trade.date_called,
+                    is_valid=False,
+                    validation_errors=[f"No price data after trade call date {trade.date_called}"],
+                    error=f"No price data available after trade call date {trade.date_called}"
+                ))
+                continue
+
+            if len(df_price_filtered) < 10:
+                logger.warning(f"Not enough data after {trade.date_called} for {ca}: {len(df_price_filtered)} points (need >= 10)")
+                out.append(TokenBreakdown(
+                    token=ca,
+                    time_called=trade.date_called,
+                    is_valid=False,
+                    validation_errors=[f"Not enough data points: {len(df_price_filtered)} (need >= 10)"],
+                    error=f"Not enough data points after call date: {len(df_price_filtered)} (need >= 10)"
+                ))
+                continue
+
+            logger.info(f"Found {len(df_price_filtered)} price points after {trade.date_called}")
+
+            # Calculate key price metrics from filtered data
+            prices = df_price_filtered['price'].tolist()
+            entry_price = float(prices[0])
+            final_price = float(prices[-1])
+            ath_price = float(max(prices))
+            ath_percentage = ((ath_price - entry_price) / entry_price) * 100 if entry_price > 0 else 0
+
+            # Validate prices
+            if entry_price <= 0 or final_price <= 0:
+                logger.error(f"Invalid prices for {ca}: entry={entry_price}, final={final_price}")
+                out.append(TokenBreakdown(
+                    token=ca,
+                    time_called=trade.date_called,
+                    entry_price=entry_price,
+                    final_price=final_price,
+                    is_valid=False,
+                    validation_errors=["Entry or final price is non-positive"],
+                    error="Invalid price data (non-positive values)"
+                ))
+                continue
+
+            # Convert to OHLC format
+            logger.info(f"Converting {len(df_price_filtered)} price points to OHLC format...")
+            df_ohlc = convert_price_data_to_ohlc(df_price_filtered)
+
+            if df_ohlc.empty:
+                logger.error(f"Failed to convert price data to OHLC for {ca}")
+                out.append(TokenBreakdown(
+                    token=ca,
+                    time_called=trade.date_called,
+                    entry_price=entry_price,
+                    final_price=final_price,
+                    is_valid=False,
+                    validation_errors=["Failed to convert to OHLC"],
+                    error="Failed to convert to OHLC"
+                ))
+                continue
+
+            # Run simulation
+            logger.info(f"Running simulation for {ca}...")
+            sim = run_simulation_with_ledger(
+                df_ohlc,
+                req.amount_usd,
+                final_price,
+                tp_r,
+                tp_s,
+                sl_r,
+                sl_s,
+            )
+
+            # Extract results with proper calculations
+            trade_capital = sim.get("trade_capital", req.amount_usd)
+            realized_pnl = sim.get("realized_profit", 0.0)
+            unrealized_pnl = sim.get("unrealized_profit", 0.0)
+            total_pnl = sim.get("total_pnl", realized_pnl + unrealized_pnl)
+            coins_left = sim.get("coins_left", 0.0)
+            coins_initial = sim.get("coins_initial", 0.0)
+            final_equity = sim.get("final_equity", trade_capital + total_pnl)
+
+            # Trade ROI calculation
+            trade_roi = (total_pnl / trade_capital * 100) if trade_capital > 0 else 0.0
+
+            # Calculate max drawdown from ledger
+            ledger = sim.get("ledger", [])
+            max_drawdown = 0.0
+
+            if ledger:
+                peak_value = trade_capital
+                for entry in ledger:
+                    current_value = entry.get("value", 0.0) + entry.get("realized", 0.0)
+                    if current_value > peak_value:
+                        peak_value = current_value
+                    else:
+                        drawdown = (peak_value - current_value) / peak_value if peak_value > 0 else 0
+                        max_drawdown = max(max_drawdown, drawdown)
+
+            # Create unique trade ID
+            trade_id = f"{ca}_{start_ts}"
+
+            breakdown = TokenBreakdown(
+                token=ca,
+                trade_id=trade_id,
+                time_called=trade.date_called,
+                entry_price=round(entry_price, 10),
+                final_price=round(final_price, 10),
+                ath_price=round(ath_price, 10),
+                ath_percentage=round(ath_percentage, 2),
+                total_pnl=round(total_pnl, 6),
+                realized_pnl=round(realized_pnl, 6),
+                unrealized_pnl=round(unrealized_pnl, 6),
+                coins_left=round(coins_left, 10),
+                coins_initial=round(coins_initial, 10),
+                trade_capital=round(trade_capital, 6),
+                final_value=round(final_equity, 6),
+                max_drawdown=round(max_drawdown * 100, 2),
+                trade_roi=round(trade_roi, 2),
+                roi_to_date=round(trade_roi, 2),
+                is_valid=True,
+                validation_errors=[],
+                tps_hit=sim.get("tps_hit", []),
+                sls_hit=sim.get("sls_hit", [])
+            )
+
+            logger.info(f"Breakdown successful for {ca}")
+            logger.info(f"  Entry: ${entry_price:.8f}, Final: ${final_price:.8f}, ATH: ${ath_price:.8f}")
+            logger.info(f"  Total PnL: ${total_pnl:.2f}, Trade ROI: {trade_roi:.2f}%")
+            logger.info(f"  TPs hit: {sim.get('tps_hit', [])}, SLs hit: {sim.get('sls_hit', [])}")
+
+            out.append(breakdown)
+
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.exception(f"Breakdown failed for {ca}")
+            out.append(TokenBreakdown(
+                token=ca,
+                time_called=trade.date_called,
+                is_valid=False,
+                validation_errors=[str(exc)],
+                error=str(exc)
+            ))
+
+    # Summary
+    logger.info(f"=== DYNAMODB TRADE-BASED BREAKDOWN COMPLETE ===")
+    valid_count = sum(1 for r in out if r.is_valid)
+    invalid_count = sum(1 for r in out if not r.is_valid)
+    logger.info(f"Summary: {valid_count} valid, {invalid_count} invalid out of {len(req.trades)} total trades")
+
+    for result in out:
+        if result.error or not result.is_valid:
+            logger.error(f"  Token {result.token}: INVALID - {result.error}")
+        else:
+            logger.info(f"  Token {result.token}: VALID - Trade ROI: {result.trade_roi:.2f}%, Total PnL: ${result.total_pnl:.2f}")
+
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Everything else – token info, trades, etc. – UNCHANGED (import from orig)
 # ---------------------------------------------------------------------------

@@ -489,8 +489,8 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
       // Debug: Log the payload being sent
       console.log("Sending trades payload:", JSON.stringify(tradesPayload, null, 2));
 
-      // First get the detailed breakdown using trade-based endpoint
-      const breakdownRes = await fetch(`${pythonApiUrl}/api/simulate/breakdown/trades`, {
+      // First get the detailed breakdown using DynamoDB-only trade-based endpoint
+      const breakdownRes = await fetch(`${pythonApiUrl}/api/simulate/breakdown/dynamodb/trades`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(tradesPayload)

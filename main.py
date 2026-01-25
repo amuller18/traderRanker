@@ -2688,10 +2688,195 @@ class BacktestResponse(BaseModel):
     simulations: List[SimulationResult]
 
 
+def _process_single_backtest_trade(
+    trade: TradeInfo,
+    amount_usd: float,
+    tp_r: list,
+    tp_s: list,
+    sl_r: list,
+    sl_s: list
+) -> tuple:
+    """
+    Process a single trade for backtesting. Returns (breakdown, simulation, stats_dict).
+    This is a synchronous function that will be run in a thread pool.
+    """
+    ca = trade.token
+
+    try:
+        # Parse date_called to timestamp
+        try:
+            date_called_dt = datetime.fromisoformat(trade.date_called.replace('Z', '+00:00'))
+            start_ts = int(date_called_dt.timestamp())
+        except Exception:
+            return (
+                TokenBreakdown(
+                    token=ca, time_called=trade.date_called,
+                    is_valid=False, validation_errors=["Invalid date format"],
+                    error=f"Invalid date format: {trade.date_called}"
+                ),
+                SimulationResult(token=ca, error="Invalid date format"),
+                {"is_valid": False}
+            )
+
+        # Fetch price history from DynamoDB
+        df_price = fetch_price_history_from_dynamodb(ca)
+
+        if df_price.empty:
+            return (
+                TokenBreakdown(
+                    token=ca, time_called=trade.date_called,
+                    is_valid=False, validation_errors=["No price data in DynamoDB"],
+                    error="No price data available in DynamoDB"
+                ),
+                SimulationResult(token=ca, error="No price data"),
+                {"is_valid": False}
+            )
+
+        # Filter to data from date_called onwards
+        df_price_filtered = df_price[df_price['timestamp'] >= start_ts].copy()
+
+        if df_price_filtered.empty or len(df_price_filtered) < 10:
+            error_msg = "Not enough data points" if len(df_price_filtered) < 10 else "No data after call date"
+            return (
+                TokenBreakdown(
+                    token=ca, time_called=trade.date_called,
+                    is_valid=False, validation_errors=[error_msg], error=error_msg
+                ),
+                SimulationResult(token=ca, error=error_msg),
+                {"is_valid": False}
+            )
+
+        # Calculate price metrics
+        prices = df_price_filtered['price'].tolist()
+        entry_price = float(prices[0])
+        final_price = float(prices[-1])
+        ath_price = float(max(prices))
+        ath_percentage = ((ath_price - entry_price) / entry_price) * 100 if entry_price > 0 else 0
+
+        if entry_price <= 0 or final_price <= 0:
+            return (
+                TokenBreakdown(
+                    token=ca, time_called=trade.date_called,
+                    entry_price=entry_price, final_price=final_price,
+                    is_valid=False, validation_errors=["Invalid price data"],
+                    error="Invalid price data (non-positive)"
+                ),
+                SimulationResult(token=ca, error="Invalid price data"),
+                {"is_valid": False}
+            )
+
+        # Convert to OHLC and run simulation
+        df_ohlc = convert_price_data_to_ohlc(df_price_filtered)
+        if df_ohlc.empty:
+            return (
+                TokenBreakdown(
+                    token=ca, time_called=trade.date_called,
+                    is_valid=False, validation_errors=["OHLC conversion failed"],
+                    error="Failed to convert to OHLC"
+                ),
+                SimulationResult(token=ca, error="OHLC conversion failed"),
+                {"is_valid": False}
+            )
+
+        sim = run_simulation_with_ledger(df_ohlc, amount_usd, final_price, tp_r, tp_s, sl_r, sl_s)
+
+        # Extract simulation results
+        trade_capital = sim.get("trade_capital", amount_usd)
+        sim_realized = sim.get("realized_profit", 0.0)
+        sim_unrealized = sim.get("unrealized_profit", 0.0)
+        sim_total_pnl = sim.get("total_pnl", sim_realized + sim_unrealized)
+        coins_left = sim.get("coins_left", 0.0)
+        coins_initial = sim.get("coins_initial", 0.0)
+        final_equity = sim.get("final_equity", trade_capital + sim_total_pnl)
+        trade_roi = (sim_total_pnl / trade_capital * 100) if trade_capital > 0 else 0.0
+
+        # Calculate max drawdown from ledger
+        ledger = sim.get("ledger", [])
+        max_dd = 0.0
+        if ledger:
+            peak_value = trade_capital
+            for entry in ledger:
+                current_value = entry.get("value", 0.0) + entry.get("realized", 0.0)
+                if current_value > peak_value:
+                    peak_value = current_value
+                elif peak_value > 0:
+                    dd = (peak_value - current_value) / peak_value
+                    max_dd = max(max_dd, dd)
+
+        # Create breakdown
+        breakdown = TokenBreakdown(
+            token=ca,
+            trade_id=f"{ca}_{start_ts}",
+            time_called=trade.date_called,
+            entry_price=round(entry_price, 10),
+            final_price=round(final_price, 10),
+            ath_price=round(ath_price, 10),
+            ath_percentage=round(ath_percentage, 2),
+            total_pnl=round(sim_total_pnl, 6),
+            realized_pnl=round(sim_realized, 6),
+            unrealized_pnl=round(sim_unrealized, 6),
+            coins_left=round(coins_left, 10),
+            coins_initial=round(coins_initial, 10),
+            trade_capital=round(trade_capital, 6),
+            final_value=round(final_equity, 6),
+            max_drawdown=round(max_dd * 100, 2),
+            trade_roi=round(trade_roi, 2),
+            roi_to_date=round(trade_roi, 2),
+            is_valid=True,
+            validation_errors=[],
+            tps_hit=sim.get("tps_hit", []),
+            sls_hit=sim.get("sls_hit", [])
+        )
+
+        # Create simulation result with ledger
+        position_points = [
+            PositionPoint(
+                ts=pt["ts"],
+                value=pt["value"],
+                coins_held=pt["coins_held"],
+                unrealized=pt["unrealized"],
+                realized=pt["realized"]
+            ) for pt in ledger
+        ]
+        simulation = SimulationResult(
+            token=ca,
+            ledger=position_points,
+            realized_profit=sim_realized,
+            unrealized_profit=sim_unrealized,
+            coins_left=coins_left,
+            tps_hit=sim.get("tps_hit", []),
+            sls_hit=sim.get("sls_hit", [])
+        )
+
+        # Return stats for aggregation
+        stats = {
+            "is_valid": True,
+            "total_pnl": sim_total_pnl,
+            "realized": sim_realized,
+            "unrealized": sim_unrealized,
+            "trade_roi": trade_roi,
+        }
+
+        return (breakdown, simulation, stats)
+
+    except Exception as exc:
+        logger.exception(f"Failed processing {ca}")
+        return (
+            TokenBreakdown(
+                token=ca, time_called=trade.date_called,
+                is_valid=False, validation_errors=[str(exc)], error=str(exc)
+            ),
+            SimulationResult(token=ca, error=str(exc)),
+            {"is_valid": False}
+        )
+
+
 @app.post("/api/backtest/dynamodb", response_model=BacktestResponse)
 async def run_backtest_dynamodb(req: TradeBasedSimulationRequest) -> BacktestResponse:
     """
     Complete backtest endpoint using ONLY DynamoDB data - zero external API calls.
+
+    PARALLELIZED: All trades are processed concurrently for maximum performance.
 
     Returns everything the frontend needs in a single response:
     - summary: Aggregate statistics (ROI, win rate, drawdown, etc.)
@@ -2700,7 +2885,7 @@ async def run_backtest_dynamodb(req: TradeBasedSimulationRequest) -> BacktestRes
 
     All calculations happen server-side for optimal performance.
     """
-    logger.info("=== DYNAMODB BACKTEST REQUEST START ===")
+    logger.info("=== DYNAMODB BACKTEST REQUEST START (PARALLEL) ===")
     logger.info(f"Request trades: {len(req.trades)}")
     logger.info(f"Request amount_usd: {req.amount_usd}")
     logger.info(f"Request timeframe_minutes: {req.timeframe_minutes}")
@@ -2724,6 +2909,24 @@ async def run_backtest_dynamodb(req: TradeBasedSimulationRequest) -> BacktestRes
     tp_r, tp_s = _parse_ladder(req.tp)
     sl_r, sl_s = _parse_ladder(req.sl)
 
+    # Process all trades in parallel using thread pool
+    logger.info(f"Processing {len(req.trades)} trades in parallel...")
+
+    tasks = [
+        asyncio.to_thread(
+            _process_single_backtest_trade,
+            trade,
+            req.amount_usd,
+            tp_r, tp_s, sl_r, sl_s
+        )
+        for trade in req.trades
+    ]
+
+    results = await asyncio.gather(*tasks)
+
+    logger.info(f"All {len(results)} trades processed")
+
+    # Combine results
     breakdowns: List[TokenBreakdown] = []
     simulations: List[SimulationResult] = []
 
@@ -2744,186 +2947,32 @@ async def run_backtest_dynamodb(req: TradeBasedSimulationRequest) -> BacktestRes
     largest_loss = 0.0
     trade_pnls: List[float] = []
 
-    # Process each trade
-    for trade in req.trades:
-        ca = trade.token
-        logger.info(f"Processing: {ca} (called at {trade.date_called})")
+    for breakdown, simulation, stats in results:
+        breakdowns.append(breakdown)
+        simulations.append(simulation)
 
-        try:
-            # Parse date_called to timestamp
-            try:
-                date_called_dt = datetime.fromisoformat(trade.date_called.replace('Z', '+00:00'))
-                start_ts = int(date_called_dt.timestamp())
-            except Exception:
-                logger.error(f"Invalid date_called format for {ca}: {trade.date_called}")
-                breakdowns.append(TokenBreakdown(
-                    token=ca,
-                    time_called=trade.date_called,
-                    is_valid=False,
-                    validation_errors=["Invalid date format"],
-                    error=f"Invalid date format: {trade.date_called}"
-                ))
-                simulations.append(SimulationResult(token=ca, error="Invalid date format"))
-                invalid_trade_count += 1
-                continue
-
-            # Fetch price history from DynamoDB
-            df_price = fetch_price_history_from_dynamodb(ca)
-
-            if df_price.empty:
-                breakdowns.append(TokenBreakdown(
-                    token=ca, time_called=trade.date_called,
-                    is_valid=False, validation_errors=["No price data in DynamoDB"],
-                    error="No price data available in DynamoDB"
-                ))
-                simulations.append(SimulationResult(token=ca, error="No price data"))
-                invalid_trade_count += 1
-                continue
-
-            # Filter to data from date_called onwards
-            df_price_filtered = df_price[df_price['timestamp'] >= start_ts].copy()
-
-            if df_price_filtered.empty or len(df_price_filtered) < 10:
-                error_msg = "Not enough data points" if len(df_price_filtered) < 10 else "No data after call date"
-                breakdowns.append(TokenBreakdown(
-                    token=ca, time_called=trade.date_called,
-                    is_valid=False, validation_errors=[error_msg], error=error_msg
-                ))
-                simulations.append(SimulationResult(token=ca, error=error_msg))
-                invalid_trade_count += 1
-                continue
-
-            # Calculate price metrics
-            prices = df_price_filtered['price'].tolist()
-            entry_price = float(prices[0])
-            final_price = float(prices[-1])
-            ath_price = float(max(prices))
-            ath_percentage = ((ath_price - entry_price) / entry_price) * 100 if entry_price > 0 else 0
-
-            if entry_price <= 0 or final_price <= 0:
-                breakdowns.append(TokenBreakdown(
-                    token=ca, time_called=trade.date_called,
-                    entry_price=entry_price, final_price=final_price,
-                    is_valid=False, validation_errors=["Invalid price data"],
-                    error="Invalid price data (non-positive)"
-                ))
-                simulations.append(SimulationResult(token=ca, error="Invalid price data"))
-                invalid_trade_count += 1
-                continue
-
-            # Convert to OHLC and run simulation
-            df_ohlc = convert_price_data_to_ohlc(df_price_filtered)
-            if df_ohlc.empty:
-                breakdowns.append(TokenBreakdown(
-                    token=ca, time_called=trade.date_called,
-                    is_valid=False, validation_errors=["OHLC conversion failed"],
-                    error="Failed to convert to OHLC"
-                ))
-                simulations.append(SimulationResult(token=ca, error="OHLC conversion failed"))
-                invalid_trade_count += 1
-                continue
-
-            sim = run_simulation_with_ledger(df_ohlc, req.amount_usd, final_price, tp_r, tp_s, sl_r, sl_s)
-
-            # Extract simulation results
-            trade_capital = sim.get("trade_capital", req.amount_usd)
-            sim_realized = sim.get("realized_profit", 0.0)
-            sim_unrealized = sim.get("unrealized_profit", 0.0)
-            sim_total_pnl = sim.get("total_pnl", sim_realized + sim_unrealized)
-            coins_left = sim.get("coins_left", 0.0)
-            coins_initial = sim.get("coins_initial", 0.0)
-            final_equity = sim.get("final_equity", trade_capital + sim_total_pnl)
-            trade_roi = (sim_total_pnl / trade_capital * 100) if trade_capital > 0 else 0.0
-
-            # Calculate max drawdown from ledger
-            ledger = sim.get("ledger", [])
-            max_dd = 0.0
-            if ledger:
-                peak_value = trade_capital
-                for entry in ledger:
-                    current_value = entry.get("value", 0.0) + entry.get("realized", 0.0)
-                    if current_value > peak_value:
-                        peak_value = current_value
-                    elif peak_value > 0:
-                        dd = (peak_value - current_value) / peak_value
-                        max_dd = max(max_dd, dd)
-
-            # Create breakdown
-            breakdown = TokenBreakdown(
-                token=ca,
-                trade_id=f"{ca}_{start_ts}",
-                time_called=trade.date_called,
-                entry_price=round(entry_price, 10),
-                final_price=round(final_price, 10),
-                ath_price=round(ath_price, 10),
-                ath_percentage=round(ath_percentage, 2),
-                total_pnl=round(sim_total_pnl, 6),
-                realized_pnl=round(sim_realized, 6),
-                unrealized_pnl=round(sim_unrealized, 6),
-                coins_left=round(coins_left, 10),
-                coins_initial=round(coins_initial, 10),
-                trade_capital=round(trade_capital, 6),
-                final_value=round(final_equity, 6),
-                max_drawdown=round(max_dd * 100, 2),
-                trade_roi=round(trade_roi, 2),
-                roi_to_date=round(trade_roi, 2),
-                is_valid=True,
-                validation_errors=[],
-                tps_hit=sim.get("tps_hit", []),
-                sls_hit=sim.get("sls_hit", [])
-            )
-            breakdowns.append(breakdown)
-
-            # Create simulation result with ledger
-            position_points = [
-                PositionPoint(
-                    ts=pt["ts"],
-                    value=pt["value"],
-                    coins_held=pt["coins_held"],
-                    unrealized=pt["unrealized"],
-                    realized=pt["realized"]
-                ) for pt in ledger
-            ]
-            simulations.append(SimulationResult(
-                token=ca,
-                ledger=position_points,
-                realized_profit=sim_realized,
-                unrealized_profit=sim_unrealized,
-                coins_left=coins_left,
-                tps_hit=sim.get("tps_hit", []),
-                sls_hit=sim.get("sls_hit", [])
-            ))
-
-            # Update summary statistics
+        if stats.get("is_valid"):
             valid_trade_count += 1
-            total_profit += sim_total_pnl
-            realized_profit += sim_realized
-            unrealized_profit += sim_unrealized
-            sum_trade_roi += trade_roi
-            trade_pnls.append(sim_total_pnl)
+            pnl = stats["total_pnl"]
+            total_profit += pnl
+            realized_profit += stats["realized"]
+            unrealized_profit += stats["unrealized"]
+            sum_trade_roi += stats["trade_roi"]
+            trade_pnls.append(pnl)
 
-            if sim_total_pnl > 0:
+            if pnl > 0:
                 winning_trades_count += 1
-                gross_profit += sim_total_pnl
-                sum_wins += sim_total_pnl
-                if sim_total_pnl > largest_win:
-                    largest_win = sim_total_pnl
-            elif sim_total_pnl < 0:
+                gross_profit += pnl
+                sum_wins += pnl
+                if pnl > largest_win:
+                    largest_win = pnl
+            elif pnl < 0:
                 losing_trades_count += 1
-                gross_loss += abs(sim_total_pnl)
-                sum_losses += sim_total_pnl
-                if sim_total_pnl < largest_loss:
-                    largest_loss = sim_total_pnl
-
-            logger.info(f"  {ca}: PnL ${sim_total_pnl:.2f}, ROI {trade_roi:.2f}%")
-
-        except Exception as exc:
-            logger.exception(f"Failed processing {ca}")
-            breakdowns.append(TokenBreakdown(
-                token=ca, time_called=trade.date_called,
-                is_valid=False, validation_errors=[str(exc)], error=str(exc)
-            ))
-            simulations.append(SimulationResult(token=ca, error=str(exc)))
+                gross_loss += abs(pnl)
+                sum_losses += pnl
+                if pnl < largest_loss:
+                    largest_loss = pnl
+        else:
             invalid_trade_count += 1
 
     # Calculate portfolio-level metrics using the actual initial capital

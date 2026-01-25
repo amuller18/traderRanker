@@ -630,7 +630,7 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
       console.log(`Max Drawdown: ${maxDrawdown.toFixed(2)}%, Profit Factor: ${profitFactor.toFixed(2)}`);
 
       // Then get the simulation data for charts using trade-based endpoint
-      const res = await fetch(`${pythonApiUrl}/api/simulate/dynamodb`, {
+      const res = await fetch(`${pythonApiUrl}/api/simulate/dynamodb/trades`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(tradesPayload)

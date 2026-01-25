@@ -47,7 +47,7 @@ import {
  * CONSTANTS (frontend defaults aligned with working cURL example)
  * -------------------------------------------------------------------*/
 const DEFAULT_DAYS_BACK = 30; // Increased to 30 days to show more price action
-const DEFAULT_TIMEFRAME = 15; // sends `timeframe_minutes: 15`
+const DEFAULT_TIMEFRAME = 240; // sends `timeframe_minutes: 240` (4 hours)
 
 // Timeframe options for manual selection
 const TIMEFRAME_OPTIONS = [
@@ -269,7 +269,7 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
     value: 1  // Changed default to 1% per trade
   });
   const [maxBacktests, setMaxBacktests] = useState(100); // New parameter for max backtests
-  const [timeframe, setTimeframe] = useState<string>("auto");
+  const [timeframe, setTimeframe] = useState<string>("240"); // Default to 4 hours
   const [useAutoTimeframe, setUseAutoTimeframe] = useState<boolean>(true);
   const [selectedCaller, setSelectedCaller] = useState("all");
   const [visibleTokens, setVisibleTokens] = useState<Set<string>>(new Set());
@@ -535,6 +535,10 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
         const row: any = { ts, date: formatDate(ts) };
 
         // Add each VALID token's value at this timestamp
+        // Use timeframe-based threshold (2x the timeframe in seconds, minimum 4 hours)
+        const timeframeMinutes = timeframe === "auto" ? DEFAULT_TIMEFRAME : parseInt(timeframe);
+        const maxTimeDiff = Math.max(timeframeMinutes * 60 * 2, 14400); // 2x timeframe or 4 hours minimum
+
         validSims.forEach((sim, validIndex) => {
           if (sim.ledger) {
             // Find the closest ledger point to this timestamp
@@ -542,8 +546,8 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
               return Math.abs(current.ts - ts) < Math.abs(closest.ts - ts) ? current : closest;
             });
 
-            // Only add if the point is within a reasonable time range (e.g., 1 hour)
-            if (Math.abs(closestPoint.ts - ts) <= 3600) {
+            // Only add if the point is within a reasonable time range
+            if (Math.abs(closestPoint.ts - ts) <= maxTimeDiff) {
               const tradeId = tradeIdentifiers[validIndex];
               row[tradeId] = closestPoint.value + closestPoint.realized;
             }

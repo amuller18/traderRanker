@@ -2591,6 +2591,68 @@ async def simulate_trades_from_dynamodb(req: TradeBasedSimulationRequest) -> lis
     return out
 
 
+# ---------------------------------------------------------------------------
+# Everything else – token info, trades, etc. – UNCHANGED (import from orig)
+# ---------------------------------------------------------------------------
+
+# ... (place the unchanged endpoints / helper functions here)
+
+# ---------------------------------------------------------------------------
+# CoinGecko Bulk Price Endpoint
+# ---------------------------------------------------------------------------
+
+class BulkPriceRequest(BaseModel):
+    tokens: List[str]
+
+class TokenPriceResult(BaseModel):
+    token: str
+    price: float
+    market_cap: float
+    error: Optional[str] = None
+
+class TokenBreakdown(BaseModel):
+    """
+    Detailed breakdown of a single trade's performance.
+
+    ROI Definitions:
+    - trade_roi: Trade-specific ROI = total_pnl / trade_capital_allocated
+      This is calculated per individual trade and does NOT depend on total account balance.
+    - roi_to_date: Same as trade_roi (kept for backwards compatibility)
+
+    PnL Definitions:
+    - realized_pnl: Profit/loss from actual sells = sum((sell_price - avg_entry_price) * tokens_sold)
+    - unrealized_pnl: Mark-to-market PnL from remaining tokens = (current_price - avg_entry_price) * remaining_tokens
+    - total_pnl: realized_pnl + unrealized_pnl
+
+    Final Value:
+    - final_value: cash_balance + (remaining_tokens * current_market_price)
+
+    Note: ATH price is for analytics/display ONLY, never used in PnL/ROI calculations.
+    """
+    token: str
+    trade_id: str = ""  # Unique identifier for this specific trade
+    time_called: str = ""  # ISO string of when the trade was called
+    entry_price: float = 0.0
+    final_price: float = 0.0  # Current market price (mark-to-market)
+    ath_price: float = 0.0  # All-time high price (for display only, NOT used in calculations)
+    ath_percentage: float = 0.0  # For display only
+    total_pnl: float = 0.0  # realized_pnl + unrealized_pnl
+    realized_pnl: float = 0.0  # From actual sells
+    unrealized_pnl: float = 0.0  # Mark-to-market from remaining tokens
+    coins_left: float = 0.0  # Remaining tokens
+    coins_initial: float = 0.0  # Initial tokens purchased
+    trade_capital: float = 0.0  # USD spent on entries for this trade
+    final_value: float = 0.0  # Cash from sells + remaining tokens * current price
+    max_drawdown: float = 0.0
+    trade_roi: float = 0.0  # Trade ROI = total_pnl / trade_capital (NOT dependent on account balance)
+    roi_to_date: float = 0.0  # Same as trade_roi (backwards compatibility)
+    is_valid: bool = True  # Whether this trade has valid data
+    validation_errors: List[str] = []  # List of validation issues if any
+    tps_hit: List[float] = []
+    sls_hit: List[float] = []
+    error: Optional[str] = None
+
+
 @app.post("/api/simulate/breakdown/dynamodb/trades", response_model=List[TokenBreakdown])
 async def simulate_breakdown_from_dynamodb_trades(req: TradeBasedSimulationRequest) -> List[TokenBreakdown]:
     """
@@ -2838,67 +2900,6 @@ async def simulate_breakdown_from_dynamodb_trades(req: TradeBasedSimulationReque
 
     return out
 
-
-# ---------------------------------------------------------------------------
-# Everything else – token info, trades, etc. – UNCHANGED (import from orig)
-# ---------------------------------------------------------------------------
-
-# ... (place the unchanged endpoints / helper functions here)
-
-# ---------------------------------------------------------------------------
-# CoinGecko Bulk Price Endpoint
-# ---------------------------------------------------------------------------
-
-class BulkPriceRequest(BaseModel):
-    tokens: List[str]
-
-class TokenPriceResult(BaseModel):
-    token: str
-    price: float
-    market_cap: float
-    error: Optional[str] = None
-
-class TokenBreakdown(BaseModel):
-    """
-    Detailed breakdown of a single trade's performance.
-
-    ROI Definitions:
-    - trade_roi: Trade-specific ROI = total_pnl / trade_capital_allocated
-      This is calculated per individual trade and does NOT depend on total account balance.
-    - roi_to_date: Same as trade_roi (kept for backwards compatibility)
-
-    PnL Definitions:
-    - realized_pnl: Profit/loss from actual sells = sum((sell_price - avg_entry_price) * tokens_sold)
-    - unrealized_pnl: Mark-to-market PnL from remaining tokens = (current_price - avg_entry_price) * remaining_tokens
-    - total_pnl: realized_pnl + unrealized_pnl
-
-    Final Value:
-    - final_value: cash_balance + (remaining_tokens * current_market_price)
-
-    Note: ATH price is for analytics/display ONLY, never used in PnL/ROI calculations.
-    """
-    token: str
-    trade_id: str = ""  # Unique identifier for this specific trade
-    time_called: str = ""  # ISO string of when the trade was called
-    entry_price: float = 0.0
-    final_price: float = 0.0  # Current market price (mark-to-market)
-    ath_price: float = 0.0  # All-time high price (for display only, NOT used in calculations)
-    ath_percentage: float = 0.0  # For display only
-    total_pnl: float = 0.0  # realized_pnl + unrealized_pnl
-    realized_pnl: float = 0.0  # From actual sells
-    unrealized_pnl: float = 0.0  # Mark-to-market from remaining tokens
-    coins_left: float = 0.0  # Remaining tokens
-    coins_initial: float = 0.0  # Initial tokens purchased
-    trade_capital: float = 0.0  # USD spent on entries for this trade
-    final_value: float = 0.0  # Cash from sells + remaining tokens * current price
-    max_drawdown: float = 0.0
-    trade_roi: float = 0.0  # Trade ROI = total_pnl / trade_capital (NOT dependent on account balance)
-    roi_to_date: float = 0.0  # Same as trade_roi (backwards compatibility)
-    is_valid: bool = True  # Whether this trade has valid data
-    validation_errors: List[str] = []  # List of validation issues if any
-    tps_hit: List[float] = []
-    sls_hit: List[float] = []
-    error: Optional[str] = None
 
 async def try_birdeye_fallback(session: aiohttp.ClientSession, token: str) -> Optional[TokenPriceResult]:
     """

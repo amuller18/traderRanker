@@ -125,6 +125,7 @@ from pydantic import BaseModel, Field, field_validator
 import boto3
 from boto3.dynamodb.conditions import Key, Attr
 from botocore.exceptions import ClientError, NoCredentialsError
+from botocore.config import Config as BotocoreConfig
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -164,13 +165,21 @@ try:
     aws_secret_access_key = os.getenv('AWS_SECRET_ACCESS_KEY')
 
     # Build kwargs for boto3.resource - only include credentials if provided
-    dynamodb_kwargs = {'region_name': aws_region}
+    # Configure higher connection pool for parallel requests
+    boto_config = BotocoreConfig(
+        max_pool_connections=50,  # Allow up to 50 concurrent connections (default is 10)
+        retries={'max_attempts': 3, 'mode': 'adaptive'}
+    )
+
+    dynamodb_kwargs = {'region_name': aws_region, 'config': boto_config}
     if aws_access_key_id and aws_secret_access_key:
         dynamodb_kwargs['aws_access_key_id'] = aws_access_key_id
         dynamodb_kwargs['aws_secret_access_key'] = aws_secret_access_key
         logger.info(f"Using explicit AWS credentials from environment variables")
     else:
         logger.info(f"Using default AWS credential chain (env vars, ~/.aws/credentials, or IAM role)")
+
+    logger.info(f"DynamoDB configured with max_pool_connections=50 for parallel requests")
 
     dynamodb = boto3.resource('dynamodb', **dynamodb_kwargs)
 
@@ -1739,6 +1748,36 @@ def fetch_price_history_from_dynamodb(ca: str) -> pd.DataFrame:
             detail=f"Error fetching price data: {str(e)}"
         )
 
+
+async def fetch_all_price_data_parallel(tokens: List[str]) -> Dict[str, pd.DataFrame]:
+    """
+    Fetch price data for all tokens in parallel.
+
+    Returns a dict mapping token address to DataFrame.
+    """
+    if not tokens:
+        return {}
+
+    logger.info(f"Batch fetching price data for {len(tokens)} tokens in parallel...")
+
+    async def fetch_one(token: str) -> tuple:
+        try:
+            df = await asyncio.to_thread(fetch_price_history_from_dynamodb, token)
+            return (token, df)
+        except Exception as e:
+            logger.warning(f"Failed to fetch price data for {token}: {e}")
+            return (token, pd.DataFrame())
+
+    results = await asyncio.gather(*[fetch_one(t) for t in tokens])
+
+    price_data = {token: df for token, df in results}
+
+    fetched_count = sum(1 for df in price_data.values() if not df.empty)
+    logger.info(f"Batch fetch complete: {fetched_count}/{len(tokens)} tokens have price data")
+
+    return price_data
+
+
 def convert_price_data_to_ohlc(df_price: pd.DataFrame, interval_minutes: int = 5) -> pd.DataFrame:
     """
     Convert raw price data from DynamoDB to OHLC format for backtesting.
@@ -2688,17 +2727,43 @@ class BacktestResponse(BaseModel):
     simulations: List[SimulationResult]
 
 
+def _normalize_value(value: float, decimals: int = 2, max_val: float = 9999999.99) -> float:
+    """
+    Normalize a numeric value for safe JSON serialization.
+
+    - Handles NaN -> 0
+    - Handles infinity -> max_val (capped)
+    - Handles -infinity -> -max_val
+    - Rounds to specified decimals
+    """
+    if value is None:
+        return 0.0
+    if math.isnan(value):
+        return 0.0
+    if math.isinf(value):
+        return max_val if value > 0 else -max_val
+    return round(value, decimals)
+
+
 def _process_single_backtest_trade(
     trade: TradeInfo,
     amount_usd: float,
     tp_r: list,
     tp_s: list,
     sl_r: list,
-    sl_s: list
+    sl_s: list,
+    df_price: pd.DataFrame = None
 ) -> tuple:
     """
     Process a single trade for backtesting. Returns (breakdown, simulation, stats_dict).
     This is a synchronous function that will be run in a thread pool.
+
+    Parameters:
+    - trade: TradeInfo with token and date_called
+    - amount_usd: Position size per trade
+    - tp_r, tp_s: Take profit ratios and sell fractions
+    - sl_r, sl_s: Stop loss ratios and sell fractions
+    - df_price: Pre-fetched price DataFrame (optional, fetches if not provided)
     """
     ca = trade.token
 
@@ -2718,8 +2783,9 @@ def _process_single_backtest_trade(
                 {"is_valid": False}
             )
 
-        # Fetch price history from DynamoDB
-        df_price = fetch_price_history_from_dynamodb(ca)
+        # Use pre-fetched price data or fetch if not provided
+        if df_price is None:
+            df_price = fetch_price_history_from_dynamodb(ca)
 
         if df_price.empty:
             return (
@@ -2803,58 +2869,58 @@ def _process_single_backtest_trade(
                     dd = (peak_value - current_value) / peak_value
                     max_dd = max(max_dd, dd)
 
-        # Create breakdown
+        # Create breakdown with normalized values
         breakdown = TokenBreakdown(
             token=ca,
             trade_id=f"{ca}_{start_ts}",
             time_called=trade.date_called,
-            entry_price=round(entry_price, 10),
-            final_price=round(final_price, 10),
-            ath_price=round(ath_price, 10),
-            ath_percentage=round(ath_percentage, 2),
-            total_pnl=round(sim_total_pnl, 6),
-            realized_pnl=round(sim_realized, 6),
-            unrealized_pnl=round(sim_unrealized, 6),
-            coins_left=round(coins_left, 10),
-            coins_initial=round(coins_initial, 10),
-            trade_capital=round(trade_capital, 6),
-            final_value=round(final_equity, 6),
-            max_drawdown=round(max_dd * 100, 2),
-            trade_roi=round(trade_roi, 2),
-            roi_to_date=round(trade_roi, 2),
+            entry_price=_normalize_value(entry_price, 10),
+            final_price=_normalize_value(final_price, 10),
+            ath_price=_normalize_value(ath_price, 10),
+            ath_percentage=_normalize_value(ath_percentage, 2),
+            total_pnl=_normalize_value(sim_total_pnl, 6),
+            realized_pnl=_normalize_value(sim_realized, 6),
+            unrealized_pnl=_normalize_value(sim_unrealized, 6),
+            coins_left=_normalize_value(coins_left, 10),
+            coins_initial=_normalize_value(coins_initial, 10),
+            trade_capital=_normalize_value(trade_capital, 6),
+            final_value=_normalize_value(final_equity, 6),
+            max_drawdown=_normalize_value(max_dd * 100, 2),
+            trade_roi=_normalize_value(trade_roi, 2),
+            roi_to_date=_normalize_value(trade_roi, 2),
             is_valid=True,
             validation_errors=[],
             tps_hit=sim.get("tps_hit", []),
             sls_hit=sim.get("sls_hit", [])
         )
 
-        # Create simulation result with ledger
+        # Create simulation result with ledger (normalized values)
         position_points = [
             PositionPoint(
                 ts=pt["ts"],
-                value=pt["value"],
-                coins_held=pt["coins_held"],
-                unrealized=pt["unrealized"],
-                realized=pt["realized"]
+                value=_normalize_value(pt["value"], 6),
+                coins_held=_normalize_value(pt["coins_held"], 10),
+                unrealized=_normalize_value(pt["unrealized"], 6),
+                realized=_normalize_value(pt["realized"], 6)
             ) for pt in ledger
         ]
         simulation = SimulationResult(
             token=ca,
             ledger=position_points,
-            realized_profit=sim_realized,
-            unrealized_profit=sim_unrealized,
-            coins_left=coins_left,
+            realized_profit=_normalize_value(sim_realized, 6),
+            unrealized_profit=_normalize_value(sim_unrealized, 6),
+            coins_left=_normalize_value(coins_left, 10),
             tps_hit=sim.get("tps_hit", []),
             sls_hit=sim.get("sls_hit", [])
         )
 
-        # Return stats for aggregation
+        # Return stats for aggregation (normalized)
         stats = {
             "is_valid": True,
-            "total_pnl": sim_total_pnl,
-            "realized": sim_realized,
-            "unrealized": sim_unrealized,
-            "trade_roi": trade_roi,
+            "total_pnl": _normalize_value(sim_total_pnl, 6),
+            "realized": _normalize_value(sim_realized, 6),
+            "unrealized": _normalize_value(sim_unrealized, 6),
+            "trade_roi": _normalize_value(trade_roi, 2),
         }
 
         return (breakdown, simulation, stats)
@@ -2909,15 +2975,22 @@ async def run_backtest_dynamodb(req: TradeBasedSimulationRequest) -> BacktestRes
     tp_r, tp_s = _parse_ladder(req.tp)
     sl_r, sl_s = _parse_ladder(req.sl)
 
-    # Process all trades in parallel using thread pool
-    logger.info(f"Processing {len(req.trades)} trades in parallel...")
+    # STEP 1: Batch fetch all price data in parallel (uses 50 concurrent connections)
+    unique_tokens = list(set(t.token for t in req.trades))
+    logger.info(f"Batch fetching price data for {len(unique_tokens)} unique tokens...")
+
+    price_data_map = await fetch_all_price_data_parallel(unique_tokens)
+
+    # STEP 2: Process all trades with pre-fetched data (CPU-bound, uses thread pool)
+    logger.info(f"Processing {len(req.trades)} trades with pre-fetched data...")
 
     tasks = [
         asyncio.to_thread(
             _process_single_backtest_trade,
             trade,
             req.amount_usd,
-            tp_r, tp_s, sl_r, sl_s
+            tp_r, tp_s, sl_r, sl_s,
+            price_data_map.get(trade.token, pd.DataFrame())  # Pass pre-fetched data
         )
         for trade in req.trades
     ]
@@ -3000,30 +3073,31 @@ async def run_backtest_dynamodb(req: TradeBasedSimulationRequest) -> BacktestRes
             dd = ((peak - running_equity) / peak) * 100
             max_drawdown = max(max_drawdown, dd)
 
+    # Normalize all numeric values before building response
     summary = BacktestSummary(
-        total_profit=round(total_profit, 2),
-        realized_profit=round(realized_profit, 2),
-        unrealized_profit=round(unrealized_profit, 2),
-        avg_profit=round(avg_profit, 2),
-        avg_trade_roi=round(avg_trade_roi, 2),
-        account_roi=round(account_roi, 2),
-        win_rate=round(win_rate, 4),
-        final_portfolio_value=round(final_portfolio_value, 2),
-        starting_capital=round(starting_capital, 2),
+        total_profit=_normalize_value(total_profit, 2),
+        realized_profit=_normalize_value(realized_profit, 2),
+        unrealized_profit=_normalize_value(unrealized_profit, 2),
+        avg_profit=_normalize_value(avg_profit, 2),
+        avg_trade_roi=_normalize_value(avg_trade_roi, 2),
+        account_roi=_normalize_value(account_roi, 2),
+        win_rate=_normalize_value(win_rate, 4),
+        final_portfolio_value=_normalize_value(final_portfolio_value, 2),
+        starting_capital=_normalize_value(starting_capital, 2),
         is_bankrupt=final_portfolio_value <= 0,
         total_trades=len(req.trades),
         valid_trades=valid_trade_count,
         invalid_trades=invalid_trade_count,
-        max_drawdown=round(max_drawdown, 2),
-        profit_factor=round(profit_factor, 2) if profit_factor != float('inf') else 9999.99,
+        max_drawdown=_normalize_value(max_drawdown, 2),
+        profit_factor=_normalize_value(profit_factor, 2, 9999.99),
         winning_trades=winning_trades_count,
         losing_trades=losing_trades_count,
-        avg_win=round(avg_win, 2),
-        avg_loss=round(avg_loss, 2),
-        largest_win=round(largest_win, 2),
-        largest_loss=round(largest_loss, 2),
-        expectancy=round(expectancy, 2),
-        risk_reward_ratio=round(risk_reward_ratio, 2) if risk_reward_ratio != float('inf') else 9999.99
+        avg_win=_normalize_value(avg_win, 2),
+        avg_loss=_normalize_value(avg_loss, 2),
+        largest_win=_normalize_value(largest_win, 2),
+        largest_loss=_normalize_value(largest_loss, 2),
+        expectancy=_normalize_value(expectancy, 2),
+        risk_reward_ratio=_normalize_value(risk_reward_ratio, 2, 9999.99)
     )
 
     logger.info(f"=== BACKTEST COMPLETE: {valid_trade_count} valid, {invalid_trade_count} invalid ===")

@@ -2653,6 +2653,335 @@ class TokenBreakdown(BaseModel):
     error: Optional[str] = None
 
 
+class BacktestSummary(BaseModel):
+    """Summary statistics for the entire backtest."""
+    total_profit: float = 0.0
+    realized_profit: float = 0.0
+    unrealized_profit: float = 0.0
+    avg_profit: float = 0.0
+    avg_trade_roi: float = 0.0
+    account_roi: float = 0.0
+    win_rate: float = 0.0
+    final_portfolio_value: float = 0.0
+    starting_capital: float = 0.0
+    is_bankrupt: bool = False
+    total_trades: int = 0
+    valid_trades: int = 0
+    invalid_trades: int = 0
+    max_drawdown: float = 0.0
+    profit_factor: float = 0.0
+    winning_trades: int = 0
+    losing_trades: int = 0
+    avg_win: float = 0.0
+    avg_loss: float = 0.0
+    largest_win: float = 0.0
+    largest_loss: float = 0.0
+    expectancy: float = 0.0
+    risk_reward_ratio: float = 0.0
+
+
+class BacktestResponse(BaseModel):
+    """Complete backtest response with all data needed by frontend."""
+    summary: BacktestSummary
+    breakdowns: List[TokenBreakdown]
+    simulations: List[SimulationResult]
+
+
+@app.post("/api/backtest/dynamodb", response_model=BacktestResponse)
+async def run_backtest_dynamodb(req: TradeBasedSimulationRequest) -> BacktestResponse:
+    """
+    Complete backtest endpoint using ONLY DynamoDB data - zero external API calls.
+
+    Returns everything the frontend needs in a single response:
+    - summary: Aggregate statistics (ROI, win rate, drawdown, etc.)
+    - breakdowns: Per-trade TokenBreakdown objects
+    - simulations: SimulationResult objects with ledgers for charting
+
+    All calculations happen server-side for optimal performance.
+    """
+    logger.info("=== DYNAMODB BACKTEST REQUEST START ===")
+    logger.info(f"Request trades: {len(req.trades)}")
+    logger.info(f"Request amount_usd: {req.amount_usd}")
+    logger.info(f"Request timeframe_minutes: {req.timeframe_minutes}")
+    logger.info(f"Request tp: {req.tp}")
+    logger.info(f"Request sl: {req.sl}")
+
+    if price_data_table is None:
+        logger.error(f"Price data table '{PRICE_DATA_TABLE}' not available")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Price data table not available. Check DynamoDB configuration."
+        )
+
+    # Validate all tokens
+    bad = [t.token for t in req.trades if not is_valid_solana_address(t.token)]
+    if bad:
+        logger.error(f"Invalid Solana address(es): {', '.join(bad)}")
+        raise HTTPException(400, f"Invalid Solana address(es): {', '.join(bad)}")
+
+    # Parse ladder levels
+    tp_r, tp_s = _parse_ladder(req.tp)
+    sl_r, sl_s = _parse_ladder(req.sl)
+
+    breakdowns: List[TokenBreakdown] = []
+    simulations: List[SimulationResult] = []
+
+    # Summary calculation variables
+    total_profit = 0.0
+    realized_profit = 0.0
+    unrealized_profit = 0.0
+    valid_trade_count = 0
+    invalid_trade_count = 0
+    winning_trades_count = 0
+    losing_trades_count = 0
+    sum_trade_roi = 0.0
+    gross_profit = 0.0
+    gross_loss = 0.0
+    sum_wins = 0.0
+    sum_losses = 0.0
+    largest_win = 0.0
+    largest_loss = 0.0
+    trade_pnls: List[float] = []
+
+    # Process each trade
+    for trade in req.trades:
+        ca = trade.token
+        logger.info(f"Processing: {ca} (called at {trade.date_called})")
+
+        try:
+            # Parse date_called to timestamp
+            try:
+                date_called_dt = datetime.fromisoformat(trade.date_called.replace('Z', '+00:00'))
+                start_ts = int(date_called_dt.timestamp())
+            except Exception:
+                logger.error(f"Invalid date_called format for {ca}: {trade.date_called}")
+                breakdowns.append(TokenBreakdown(
+                    token=ca,
+                    time_called=trade.date_called,
+                    is_valid=False,
+                    validation_errors=["Invalid date format"],
+                    error=f"Invalid date format: {trade.date_called}"
+                ))
+                simulations.append(SimulationResult(token=ca, error="Invalid date format"))
+                invalid_trade_count += 1
+                continue
+
+            # Fetch price history from DynamoDB
+            df_price = fetch_price_history_from_dynamodb(ca)
+
+            if df_price.empty:
+                breakdowns.append(TokenBreakdown(
+                    token=ca, time_called=trade.date_called,
+                    is_valid=False, validation_errors=["No price data in DynamoDB"],
+                    error="No price data available in DynamoDB"
+                ))
+                simulations.append(SimulationResult(token=ca, error="No price data"))
+                invalid_trade_count += 1
+                continue
+
+            # Filter to data from date_called onwards
+            df_price_filtered = df_price[df_price['timestamp'] >= start_ts].copy()
+
+            if df_price_filtered.empty or len(df_price_filtered) < 10:
+                error_msg = "Not enough data points" if len(df_price_filtered) < 10 else "No data after call date"
+                breakdowns.append(TokenBreakdown(
+                    token=ca, time_called=trade.date_called,
+                    is_valid=False, validation_errors=[error_msg], error=error_msg
+                ))
+                simulations.append(SimulationResult(token=ca, error=error_msg))
+                invalid_trade_count += 1
+                continue
+
+            # Calculate price metrics
+            prices = df_price_filtered['price'].tolist()
+            entry_price = float(prices[0])
+            final_price = float(prices[-1])
+            ath_price = float(max(prices))
+            ath_percentage = ((ath_price - entry_price) / entry_price) * 100 if entry_price > 0 else 0
+
+            if entry_price <= 0 or final_price <= 0:
+                breakdowns.append(TokenBreakdown(
+                    token=ca, time_called=trade.date_called,
+                    entry_price=entry_price, final_price=final_price,
+                    is_valid=False, validation_errors=["Invalid price data"],
+                    error="Invalid price data (non-positive)"
+                ))
+                simulations.append(SimulationResult(token=ca, error="Invalid price data"))
+                invalid_trade_count += 1
+                continue
+
+            # Convert to OHLC and run simulation
+            df_ohlc = convert_price_data_to_ohlc(df_price_filtered)
+            if df_ohlc.empty:
+                breakdowns.append(TokenBreakdown(
+                    token=ca, time_called=trade.date_called,
+                    is_valid=False, validation_errors=["OHLC conversion failed"],
+                    error="Failed to convert to OHLC"
+                ))
+                simulations.append(SimulationResult(token=ca, error="OHLC conversion failed"))
+                invalid_trade_count += 1
+                continue
+
+            sim = run_simulation_with_ledger(df_ohlc, req.amount_usd, final_price, tp_r, tp_s, sl_r, sl_s)
+
+            # Extract simulation results
+            trade_capital = sim.get("trade_capital", req.amount_usd)
+            sim_realized = sim.get("realized_profit", 0.0)
+            sim_unrealized = sim.get("unrealized_profit", 0.0)
+            sim_total_pnl = sim.get("total_pnl", sim_realized + sim_unrealized)
+            coins_left = sim.get("coins_left", 0.0)
+            coins_initial = sim.get("coins_initial", 0.0)
+            final_equity = sim.get("final_equity", trade_capital + sim_total_pnl)
+            trade_roi = (sim_total_pnl / trade_capital * 100) if trade_capital > 0 else 0.0
+
+            # Calculate max drawdown from ledger
+            ledger = sim.get("ledger", [])
+            max_dd = 0.0
+            if ledger:
+                peak_value = trade_capital
+                for entry in ledger:
+                    current_value = entry.get("value", 0.0) + entry.get("realized", 0.0)
+                    if current_value > peak_value:
+                        peak_value = current_value
+                    elif peak_value > 0:
+                        dd = (peak_value - current_value) / peak_value
+                        max_dd = max(max_dd, dd)
+
+            # Create breakdown
+            breakdown = TokenBreakdown(
+                token=ca,
+                trade_id=f"{ca}_{start_ts}",
+                time_called=trade.date_called,
+                entry_price=round(entry_price, 10),
+                final_price=round(final_price, 10),
+                ath_price=round(ath_price, 10),
+                ath_percentage=round(ath_percentage, 2),
+                total_pnl=round(sim_total_pnl, 6),
+                realized_pnl=round(sim_realized, 6),
+                unrealized_pnl=round(sim_unrealized, 6),
+                coins_left=round(coins_left, 10),
+                coins_initial=round(coins_initial, 10),
+                trade_capital=round(trade_capital, 6),
+                final_value=round(final_equity, 6),
+                max_drawdown=round(max_dd * 100, 2),
+                trade_roi=round(trade_roi, 2),
+                roi_to_date=round(trade_roi, 2),
+                is_valid=True,
+                validation_errors=[],
+                tps_hit=sim.get("tps_hit", []),
+                sls_hit=sim.get("sls_hit", [])
+            )
+            breakdowns.append(breakdown)
+
+            # Create simulation result with ledger
+            position_points = [
+                PositionPoint(
+                    ts=pt["ts"],
+                    value=pt["value"],
+                    coins_held=pt["coins_held"],
+                    unrealized=pt["unrealized"],
+                    realized=pt["realized"]
+                ) for pt in ledger
+            ]
+            simulations.append(SimulationResult(
+                token=ca,
+                ledger=position_points,
+                realized_profit=sim_realized,
+                unrealized_profit=sim_unrealized,
+                coins_left=coins_left,
+                tps_hit=sim.get("tps_hit", []),
+                sls_hit=sim.get("sls_hit", [])
+            ))
+
+            # Update summary statistics
+            valid_trade_count += 1
+            total_profit += sim_total_pnl
+            realized_profit += sim_realized
+            unrealized_profit += sim_unrealized
+            sum_trade_roi += trade_roi
+            trade_pnls.append(sim_total_pnl)
+
+            if sim_total_pnl > 0:
+                winning_trades_count += 1
+                gross_profit += sim_total_pnl
+                sum_wins += sim_total_pnl
+                if sim_total_pnl > largest_win:
+                    largest_win = sim_total_pnl
+            elif sim_total_pnl < 0:
+                losing_trades_count += 1
+                gross_loss += abs(sim_total_pnl)
+                sum_losses += sim_total_pnl
+                if sim_total_pnl < largest_loss:
+                    largest_loss = sim_total_pnl
+
+            logger.info(f"  {ca}: PnL ${sim_total_pnl:.2f}, ROI {trade_roi:.2f}%")
+
+        except Exception as exc:
+            logger.exception(f"Failed processing {ca}")
+            breakdowns.append(TokenBreakdown(
+                token=ca, time_called=trade.date_called,
+                is_valid=False, validation_errors=[str(exc)], error=str(exc)
+            ))
+            simulations.append(SimulationResult(token=ca, error=str(exc)))
+            invalid_trade_count += 1
+
+    # Calculate portfolio-level metrics
+    starting_capital = req.amount_usd * len(req.trades)
+    final_portfolio_value = starting_capital + total_profit
+    account_roi = ((final_portfolio_value - starting_capital) / starting_capital * 100) if starting_capital > 0 else 0
+    win_rate = (winning_trades_count / valid_trade_count) if valid_trade_count > 0 else 0
+    avg_trade_roi = (sum_trade_roi / valid_trade_count) if valid_trade_count > 0 else 0
+    avg_profit = (total_profit / valid_trade_count) if valid_trade_count > 0 else 0
+    profit_factor = (gross_profit / gross_loss) if gross_loss > 0 else (float('inf') if gross_profit > 0 else 0)
+    avg_win = (sum_wins / winning_trades_count) if winning_trades_count > 0 else 0
+    avg_loss = (sum_losses / losing_trades_count) if losing_trades_count > 0 else 0
+    expectancy = avg_profit
+    risk_reward_ratio = abs(avg_win / avg_loss) if avg_loss != 0 else (float('inf') if avg_win > 0 else 0)
+
+    # Calculate max drawdown from trade-by-trade equity curve
+    peak = starting_capital
+    max_drawdown = 0.0
+    running_equity = starting_capital
+    for pnl in trade_pnls:
+        running_equity += pnl
+        if running_equity > peak:
+            peak = running_equity
+        elif peak > 0:
+            dd = ((peak - running_equity) / peak) * 100
+            max_drawdown = max(max_drawdown, dd)
+
+    summary = BacktestSummary(
+        total_profit=round(total_profit, 2),
+        realized_profit=round(realized_profit, 2),
+        unrealized_profit=round(unrealized_profit, 2),
+        avg_profit=round(avg_profit, 2),
+        avg_trade_roi=round(avg_trade_roi, 2),
+        account_roi=round(account_roi, 2),
+        win_rate=round(win_rate, 4),
+        final_portfolio_value=round(final_portfolio_value, 2),
+        starting_capital=round(starting_capital, 2),
+        is_bankrupt=final_portfolio_value <= 0,
+        total_trades=len(req.trades),
+        valid_trades=valid_trade_count,
+        invalid_trades=invalid_trade_count,
+        max_drawdown=round(max_drawdown, 2),
+        profit_factor=round(profit_factor, 2) if profit_factor != float('inf') else 9999.99,
+        winning_trades=winning_trades_count,
+        losing_trades=losing_trades_count,
+        avg_win=round(avg_win, 2),
+        avg_loss=round(avg_loss, 2),
+        largest_win=round(largest_win, 2),
+        largest_loss=round(largest_loss, 2),
+        expectancy=round(expectancy, 2),
+        risk_reward_ratio=round(risk_reward_ratio, 2) if risk_reward_ratio != float('inf') else 9999.99
+    )
+
+    logger.info(f"=== BACKTEST COMPLETE: {valid_trade_count} valid, {invalid_trade_count} invalid ===")
+    logger.info(f"Total PnL: ${total_profit:.2f}, Account ROI: {account_roi:.2f}%, Win Rate: {win_rate*100:.1f}%")
+
+    return BacktestResponse(summary=summary, breakdowns=breakdowns, simulations=simulations)
+
+
 @app.post("/api/simulate/breakdown/dynamodb/trades", response_model=List[TokenBreakdown])
 async def simulate_breakdown_from_dynamodb_trades(req: TradeBasedSimulationRequest) -> List[TokenBreakdown]:
     """

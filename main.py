@@ -1179,7 +1179,8 @@ class SimulationRequest(BaseModel):
 
 class TradeBasedSimulationRequest(BaseModel):
     trades: List[TradeInfo]
-    amount_usd: float = Field(1000, gt=0)
+    amount_usd: float = Field(1000, gt=0)  # Position size per trade
+    initial_capital: float = Field(1000, gt=0)  # Total account capital for ROI calculations
     timeframe_minutes: int = Field(15, ge=1, le=1440)  # Default to 15 minutes, max 24 hours
     use_auto_timeframe: bool = Field(True, description="Whether to automatically calculate optimal timeframe")
     tp: Optional[List[str]] = Field(None, description="List of 'ratio:sell' strings")
@@ -2925,8 +2926,8 @@ async def run_backtest_dynamodb(req: TradeBasedSimulationRequest) -> BacktestRes
             simulations.append(SimulationResult(token=ca, error=str(exc)))
             invalid_trade_count += 1
 
-    # Calculate portfolio-level metrics
-    starting_capital = req.amount_usd * len(req.trades)
+    # Calculate portfolio-level metrics using the actual initial capital
+    starting_capital = req.initial_capital
     final_portfolio_value = starting_capital + total_profit
     account_roi = ((final_portfolio_value - starting_capital) / starting_capital * 100) if starting_capital > 0 else 0
     win_rate = (winning_trades_count / valid_trade_count) if valid_trade_count > 0 else 0

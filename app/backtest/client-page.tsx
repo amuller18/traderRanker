@@ -193,7 +193,10 @@ const fmt = new Intl.NumberFormat("en-US", {
   notation: "compact",
   maximumFractionDigits: 2
 });
-const formatLargeNumber = (n: number) => fmt.format(n);
+const formatLargeNumber = (n: number) => {
+  if (n === undefined || n === null || isNaN(n)) return "0";
+  return fmt.format(n);
+};
 
 // Format large numbers for coins left (human readable)
 const formatCoinsLeft = (coins: number) => {
@@ -466,7 +469,8 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
         token: trade.ca,
         date_called: trade.date_called
       })),
-      amount_usd: positionSizePerTrade, // Use position size per trade, not total capital
+      amount_usd: positionSizePerTrade, // Position size per trade
+      initial_capital: initialCapital,   // Total account capital for ROI calculations
       timeframe_minutes: timeframe === "auto" ? DEFAULT_TIMEFRAME : parseInt(timeframe),
       use_auto_timeframe: timeframe === "auto",
       tp: ladderToString(takeProfits),
@@ -554,8 +558,14 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
           }
         });
 
-        rows.push(row);
+        // Only include rows that have at least one trade with data
+        const hasTradeData = Object.keys(row).some(k => k !== 'ts' && k !== 'date' && row[k] !== undefined);
+        if (hasTradeData) {
+          rows.push(row);
+        }
       });
+
+      console.log(`Chart has ${rows.length} data points after filtering`);
 
       // ------------------------------------------------------------------
       // CUMULATIVE PORTFOLIO CALCULATION (TOTAL EQUITY)

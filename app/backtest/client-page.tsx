@@ -280,6 +280,21 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
   const [legendPage, setLegendPage] = useState<number>(0);
   const [chartData, setChartData] = useState<any[]>([]);
   const [cumChartData, setCumChartData] = useState<any[]>([]);
+
+  // Compute all unique trade keys across ALL chart data rows (not just the first row)
+  // This is needed because trades start at different times
+  const allTradeKeys = useMemo(() => {
+    if (chartData.length === 0) return [];
+    const keys = new Set<string>();
+    chartData.forEach(row => {
+      Object.keys(row).forEach(k => {
+        if (k !== 'ts' && k !== 'date' && k.includes('_')) {
+          keys.add(k);
+        }
+      });
+    });
+    return Array.from(keys);
+  }, [chartData]);
   const [summary, setSummary] = useState<SummaryStats | null>(null);
   const [tokenBreakdown, setTokenBreakdown] = useState<TokenBreakdown[]>([]);
   const [isRunning, setIsRunning] = useState(false);
@@ -1191,9 +1206,8 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                       }}
                     />
 
-                    {Object.keys(chartData[0] || {})
-                      .filter((k) => k !== 'ts' && k !== 'date' && k.includes('_'))
-                      .map((tradeId, idx) => {
+                    {/* Use allTradeKeys which collects keys from ALL rows */}
+                    {allTradeKeys.map((tradeId, idx) => {
                         // Extract token address and trade number for display
                         const [token, tradeNum] = tradeId.split('_');
                         const displayName = `${token.slice(0, 8)}... (Trade ${parseInt(tradeNum) + 1})`;
@@ -1242,7 +1256,7 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                   </div>
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <span>
-                      {Math.min(legendPage * 5 + 1, Object.keys(chartData[0] || {}).filter(k => k !== 'ts' && k !== 'date' && k.includes('_')).length)} - {Math.min((legendPage + 1) * 5, Object.keys(chartData[0] || {}).filter(k => k !== 'ts' && k !== 'date' && k.includes('_')).length)} of {Object.keys(chartData[0] || {}).filter(k => k !== 'ts' && k !== 'date' && k.includes('_')).length}
+                      {Math.min(legendPage * 5 + 1, allTradeKeys.length)} - {Math.min((legendPage + 1) * 5, allTradeKeys.length)} of {allTradeKeys.length}
                     </span>
                     <Button
                       variant="outline"
@@ -1256,7 +1270,7 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                       variant="outline"
                       size="sm"
                       onClick={() => setLegendPage(legendPage + 1)}
-                      disabled={(legendPage + 1) * 5 >= Object.keys(chartData[0] || {}).filter(k => k !== 'ts' && k !== 'date' && k.includes('_')).length}
+                      disabled={(legendPage + 1) * 5 >= allTradeKeys.length}
                     >
                       →
                     </Button>
@@ -1265,8 +1279,7 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
 
                 {/* Legend Items */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                  {Object.keys(chartData[0] || {})
-                    .filter((k) => k !== 'ts' && k !== 'date' && k.includes('_'))
+                  {allTradeKeys
                     .filter((tradeId) => {
                       if (!legendSearch) return true;
                       const [token] = tradeId.split('_');
@@ -1318,7 +1331,7 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setVisibleTokens(new Set(Object.keys(chartData[0] || {}).filter(k => k !== 'ts' && k !== 'date' && k.includes('_'))))}
+                    onClick={() => setVisibleTokens(new Set(allTradeKeys))}
                   >
                     Hide All
                   </Button>
@@ -1326,8 +1339,7 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      const allTokens = Object.keys(chartData[0] || {}).filter(k => k !== 'ts' && k !== 'date' && k.includes('_'));
-                      setVisibleTokens(new Set(allTokens.slice(0, 5)));
+                      setVisibleTokens(new Set(allTradeKeys.slice(0, 5)));
                     }}
                   >
                     Show Top 5

@@ -3154,6 +3154,13 @@ async def run_backtest_dynamodb(req: TradeBasedSimulationRequest) -> BacktestRes
         sorted_timestamps = sorted(all_timestamps)
         logger.info(f"Chart data: {len(sorted_timestamps)} timestamps, {len(valid_sims)} valid trades")
 
+        # Downsample timestamps if too many (limit to ~2000 points for reasonable response size)
+        MAX_CHART_POINTS = 2000
+        if len(sorted_timestamps) > MAX_CHART_POINTS:
+            step = len(sorted_timestamps) // MAX_CHART_POINTS
+            sorted_timestamps = sorted_timestamps[::step]
+            logger.info(f"Downsampled to {len(sorted_timestamps)} chart points (step={step})")
+
         # Timeframe threshold for interpolation (4 hours = 14400 seconds)
         max_time_diff = max(req.timeframe_minutes * 60 * 2, 14400) if req.timeframe_minutes else 14400
 

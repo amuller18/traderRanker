@@ -27,6 +27,7 @@ Back-tester FastAPI micro-service (extended, ladder-TP/SL version)
   untouched.
 """
 
+import bisect
 import math
 import asyncio
 import os
@@ -125,6 +126,7 @@ from pydantic import BaseModel, Field, field_validator
 import boto3
 from boto3.dynamodb.conditions import Key, Attr
 from botocore.exceptions import ClientError, NoCredentialsError
+from botocore.config import Config as BotocoreConfig
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -164,13 +166,21 @@ try:
     aws_secret_access_key = os.getenv('AWS_SECRET_ACCESS_KEY')
 
     # Build kwargs for boto3.resource - only include credentials if provided
-    dynamodb_kwargs = {'region_name': aws_region}
+    # Configure higher connection pool for parallel requests
+    boto_config = BotocoreConfig(
+        max_pool_connections=50,  # Allow up to 50 concurrent connections (default is 10)
+        retries={'max_attempts': 3, 'mode': 'adaptive'}
+    )
+
+    dynamodb_kwargs = {'region_name': aws_region, 'config': boto_config}
     if aws_access_key_id and aws_secret_access_key:
         dynamodb_kwargs['aws_access_key_id'] = aws_access_key_id
         dynamodb_kwargs['aws_secret_access_key'] = aws_secret_access_key
         logger.info(f"Using explicit AWS credentials from environment variables")
     else:
         logger.info(f"Using default AWS credential chain (env vars, ~/.aws/credentials, or IAM role)")
+
+    logger.info(f"DynamoDB configured with max_pool_connections=50 for parallel requests")
 
     dynamodb = boto3.resource('dynamodb', **dynamodb_kwargs)
 
@@ -1166,6 +1176,7 @@ class SimulationResult(BaseModel):
 class TradeInfo(BaseModel):
     token: str
     date_called: str  # ISO string format
+    caller: Optional[str] = None  # Caller/source of the trade for per-caller stats
 
 class SimulationRequest(BaseModel):
     tokens: List[str]
@@ -1179,7 +1190,8 @@ class SimulationRequest(BaseModel):
 
 class TradeBasedSimulationRequest(BaseModel):
     trades: List[TradeInfo]
-    amount_usd: float = Field(1000, gt=0)
+    amount_usd: float = Field(1000, gt=0)  # Position size per trade
+    initial_capital: float = Field(1000, gt=0)  # Total account capital for ROI calculations
     timeframe_minutes: int = Field(15, ge=1, le=1440)  # Default to 15 minutes, max 24 hours
     use_auto_timeframe: bool = Field(True, description="Whether to automatically calculate optimal timeframe")
     tp: Optional[List[str]] = Field(None, description="List of 'ratio:sell' strings")
@@ -1737,6 +1749,36 @@ def fetch_price_history_from_dynamodb(ca: str) -> pd.DataFrame:
             status_code=500,
             detail=f"Error fetching price data: {str(e)}"
         )
+
+
+async def fetch_all_price_data_parallel(tokens: List[str]) -> Dict[str, pd.DataFrame]:
+    """
+    Fetch price data for all tokens in parallel.
+
+    Returns a dict mapping token address to DataFrame.
+    """
+    if not tokens:
+        return {}
+
+    logger.info(f"Batch fetching price data for {len(tokens)} tokens in parallel...")
+
+    async def fetch_one(token: str) -> tuple:
+        try:
+            df = await asyncio.to_thread(fetch_price_history_from_dynamodb, token)
+            return (token, df)
+        except Exception as e:
+            logger.warning(f"Failed to fetch price data for {token}: {e}")
+            return (token, pd.DataFrame())
+
+    results = await asyncio.gather(*[fetch_one(t) for t in tokens])
+
+    price_data = {token: df for token, df in results}
+
+    fetched_count = sum(1 for df in price_data.values() if not df.empty)
+    logger.info(f"Batch fetch complete: {fetched_count}/{len(tokens)} tokens have price data")
+
+    return price_data
+
 
 def convert_price_data_to_ohlc(df_price: pd.DataFrame, interval_minutes: int = 5) -> pd.DataFrame:
     """
@@ -2651,6 +2693,865 @@ class TokenBreakdown(BaseModel):
     tps_hit: List[float] = []
     sls_hit: List[float] = []
     error: Optional[str] = None
+
+
+class BacktestSummary(BaseModel):
+    """Summary statistics for the entire backtest."""
+    total_profit: float = 0.0
+    realized_profit: float = 0.0
+    unrealized_profit: float = 0.0
+    avg_profit: float = 0.0
+    avg_trade_roi: float = 0.0
+    account_roi: float = 0.0
+    win_rate: float = 0.0
+    final_portfolio_value: float = 0.0
+    starting_capital: float = 0.0
+    is_bankrupt: bool = False
+    total_trades: int = 0
+    valid_trades: int = 0
+    invalid_trades: int = 0
+    max_drawdown: float = 0.0
+    profit_factor: float = 0.0
+    winning_trades: int = 0
+    losing_trades: int = 0
+    avg_win: float = 0.0
+    avg_loss: float = 0.0
+    largest_win: float = 0.0
+    largest_loss: float = 0.0
+    expectancy: float = 0.0
+    risk_reward_ratio: float = 0.0
+
+
+class CallerStats(BaseModel):
+    """Per-caller performance statistics."""
+    caller: str
+    total_trades: int = 0
+    valid_trades: int = 0
+    winning_trades: int = 0
+    losing_trades: int = 0
+    total_pnl: float = 0.0
+    avg_trade_roi: float = 0.0
+    win_rate: float = 0.0
+    profit_factor: float = 0.0
+    avg_win: float = 0.0
+    avg_loss: float = 0.0
+    largest_win: float = 0.0
+    largest_loss: float = 0.0
+
+
+class BacktestResponse(BaseModel):
+    """Complete backtest response with all data needed by frontend."""
+    summary: BacktestSummary
+    breakdowns: List[TokenBreakdown]
+    simulations: List[SimulationResult]
+    chart_data: List[dict] = []  # Pre-computed chart rows {ts, date, token_0: value, ...}
+    cumulative_chart_data: List[dict] = []  # Chart rows with cumulative equity
+    caller_stats: List[CallerStats] = []  # Per-caller breakdown
+
+
+def _normalize_value(value: float, decimals: int = 2, max_val: float = 9999999.99) -> float:
+    """
+    Normalize a numeric value for safe JSON serialization.
+
+    - Handles NaN -> 0
+    - Handles infinity -> max_val (capped)
+    - Handles -infinity -> -max_val
+    - Rounds to specified decimals
+    """
+    if value is None:
+        return 0.0
+    if math.isnan(value):
+        return 0.0
+    if math.isinf(value):
+        return max_val if value > 0 else -max_val
+    return round(value, decimals)
+
+
+def _process_single_backtest_trade(
+    trade: TradeInfo,
+    amount_usd: float,
+    tp_r: list,
+    tp_s: list,
+    sl_r: list,
+    sl_s: list,
+    df_price: pd.DataFrame = None
+) -> tuple:
+    """
+    Process a single trade for backtesting. Returns (breakdown, simulation, stats_dict).
+    This is a synchronous function that will be run in a thread pool.
+
+    Parameters:
+    - trade: TradeInfo with token and date_called
+    - amount_usd: Position size per trade
+    - tp_r, tp_s: Take profit ratios and sell fractions
+    - sl_r, sl_s: Stop loss ratios and sell fractions
+    - df_price: Pre-fetched price DataFrame (optional, fetches if not provided)
+    """
+    ca = trade.token
+
+    try:
+        # Parse date_called to timestamp
+        try:
+            date_called_dt = datetime.fromisoformat(trade.date_called.replace('Z', '+00:00'))
+            start_ts = int(date_called_dt.timestamp())
+        except Exception:
+            return (
+                TokenBreakdown(
+                    token=ca, time_called=trade.date_called,
+                    is_valid=False, validation_errors=["Invalid date format"],
+                    error=f"Invalid date format: {trade.date_called}"
+                ),
+                SimulationResult(token=ca, error="Invalid date format"),
+                {"is_valid": False}
+            )
+
+        # Use pre-fetched price data or fetch if not provided
+        if df_price is None:
+            df_price = fetch_price_history_from_dynamodb(ca)
+
+        if df_price.empty:
+            return (
+                TokenBreakdown(
+                    token=ca, time_called=trade.date_called,
+                    is_valid=False, validation_errors=["No price data in DynamoDB"],
+                    error="No price data available in DynamoDB"
+                ),
+                SimulationResult(token=ca, error="No price data"),
+                {"is_valid": False}
+            )
+
+        # Filter to data from date_called onwards
+        df_price_filtered = df_price[df_price['timestamp'] >= start_ts].copy()
+
+        if df_price_filtered.empty or len(df_price_filtered) < 10:
+            error_msg = "Not enough data points" if len(df_price_filtered) < 10 else "No data after call date"
+            return (
+                TokenBreakdown(
+                    token=ca, time_called=trade.date_called,
+                    is_valid=False, validation_errors=[error_msg], error=error_msg
+                ),
+                SimulationResult(token=ca, error=error_msg),
+                {"is_valid": False}
+            )
+
+        # Calculate price metrics
+        prices = df_price_filtered['price'].tolist()
+        entry_price = float(prices[0])
+        final_price = float(prices[-1])
+        ath_price = float(max(prices))
+        ath_percentage = ((ath_price - entry_price) / entry_price) * 100 if entry_price > 0 else 0
+
+        if entry_price <= 0 or final_price <= 0:
+            return (
+                TokenBreakdown(
+                    token=ca, time_called=trade.date_called,
+                    entry_price=entry_price, final_price=final_price,
+                    is_valid=False, validation_errors=["Invalid price data"],
+                    error="Invalid price data (non-positive)"
+                ),
+                SimulationResult(token=ca, error="Invalid price data"),
+                {"is_valid": False}
+            )
+
+        # Convert to OHLC and run simulation
+        df_ohlc = convert_price_data_to_ohlc(df_price_filtered)
+        if df_ohlc.empty:
+            return (
+                TokenBreakdown(
+                    token=ca, time_called=trade.date_called,
+                    is_valid=False, validation_errors=["OHLC conversion failed"],
+                    error="Failed to convert to OHLC"
+                ),
+                SimulationResult(token=ca, error="OHLC conversion failed"),
+                {"is_valid": False}
+            )
+
+        sim = run_simulation_with_ledger(df_ohlc, amount_usd, final_price, tp_r, tp_s, sl_r, sl_s)
+
+        # Extract simulation results
+        trade_capital = sim.get("trade_capital", amount_usd)
+        sim_realized = sim.get("realized_profit", 0.0)
+        sim_unrealized = sim.get("unrealized_profit", 0.0)
+        sim_total_pnl = sim.get("total_pnl", sim_realized + sim_unrealized)
+        coins_left = sim.get("coins_left", 0.0)
+        coins_initial = sim.get("coins_initial", 0.0)
+        final_equity = sim.get("final_equity", trade_capital + sim_total_pnl)
+        trade_roi = (sim_total_pnl / trade_capital * 100) if trade_capital > 0 else 0.0
+
+        # Calculate max drawdown from ledger
+        ledger = sim.get("ledger", [])
+        max_dd = 0.0
+        if ledger:
+            peak_value = trade_capital
+            for entry in ledger:
+                current_value = entry.get("value", 0.0) + entry.get("realized", 0.0)
+                if current_value > peak_value:
+                    peak_value = current_value
+                elif peak_value > 0:
+                    dd = (peak_value - current_value) / peak_value
+                    max_dd = max(max_dd, dd)
+
+        # Create breakdown with normalized values
+        breakdown = TokenBreakdown(
+            token=ca,
+            trade_id=f"{ca}_{start_ts}",
+            time_called=trade.date_called,
+            entry_price=_normalize_value(entry_price, 10),
+            final_price=_normalize_value(final_price, 10),
+            ath_price=_normalize_value(ath_price, 10),
+            ath_percentage=_normalize_value(ath_percentage, 2),
+            total_pnl=_normalize_value(sim_total_pnl, 6),
+            realized_pnl=_normalize_value(sim_realized, 6),
+            unrealized_pnl=_normalize_value(sim_unrealized, 6),
+            coins_left=_normalize_value(coins_left, 10),
+            coins_initial=_normalize_value(coins_initial, 10),
+            trade_capital=_normalize_value(trade_capital, 6),
+            final_value=_normalize_value(final_equity, 6),
+            max_drawdown=_normalize_value(max_dd * 100, 2),
+            trade_roi=_normalize_value(trade_roi, 2),
+            roi_to_date=_normalize_value(trade_roi, 2),
+            is_valid=True,
+            validation_errors=[],
+            tps_hit=sim.get("tps_hit", []),
+            sls_hit=sim.get("sls_hit", [])
+        )
+
+        # Create simulation result with ledger (normalized values)
+        position_points = [
+            PositionPoint(
+                ts=pt["ts"],
+                value=_normalize_value(pt["value"], 6),
+                coins_held=_normalize_value(pt["coins_held"], 10),
+                unrealized=_normalize_value(pt["unrealized"], 6),
+                realized=_normalize_value(pt["realized"], 6)
+            ) for pt in ledger
+        ]
+        simulation = SimulationResult(
+            token=ca,
+            ledger=position_points,
+            realized_profit=_normalize_value(sim_realized, 6),
+            unrealized_profit=_normalize_value(sim_unrealized, 6),
+            coins_left=_normalize_value(coins_left, 10),
+            tps_hit=sim.get("tps_hit", []),
+            sls_hit=sim.get("sls_hit", [])
+        )
+
+        # Return stats for aggregation (normalized)
+        stats = {
+            "is_valid": True,
+            "total_pnl": _normalize_value(sim_total_pnl, 6),
+            "realized": _normalize_value(sim_realized, 6),
+            "unrealized": _normalize_value(sim_unrealized, 6),
+            "trade_roi": _normalize_value(trade_roi, 2),
+        }
+
+        return (breakdown, simulation, stats)
+
+    except Exception as exc:
+        logger.exception(f"Failed processing {ca}")
+        return (
+            TokenBreakdown(
+                token=ca, time_called=trade.date_called,
+                is_valid=False, validation_errors=[str(exc)], error=str(exc)
+            ),
+            SimulationResult(token=ca, error=str(exc)),
+            {"is_valid": False}
+        )
+
+
+@app.post("/api/backtest/dynamodb", response_model=BacktestResponse)
+async def run_backtest_dynamodb(req: TradeBasedSimulationRequest) -> BacktestResponse:
+    """
+    Complete backtest endpoint using ONLY DynamoDB data - zero external API calls.
+
+    PARALLELIZED: All trades are processed concurrently for maximum performance.
+
+    Returns everything the frontend needs in a single response:
+    - summary: Aggregate statistics (ROI, win rate, drawdown, etc.)
+    - breakdowns: Per-trade TokenBreakdown objects
+    - simulations: SimulationResult objects with ledgers for charting
+
+    All calculations happen server-side for optimal performance.
+    """
+    logger.info("=== DYNAMODB BACKTEST REQUEST START (PARALLEL) ===")
+    logger.info(f"Request trades: {len(req.trades)}")
+    logger.info(f"Request amount_usd: {req.amount_usd}")
+    logger.info(f"Request timeframe_minutes: {req.timeframe_minutes}")
+    logger.info(f"Request tp: {req.tp}")
+    logger.info(f"Request sl: {req.sl}")
+
+    if price_data_table is None:
+        logger.error(f"Price data table '{PRICE_DATA_TABLE}' not available")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Price data table not available. Check DynamoDB configuration."
+        )
+
+    # Validate all tokens
+    bad = [t.token for t in req.trades if not is_valid_solana_address(t.token)]
+    if bad:
+        logger.error(f"Invalid Solana address(es): {', '.join(bad)}")
+        raise HTTPException(400, f"Invalid Solana address(es): {', '.join(bad)}")
+
+    # Parse ladder levels
+    tp_r, tp_s = _parse_ladder(req.tp)
+    sl_r, sl_s = _parse_ladder(req.sl)
+
+    # STEP 1: Batch fetch all price data in parallel (uses 50 concurrent connections)
+    unique_tokens = list(set(t.token for t in req.trades))
+    logger.info(f"Batch fetching price data for {len(unique_tokens)} unique tokens...")
+
+    price_data_map = await fetch_all_price_data_parallel(unique_tokens)
+
+    # STEP 2: Process all trades with pre-fetched data (CPU-bound, uses thread pool)
+    logger.info(f"Processing {len(req.trades)} trades with pre-fetched data...")
+
+    tasks = [
+        asyncio.to_thread(
+            _process_single_backtest_trade,
+            trade,
+            req.amount_usd,
+            tp_r, tp_s, sl_r, sl_s,
+            price_data_map.get(trade.token, pd.DataFrame())  # Pass pre-fetched data
+        )
+        for trade in req.trades
+    ]
+
+    results = await asyncio.gather(*tasks)
+
+    logger.info(f"All {len(results)} trades processed")
+
+    # Combine results
+    breakdowns: List[TokenBreakdown] = []
+    simulations: List[SimulationResult] = []
+
+    # Summary calculation variables
+    total_profit = 0.0
+    realized_profit = 0.0
+    unrealized_profit = 0.0
+    valid_trade_count = 0
+    invalid_trade_count = 0
+    winning_trades_count = 0
+    losing_trades_count = 0
+    sum_trade_roi = 0.0
+    gross_profit = 0.0
+    gross_loss = 0.0
+    sum_wins = 0.0
+    sum_losses = 0.0
+    largest_win = 0.0
+    largest_loss = 0.0
+    trade_pnls: List[float] = []
+
+    for breakdown, simulation, stats in results:
+        breakdowns.append(breakdown)
+        simulations.append(simulation)
+
+        if stats.get("is_valid"):
+            valid_trade_count += 1
+            pnl = stats["total_pnl"]
+            total_profit += pnl
+            realized_profit += stats["realized"]
+            unrealized_profit += stats["unrealized"]
+            sum_trade_roi += stats["trade_roi"]
+            trade_pnls.append(pnl)
+
+            if pnl > 0:
+                winning_trades_count += 1
+                gross_profit += pnl
+                sum_wins += pnl
+                if pnl > largest_win:
+                    largest_win = pnl
+            elif pnl < 0:
+                losing_trades_count += 1
+                gross_loss += abs(pnl)
+                sum_losses += pnl
+                if pnl < largest_loss:
+                    largest_loss = pnl
+        else:
+            invalid_trade_count += 1
+
+    # Calculate portfolio-level metrics using the actual initial capital
+    starting_capital = req.initial_capital
+    final_portfolio_value = starting_capital + total_profit
+    account_roi = ((final_portfolio_value - starting_capital) / starting_capital * 100) if starting_capital > 0 else 0
+    win_rate = (winning_trades_count / valid_trade_count) if valid_trade_count > 0 else 0
+    avg_trade_roi = (sum_trade_roi / valid_trade_count) if valid_trade_count > 0 else 0
+    avg_profit = (total_profit / valid_trade_count) if valid_trade_count > 0 else 0
+    profit_factor = (gross_profit / gross_loss) if gross_loss > 0 else (float('inf') if gross_profit > 0 else 0)
+    avg_win = (sum_wins / winning_trades_count) if winning_trades_count > 0 else 0
+    avg_loss = (sum_losses / losing_trades_count) if losing_trades_count > 0 else 0
+    expectancy = avg_profit
+    risk_reward_ratio = abs(avg_win / avg_loss) if avg_loss != 0 else (float('inf') if avg_win > 0 else 0)
+
+    # Calculate max drawdown from trade-by-trade equity curve
+    peak = starting_capital
+    max_drawdown = 0.0
+    running_equity = starting_capital
+    for pnl in trade_pnls:
+        running_equity += pnl
+        if running_equity > peak:
+            peak = running_equity
+        elif peak > 0:
+            dd = ((peak - running_equity) / peak) * 100
+            max_drawdown = max(max_drawdown, dd)
+
+    # Normalize all numeric values before building response
+    summary = BacktestSummary(
+        total_profit=_normalize_value(total_profit, 2),
+        realized_profit=_normalize_value(realized_profit, 2),
+        unrealized_profit=_normalize_value(unrealized_profit, 2),
+        avg_profit=_normalize_value(avg_profit, 2),
+        avg_trade_roi=_normalize_value(avg_trade_roi, 2),
+        account_roi=_normalize_value(account_roi, 2),
+        win_rate=_normalize_value(win_rate, 4),
+        final_portfolio_value=_normalize_value(final_portfolio_value, 2),
+        starting_capital=_normalize_value(starting_capital, 2),
+        is_bankrupt=final_portfolio_value <= 0,
+        total_trades=len(req.trades),
+        valid_trades=valid_trade_count,
+        invalid_trades=invalid_trade_count,
+        max_drawdown=_normalize_value(max_drawdown, 2),
+        profit_factor=_normalize_value(profit_factor, 2, 9999.99),
+        winning_trades=winning_trades_count,
+        losing_trades=losing_trades_count,
+        avg_win=_normalize_value(avg_win, 2),
+        avg_loss=_normalize_value(avg_loss, 2),
+        largest_win=_normalize_value(largest_win, 2),
+        largest_loss=_normalize_value(largest_loss, 2),
+        expectancy=_normalize_value(expectancy, 2),
+        risk_reward_ratio=_normalize_value(risk_reward_ratio, 2, 9999.99)
+    )
+
+    logger.info(f"=== BACKTEST COMPLETE: {valid_trade_count} valid, {invalid_trade_count} invalid ===")
+    logger.info(f"Total PnL: ${total_profit:.2f}, Account ROI: {account_roi:.2f}%, Win Rate: {win_rate*100:.1f}%")
+
+    # =========================================================================
+    # COMPUTE CHART DATA (moved from frontend for performance)
+    # =========================================================================
+    logger.info("Computing chart data on backend...")
+
+    # Filter valid simulations that have ledger data
+    valid_sims = [(i, sim) for i, sim in enumerate(simulations) if sim.ledger and not sim.error]
+
+    chart_data_rows: List[dict] = []
+    cumulative_chart_rows: List[dict] = []
+
+    if valid_sims:
+        # Collect all unique timestamps and build indexed ledgers for O(1) lookup
+        all_timestamps: set = set()
+        # Pre-index ledgers by timestamp for O(1) lookup instead of O(n) search
+        indexed_ledgers: List[dict] = []  # List of {ts: ledger_point} dicts
+        sorted_ledger_timestamps: List[list] = []  # Pre-sorted timestamps for each trade
+
+        for valid_idx, sim in valid_sims:
+            ledger_index = {}
+            for pt in sim.ledger:
+                all_timestamps.add(pt.ts)
+                ledger_index[pt.ts] = pt
+            indexed_ledgers.append(ledger_index)
+            sorted_ledger_timestamps.append(sorted(ledger_index.keys()))  # Sort ONCE per trade
+
+        sorted_timestamps = sorted(all_timestamps)
+        logger.info(f"Chart data: {len(sorted_timestamps)} timestamps, {len(valid_sims)} valid trades")
+
+        # Downsample timestamps if too many (limit to ~2000 points for reasonable response size)
+        MAX_CHART_POINTS = 2000
+        if len(sorted_timestamps) > MAX_CHART_POINTS:
+            step = len(sorted_timestamps) // MAX_CHART_POINTS
+            sorted_timestamps = sorted_timestamps[::step]
+            logger.info(f"Downsampled to {len(sorted_timestamps)} chart points (step={step})")
+
+        # Timeframe threshold for interpolation (4 hours = 14400 seconds)
+        max_time_diff = max(req.timeframe_minutes * 60 * 2, 14400) if req.timeframe_minutes else 14400
+
+        # Build chart rows efficiently
+        for ts in sorted_timestamps:
+            row = {"ts": ts, "date": datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M')}
+            has_data = False
+
+            for idx, (valid_idx, sim) in enumerate(valid_sims):
+                trade_id = f"{sim.token}_{valid_idx}"
+                ledger_index = indexed_ledgers[idx]
+
+                # Try exact match first (O(1))
+                if ts in ledger_index:
+                    pt = ledger_index[ts]
+                    row[trade_id] = _normalize_value(pt.value + pt.realized, 2)
+                    has_data = True
+                else:
+                    # Find closest timestamp using binary search on PRE-SORTED list
+                    ledger_ts_list = sorted_ledger_timestamps[idx]  # Already sorted!
+                    if ledger_ts_list:
+                        # Binary search for closest
+                        pos = bisect.bisect_left(ledger_ts_list, ts)
+
+                        # Check neighbors
+                        candidates = []
+                        if pos > 0:
+                            candidates.append(ledger_ts_list[pos - 1])
+                        if pos < len(ledger_ts_list):
+                            candidates.append(ledger_ts_list[pos])
+
+                        if candidates:
+                            closest_ts = min(candidates, key=lambda x: abs(x - ts))
+                            if abs(closest_ts - ts) <= max_time_diff:
+                                pt = ledger_index[closest_ts]
+                                row[trade_id] = _normalize_value(pt.value + pt.realized, 2)
+                                has_data = True
+
+            if has_data:
+                chart_data_rows.append(row)
+
+        # Compute cumulative chart data
+        for row in chart_data_rows:
+            trade_keys = [k for k in row.keys() if k not in ('ts', 'date') and '_' in k]
+            total_position_value = 0.0
+            active_positions = 0
+
+            for key in trade_keys:
+                val = row.get(key)
+                if val is not None and not math.isnan(val):
+                    total_position_value += val
+                    active_positions += 1
+
+            capital_deployed = req.amount_usd * active_positions
+            cash_not_deployed = max(0, starting_capital - capital_deployed)
+            total_equity = total_position_value + cash_not_deployed
+
+            cum_row = {**row, "cumulative": _normalize_value(total_equity, 2)}
+            cumulative_chart_rows.append(cum_row)
+
+        logger.info(f"Chart data computed: {len(chart_data_rows)} rows")
+
+    # =========================================================================
+    # COMPUTE PER-CALLER STATS (moved from frontend for performance)
+    # =========================================================================
+    logger.info("Computing per-caller stats on backend...")
+
+    # Build token -> caller mapping from request trades
+    token_to_caller: Dict[str, str] = {}
+    for trade in req.trades:
+        token_to_caller[trade.token] = getattr(trade, 'caller', 'Unknown') or 'Unknown'
+
+    caller_stats_map: Dict[str, dict] = {}
+
+    # Process valid breakdowns
+    for breakdown in breakdowns:
+        caller = token_to_caller.get(breakdown.token, 'Unknown')
+        token_profit = breakdown.total_pnl or 0
+        trade_capital = breakdown.trade_capital or req.amount_usd
+        trade_roi = breakdown.trade_roi or (token_profit / trade_capital * 100 if trade_capital > 0 else 0)
+
+        if caller not in caller_stats_map:
+            caller_stats_map[caller] = {
+                'total_trades': 0, 'valid_trades': 0, 'winning_trades': 0, 'losing_trades': 0,
+                'total_pnl': 0.0, 'sum_roi': 0.0, 'gross_profit': 0.0, 'gross_loss': 0.0,
+                'sum_wins': 0.0, 'sum_losses': 0.0, 'largest_win': 0.0, 'largest_loss': 0.0
+            }
+
+        stats = caller_stats_map[caller]
+        stats['total_trades'] += 1
+
+        if breakdown.is_valid:
+            stats['valid_trades'] += 1
+            stats['total_pnl'] += token_profit
+            stats['sum_roi'] += trade_roi
+
+            if token_profit > 0:
+                stats['winning_trades'] += 1
+                stats['gross_profit'] += token_profit
+                stats['sum_wins'] += token_profit
+                stats['largest_win'] = max(stats['largest_win'], token_profit)
+            elif token_profit < 0:
+                stats['losing_trades'] += 1
+                stats['gross_loss'] += abs(token_profit)
+                stats['sum_losses'] += token_profit
+                stats['largest_loss'] = min(stats['largest_loss'], token_profit)
+
+    # Convert to CallerStats list
+    caller_stats_list: List[CallerStats] = []
+    for caller, stats in caller_stats_map.items():
+        valid = stats['valid_trades']
+        winning = stats['winning_trades']
+        losing = stats['losing_trades']
+
+        caller_stats_list.append(CallerStats(
+            caller=caller,
+            total_trades=stats['total_trades'],
+            valid_trades=valid,
+            winning_trades=winning,
+            losing_trades=losing,
+            total_pnl=_normalize_value(stats['total_pnl'], 2),
+            avg_trade_roi=_normalize_value(stats['sum_roi'] / valid, 2) if valid > 0 else 0,
+            win_rate=_normalize_value(winning / valid, 4) if valid > 0 else 0,
+            profit_factor=_normalize_value(stats['gross_profit'] / stats['gross_loss'], 2) if stats['gross_loss'] > 0 else (9999.99 if stats['gross_profit'] > 0 else 0),
+            avg_win=_normalize_value(stats['sum_wins'] / winning, 2) if winning > 0 else 0,
+            avg_loss=_normalize_value(stats['sum_losses'] / losing, 2) if losing > 0 else 0,
+            largest_win=_normalize_value(stats['largest_win'], 2),
+            largest_loss=_normalize_value(stats['largest_loss'], 2)
+        ))
+
+    # Sort by total PnL descending
+    caller_stats_list.sort(key=lambda x: x.total_pnl, reverse=True)
+    logger.info(f"Caller stats computed: {len(caller_stats_list)} callers")
+
+    return BacktestResponse(
+        summary=summary,
+        breakdowns=breakdowns,
+        simulations=simulations,
+        chart_data=chart_data_rows,
+        cumulative_chart_data=cumulative_chart_rows,
+        caller_stats=caller_stats_list
+    )
+
+
+@app.post("/api/simulate/breakdown/dynamodb/trades", response_model=List[TokenBreakdown])
+async def simulate_breakdown_from_dynamodb_trades(req: TradeBasedSimulationRequest) -> List[TokenBreakdown]:
+    """
+    Trade-based breakdown endpoint that uses ONLY DynamoDB data - zero external API calls.
+
+    Returns TokenBreakdown objects with detailed per-trade metrics:
+    - entry_price, final_price, ath_price
+    - total_pnl, realized_pnl, unrealized_pnl
+    - trade_roi, max_drawdown
+    - coins_left, coins_initial, trade_capital, final_value
+    - tps_hit, sls_hit
+    - is_valid, validation_errors
+
+    Each trade starts at its specific date_called timestamp and runs until the most recent
+    price data available in DynamoDB.
+    """
+    logger.info("=== DYNAMODB TRADE-BASED BREAKDOWN REQUEST START ===")
+    logger.info(f"Request trades: {len(req.trades)}")
+    logger.info(f"Request amount_usd: {req.amount_usd}")
+    logger.info(f"Request timeframe_minutes: {req.timeframe_minutes}")
+    logger.info(f"Request use_auto_timeframe: {req.use_auto_timeframe}")
+    logger.info(f"Request tp: {req.tp}")
+    logger.info(f"Request sl: {req.sl}")
+
+    if price_data_table is None:
+        logger.error(f"Price data table '{PRICE_DATA_TABLE}' not available")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Price data table not available. Check DynamoDB configuration."
+        )
+
+    # Validate all tokens
+    bad = [t.token for t in req.trades if not is_valid_solana_address(t.token)]
+    if bad:
+        logger.error(f"Invalid Solana address(es): {', '.join(bad)}")
+        raise HTTPException(400, f"Invalid Solana address(es): {', '.join(bad)}")
+
+    # Parse ladder levels
+    logger.info("Parsing ladder levels...")
+    tp_r, tp_s = _parse_ladder(req.tp)
+    sl_r, sl_s = _parse_ladder(req.sl)
+    logger.info(f"TP ratios: {tp_r}, TP sizes: {tp_s}")
+    logger.info(f"SL ratios: {sl_r}, SL sizes: {sl_s}")
+
+    out: List[TokenBreakdown] = []
+
+    # Process each trade
+    for trade in req.trades:
+        ca = trade.token
+        logger.info(f"=== Processing trade breakdown: {ca} (called at {trade.date_called}) ===")
+
+        try:
+            # Parse date_called to timestamp
+            start_ts = None
+            try:
+                date_called_dt = datetime.fromisoformat(trade.date_called.replace('Z', '+00:00'))
+                start_ts = int(date_called_dt.timestamp())
+                logger.info(f"Trade call timestamp: {start_ts} ({date_called_dt})")
+            except Exception as e:
+                logger.error(f"Invalid date_called format for {ca}: {trade.date_called}")
+                out.append(TokenBreakdown(
+                    token=ca,
+                    time_called=trade.date_called,
+                    is_valid=False,
+                    validation_errors=["Invalid date format"],
+                    error=f"Invalid date format: {trade.date_called}"
+                ))
+                continue
+
+            # Fetch all price history from DynamoDB
+            logger.info(f"Fetching price history from DynamoDB for {ca}...")
+            df_price = fetch_price_history_from_dynamodb(ca)
+
+            if df_price.empty:
+                logger.warning(f"No price data found in DynamoDB for {ca}")
+                out.append(TokenBreakdown(
+                    token=ca,
+                    time_called=trade.date_called,
+                    is_valid=False,
+                    validation_errors=["No price data available in DynamoDB"],
+                    error="No price data available in DynamoDB"
+                ))
+                continue
+
+            # Filter to only include data from date_called onwards
+            df_price_filtered = df_price[df_price['timestamp'] >= start_ts].copy()
+
+            if df_price_filtered.empty:
+                logger.warning(f"No price data after {trade.date_called} for {ca}")
+                out.append(TokenBreakdown(
+                    token=ca,
+                    time_called=trade.date_called,
+                    is_valid=False,
+                    validation_errors=[f"No price data after trade call date {trade.date_called}"],
+                    error=f"No price data available after trade call date {trade.date_called}"
+                ))
+                continue
+
+            if len(df_price_filtered) < 10:
+                logger.warning(f"Not enough data after {trade.date_called} for {ca}: {len(df_price_filtered)} points (need >= 10)")
+                out.append(TokenBreakdown(
+                    token=ca,
+                    time_called=trade.date_called,
+                    is_valid=False,
+                    validation_errors=[f"Not enough data points: {len(df_price_filtered)} (need >= 10)"],
+                    error=f"Not enough data points after call date: {len(df_price_filtered)} (need >= 10)"
+                ))
+                continue
+
+            logger.info(f"Found {len(df_price_filtered)} price points after {trade.date_called}")
+
+            # Calculate key price metrics from filtered data
+            prices = df_price_filtered['price'].tolist()
+            entry_price = float(prices[0])
+            final_price = float(prices[-1])
+            ath_price = float(max(prices))
+            ath_percentage = ((ath_price - entry_price) / entry_price) * 100 if entry_price > 0 else 0
+
+            # Validate prices
+            if entry_price <= 0 or final_price <= 0:
+                logger.error(f"Invalid prices for {ca}: entry={entry_price}, final={final_price}")
+                out.append(TokenBreakdown(
+                    token=ca,
+                    time_called=trade.date_called,
+                    entry_price=entry_price,
+                    final_price=final_price,
+                    is_valid=False,
+                    validation_errors=["Entry or final price is non-positive"],
+                    error="Invalid price data (non-positive values)"
+                ))
+                continue
+
+            # Convert to OHLC format
+            logger.info(f"Converting {len(df_price_filtered)} price points to OHLC format...")
+            df_ohlc = convert_price_data_to_ohlc(df_price_filtered)
+
+            if df_ohlc.empty:
+                logger.error(f"Failed to convert price data to OHLC for {ca}")
+                out.append(TokenBreakdown(
+                    token=ca,
+                    time_called=trade.date_called,
+                    entry_price=entry_price,
+                    final_price=final_price,
+                    is_valid=False,
+                    validation_errors=["Failed to convert to OHLC"],
+                    error="Failed to convert to OHLC"
+                ))
+                continue
+
+            # Run simulation
+            logger.info(f"Running simulation for {ca}...")
+            sim = run_simulation_with_ledger(
+                df_ohlc,
+                req.amount_usd,
+                final_price,
+                tp_r,
+                tp_s,
+                sl_r,
+                sl_s,
+            )
+
+            # Extract results with proper calculations
+            trade_capital = sim.get("trade_capital", req.amount_usd)
+            realized_pnl = sim.get("realized_profit", 0.0)
+            unrealized_pnl = sim.get("unrealized_profit", 0.0)
+            total_pnl = sim.get("total_pnl", realized_pnl + unrealized_pnl)
+            coins_left = sim.get("coins_left", 0.0)
+            coins_initial = sim.get("coins_initial", 0.0)
+            final_equity = sim.get("final_equity", trade_capital + total_pnl)
+
+            # Trade ROI calculation
+            trade_roi = (total_pnl / trade_capital * 100) if trade_capital > 0 else 0.0
+
+            # Calculate max drawdown from ledger
+            ledger = sim.get("ledger", [])
+            max_drawdown = 0.0
+
+            if ledger:
+                peak_value = trade_capital
+                for entry in ledger:
+                    current_value = entry.get("value", 0.0) + entry.get("realized", 0.0)
+                    if current_value > peak_value:
+                        peak_value = current_value
+                    else:
+                        drawdown = (peak_value - current_value) / peak_value if peak_value > 0 else 0
+                        max_drawdown = max(max_drawdown, drawdown)
+
+            # Create unique trade ID
+            trade_id = f"{ca}_{start_ts}"
+
+            breakdown = TokenBreakdown(
+                token=ca,
+                trade_id=trade_id,
+                time_called=trade.date_called,
+                entry_price=round(entry_price, 10),
+                final_price=round(final_price, 10),
+                ath_price=round(ath_price, 10),
+                ath_percentage=round(ath_percentage, 2),
+                total_pnl=round(total_pnl, 6),
+                realized_pnl=round(realized_pnl, 6),
+                unrealized_pnl=round(unrealized_pnl, 6),
+                coins_left=round(coins_left, 10),
+                coins_initial=round(coins_initial, 10),
+                trade_capital=round(trade_capital, 6),
+                final_value=round(final_equity, 6),
+                max_drawdown=round(max_drawdown * 100, 2),
+                trade_roi=round(trade_roi, 2),
+                roi_to_date=round(trade_roi, 2),
+                is_valid=True,
+                validation_errors=[],
+                tps_hit=sim.get("tps_hit", []),
+                sls_hit=sim.get("sls_hit", [])
+            )
+
+            logger.info(f"Breakdown successful for {ca}")
+            logger.info(f"  Entry: ${entry_price:.8f}, Final: ${final_price:.8f}, ATH: ${ath_price:.8f}")
+            logger.info(f"  Total PnL: ${total_pnl:.2f}, Trade ROI: {trade_roi:.2f}%")
+            logger.info(f"  TPs hit: {sim.get('tps_hit', [])}, SLs hit: {sim.get('sls_hit', [])}")
+
+            out.append(breakdown)
+
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.exception(f"Breakdown failed for {ca}")
+            out.append(TokenBreakdown(
+                token=ca,
+                time_called=trade.date_called,
+                is_valid=False,
+                validation_errors=[str(exc)],
+                error=str(exc)
+            ))
+
+    # Summary
+    logger.info(f"=== DYNAMODB TRADE-BASED BREAKDOWN COMPLETE ===")
+    valid_count = sum(1 for r in out if r.is_valid)
+    invalid_count = sum(1 for r in out if not r.is_valid)
+    logger.info(f"Summary: {valid_count} valid, {invalid_count} invalid out of {len(req.trades)} total trades")
+
+    for result in out:
+        if result.error or not result.is_valid:
+            logger.error(f"  Token {result.token}: INVALID - {result.error}")
+        else:
+            logger.info(f"  Token {result.token}: VALID - Trade ROI: {result.trade_roi:.2f}%, Total PnL: ${result.total_pnl:.2f}")
+
+    return out
+
 
 async def try_birdeye_fallback(session: aiohttp.ClientSession, token: str) -> Optional[TokenPriceResult]:
     """

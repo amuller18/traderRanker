@@ -3141,6 +3141,7 @@ async def run_backtest_dynamodb(req: TradeBasedSimulationRequest) -> BacktestRes
         all_timestamps: set = set()
         # Pre-index ledgers by timestamp for O(1) lookup instead of O(n) search
         indexed_ledgers: List[dict] = []  # List of {ts: ledger_point} dicts
+        sorted_ledger_timestamps: List[list] = []  # Pre-sorted timestamps for each trade
 
         for valid_idx, sim in valid_sims:
             ledger_index = {}
@@ -3148,6 +3149,7 @@ async def run_backtest_dynamodb(req: TradeBasedSimulationRequest) -> BacktestRes
                 all_timestamps.add(pt.ts)
                 ledger_index[pt.ts] = pt
             indexed_ledgers.append(ledger_index)
+            sorted_ledger_timestamps.append(sorted(ledger_index.keys()))  # Sort ONCE per trade
 
         sorted_timestamps = sorted(all_timestamps)
         logger.info(f"Chart data: {len(sorted_timestamps)} timestamps, {len(valid_sims)} valid trades")
@@ -3170,18 +3172,18 @@ async def run_backtest_dynamodb(req: TradeBasedSimulationRequest) -> BacktestRes
                     row[trade_id] = _normalize_value(pt.value + pt.realized, 2)
                     has_data = True
                 else:
-                    # Find closest timestamp using binary search
-                    ledger_timestamps = sorted(ledger_index.keys())
-                    if ledger_timestamps:
+                    # Find closest timestamp using binary search on PRE-SORTED list
+                    ledger_ts_list = sorted_ledger_timestamps[idx]  # Already sorted!
+                    if ledger_ts_list:
                         # Binary search for closest
-                        pos = bisect.bisect_left(ledger_timestamps, ts)
+                        pos = bisect.bisect_left(ledger_ts_list, ts)
 
                         # Check neighbors
                         candidates = []
                         if pos > 0:
-                            candidates.append(ledger_timestamps[pos - 1])
-                        if pos < len(ledger_timestamps):
-                            candidates.append(ledger_timestamps[pos])
+                            candidates.append(ledger_ts_list[pos - 1])
+                        if pos < len(ledger_ts_list):
+                            candidates.append(ledger_ts_list[pos])
 
                         if candidates:
                             closest_ts = min(candidates, key=lambda x: abs(x - ts))

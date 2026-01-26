@@ -482,7 +482,8 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
     const tradesPayload = {
       trades: tradesToProcess.map(trade => ({
         token: trade.ca,
-        date_called: trade.date_called
+        date_called: trade.date_called,
+        caller: trade.caller || 'Unknown'
       })),
       amount_usd: positionSizePerTrade, // Position size per trade
       initial_capital: initialCapital,   // Total account capital for ROI calculations
@@ -510,7 +511,14 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
       }
 
       const data = await response.json();
-      const { summary: apiSummary, breakdowns, simulations } = data;
+      const {
+        summary: apiSummary,
+        breakdowns,
+        simulations,
+        chart_data: apiChartData,
+        cumulative_chart_data: apiCumChartData,
+        caller_stats: apiCallerStats
+      } = data;
 
       // Separate valid and invalid breakdowns for display
       const validBreakdowns = breakdowns.filter((b: TokenBreakdown) => b.is_valid !== false && !b.error);
@@ -519,212 +527,35 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
       // Set token breakdown for display
       setTokenBreakdown([...validBreakdowns, ...invalidBreakdowns]);
 
-      // Filter valid simulations for charts
-      const validSims = simulations.filter((sim: SimulationResult) => sim.ledger?.length && !sim.error);
-      console.log(`Processing ${validSims.length} valid simulations for charts`);
-
-      /* ─ compute charts from simulation ledgers ─*/
-      const rows: any[] = [];
-
-      const allTimestamps = new Set<number>();
-
-      // Create a mapping of unique identifiers for each VALID trade
-      const tradeIdentifiers: string[] = [];
-      const tradeIdToSimIndex: Map<string, number> = new Map();
-
-      validSims.forEach((sim, validIndex) => {
-        console.log(`Processing valid simulation ${validIndex + 1}/${validSims.length}: ${sim.token}`);
-        console.log(`Token ${sim.token}: ${sim.ledger!.length} ledger points`);
-
-        // Create unique identifier for this trade
-        const tradeId = `${sim.token}_${validIndex}`;
-        tradeIdentifiers.push(tradeId);
-        tradeIdToSimIndex.set(tradeId, validIndex);
-
-        // Collect all timestamps from all valid trades
-        sim.ledger!.forEach((pt) => {
-          allTimestamps.add(pt.ts);
-        });
-      });
-
-      // Sort timestamps and create chart rows
-      const sortedTimestamps = Array.from(allTimestamps).sort((a, b) => a - b);
-
-      sortedTimestamps.forEach((ts) => {
-        const row: any = { ts, date: formatDate(ts) };
-
-        // Add each VALID token's value at this timestamp
-        // Use timeframe-based threshold (2x the timeframe in seconds, minimum 4 hours)
-        const timeframeMinutes = timeframe === "auto" ? DEFAULT_TIMEFRAME : parseInt(timeframe);
-        const maxTimeDiff = Math.max(timeframeMinutes * 60 * 2, 14400); // 2x timeframe or 4 hours minimum
-
-        validSims.forEach((sim, validIndex) => {
-          if (sim.ledger) {
-            // Find the closest ledger point to this timestamp
-            const closestPoint = sim.ledger.reduce((closest, current) => {
-              return Math.abs(current.ts - ts) < Math.abs(closest.ts - ts) ? current : closest;
-            });
-
-            // Only add if the point is within a reasonable time range
-            if (Math.abs(closestPoint.ts - ts) <= maxTimeDiff) {
-              const tradeId = tradeIdentifiers[validIndex];
-              row[tradeId] = closestPoint.value + closestPoint.realized;
-            }
-          }
-        });
-
-        // Only include rows that have at least one trade with data
-        const hasTradeData = Object.keys(row).some(k => k !== 'ts' && k !== 'date' && row[k] !== undefined);
-        if (hasTradeData) {
-          rows.push(row);
-        }
-      });
-
-      console.log(`Chart has ${rows.length} data points after filtering`);
-
-      // ------------------------------------------------------------------
-      // CUMULATIVE PORTFOLIO CALCULATION (TOTAL EQUITY)
-      // ------------------------------------------------------------------
-      const cumulative: any[] = [];
-
-      rows.forEach((row) => {
-        const tradeKeys = Object.keys(row).filter(
-          (k) => k !== 'ts' && k !== 'date' && k.includes('_')
-        );
-
-        let totalPositionValue = 0;
-        let activePositionsCount = 0;
-        tradeKeys.forEach(tradeKey => {
-          const value = row[tradeKey];
-          if (value !== undefined && value !== null && !isNaN(value)) {
-            totalPositionValue += value;
-            activePositionsCount++;
-          }
-        });
-
-        const capitalDeployed = positionSizePerTrade * activePositionsCount;
-        const cashNotDeployed = Math.max(0, initialCapital - capitalDeployed);
-        const totalEquity = totalPositionValue + cashNotDeployed;
-        cumulative.push({ ...row, cumulative: totalEquity });
-      });
-
-      setChartData(rows);
-      setCumChartData(cumulative);
+      // Use pre-computed chart data from backend (no expensive client-side processing!)
+      console.log(`Received ${apiChartData?.length || 0} chart data points from backend`);
+      setChartData(apiChartData || []);
+      setCumChartData(apiCumChartData || []);
 
       // Calculate duration
       const endTime = performance.now();
       const durationMs = endTime - startTime;
       setBacktestDuration(durationMs);
 
-      // ------------------------------------------------------------------
-      // PER-CALLER PERFORMANCE BREAKDOWN (client-side)
-      // ------------------------------------------------------------------
-      const callerStatsMap = new Map<string, {
-        totalTrades: number;
-        validTrades: number;
-        winningTrades: number;
-        losingTrades: number;
-        totalPnL: number;
-        sumROI: number;
-        grossProfit: number;
-        grossLoss: number;
-        sumWins: number;
-        sumLosses: number;
-        largestWin: number;
-        largestLoss: number;
-      }>();
-
-      const tokenToCallerMap = new Map<string, string>();
-      tradesToProcess.forEach(trade => {
-        tokenToCallerMap.set(trade.ca, trade.caller);
-      });
-
-      validBreakdowns.forEach((breakdown: TokenBreakdown) => {
-        const caller = tokenToCallerMap.get(breakdown.token) || 'Unknown';
-        const tokenProfit = breakdown.total_pnl || 0;
-        const tradeCapital = breakdown.trade_capital || positionSizePerTrade;
-        const tradeROI = breakdown.trade_roi || (tradeCapital > 0 ? (tokenProfit / tradeCapital) * 100 : 0);
-
-        if (!callerStatsMap.has(caller)) {
-          callerStatsMap.set(caller, {
-            totalTrades: 0,
-            validTrades: 0,
-            winningTrades: 0,
-            losingTrades: 0,
-            totalPnL: 0,
-            sumROI: 0,
-            grossProfit: 0,
-            grossLoss: 0,
-            sumWins: 0,
-            sumLosses: 0,
-            largestWin: 0,
-            largestLoss: 0,
-          });
-        }
-
-        const stats = callerStatsMap.get(caller)!;
-        stats.totalTrades++;
-        stats.validTrades++;
-        stats.totalPnL += tokenProfit;
-        stats.sumROI += tradeROI;
-
-        if (tokenProfit > 0) {
-          stats.winningTrades++;
-          stats.grossProfit += tokenProfit;
-          stats.sumWins += tokenProfit;
-          if (tokenProfit > stats.largestWin) stats.largestWin = tokenProfit;
-        } else if (tokenProfit < 0) {
-          stats.losingTrades++;
-          stats.grossLoss += Math.abs(tokenProfit);
-          stats.sumLosses += tokenProfit;
-          if (tokenProfit < stats.largestLoss) stats.largestLoss = tokenProfit;
-        }
-      });
-
-      // Also count invalid trades per caller
-      invalidBreakdowns.forEach((breakdown) => {
-        const caller = tokenToCallerMap.get(breakdown.token) || 'Unknown';
-        if (!callerStatsMap.has(caller)) {
-          callerStatsMap.set(caller, {
-            totalTrades: 0,
-            validTrades: 0,
-            winningTrades: 0,
-            losingTrades: 0,
-            totalPnL: 0,
-            sumROI: 0,
-            grossProfit: 0,
-            grossLoss: 0,
-            sumWins: 0,
-            sumLosses: 0,
-            largestWin: 0,
-            largestLoss: 0,
-          });
-        }
-        callerStatsMap.get(caller)!.totalTrades++;
-      });
-
-      // Convert to CallerStats array
-      const calculatedCallerStats: CallerStats[] = Array.from(callerStatsMap.entries())
-        .map(([caller, stats]) => ({
-          caller,
-          totalTrades: stats.totalTrades,
-          validTrades: stats.validTrades,
-          winningTrades: stats.winningTrades,
-          losingTrades: stats.losingTrades,
-          totalPnL: stats.totalPnL,
-          avgTradeROI: stats.validTrades > 0 ? stats.sumROI / stats.validTrades : 0,
-          winRate: stats.validTrades > 0 ? stats.winningTrades / stats.validTrades : 0,
-          profitFactor: stats.grossLoss > 0 ? stats.grossProfit / stats.grossLoss : (stats.grossProfit > 0 ? Infinity : 0),
-          avgWin: stats.winningTrades > 0 ? stats.sumWins / stats.winningTrades : 0,
-          avgLoss: stats.losingTrades > 0 ? stats.sumLosses / stats.losingTrades : 0,
-          largestWin: stats.largestWin,
-          largestLoss: stats.largestLoss,
-        }))
-        .sort((a, b) => b.totalPnL - a.totalPnL); // Sort by total PnL
-
+      // Use pre-computed caller stats from backend
+      const calculatedCallerStats: CallerStats[] = (apiCallerStats || []).map((cs: any) => ({
+        caller: cs.caller,
+        totalTrades: cs.total_trades,
+        validTrades: cs.valid_trades,
+        winningTrades: cs.winning_trades,
+        losingTrades: cs.losing_trades,
+        totalPnL: cs.total_pnl,
+        avgTradeROI: cs.avg_trade_roi,
+        winRate: cs.win_rate,
+        profitFactor: cs.profit_factor,
+        avgWin: cs.avg_win,
+        avgLoss: cs.avg_loss,
+        largestWin: cs.largest_win,
+        largestLoss: cs.largest_loss,
+      }));
       setCallerStats(calculatedCallerStats);
 
-      console.log(`\n=== PER-CALLER BREAKDOWN ===`);
+      console.log(`\n=== PER-CALLER BREAKDOWN (from backend) ===`);
       calculatedCallerStats.forEach(cs => {
         console.log(`${cs.caller}: ${cs.validTrades} trades, ${(cs.winRate * 100).toFixed(0)}% win rate, $${cs.totalPnL.toFixed(2)} PnL`);
       });

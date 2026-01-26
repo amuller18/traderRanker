@@ -27,6 +27,7 @@ Back-tester FastAPI micro-service (extended, ladder-TP/SL version)
   untouched.
 """
 
+import bisect
 import math
 import asyncio
 import os
@@ -1175,6 +1176,7 @@ class SimulationResult(BaseModel):
 class TradeInfo(BaseModel):
     token: str
     date_called: str  # ISO string format
+    caller: Optional[str] = None  # Caller/source of the trade for per-caller stats
 
 class SimulationRequest(BaseModel):
     tokens: List[str]
@@ -2720,11 +2722,31 @@ class BacktestSummary(BaseModel):
     risk_reward_ratio: float = 0.0
 
 
+class CallerStats(BaseModel):
+    """Per-caller performance statistics."""
+    caller: str
+    total_trades: int = 0
+    valid_trades: int = 0
+    winning_trades: int = 0
+    losing_trades: int = 0
+    total_pnl: float = 0.0
+    avg_trade_roi: float = 0.0
+    win_rate: float = 0.0
+    profit_factor: float = 0.0
+    avg_win: float = 0.0
+    avg_loss: float = 0.0
+    largest_win: float = 0.0
+    largest_loss: float = 0.0
+
+
 class BacktestResponse(BaseModel):
     """Complete backtest response with all data needed by frontend."""
     summary: BacktestSummary
     breakdowns: List[TokenBreakdown]
     simulations: List[SimulationResult]
+    chart_data: List[dict] = []  # Pre-computed chart rows {ts, date, token_0: value, ...}
+    cumulative_chart_data: List[dict] = []  # Chart rows with cumulative equity
+    caller_stats: List[CallerStats] = []  # Per-caller breakdown
 
 
 def _normalize_value(value: float, decimals: int = 2, max_val: float = 9999999.99) -> float:
@@ -3103,7 +3125,175 @@ async def run_backtest_dynamodb(req: TradeBasedSimulationRequest) -> BacktestRes
     logger.info(f"=== BACKTEST COMPLETE: {valid_trade_count} valid, {invalid_trade_count} invalid ===")
     logger.info(f"Total PnL: ${total_profit:.2f}, Account ROI: {account_roi:.2f}%, Win Rate: {win_rate*100:.1f}%")
 
-    return BacktestResponse(summary=summary, breakdowns=breakdowns, simulations=simulations)
+    # =========================================================================
+    # COMPUTE CHART DATA (moved from frontend for performance)
+    # =========================================================================
+    logger.info("Computing chart data on backend...")
+
+    # Filter valid simulations that have ledger data
+    valid_sims = [(i, sim) for i, sim in enumerate(simulations) if sim.ledger and not sim.error]
+
+    chart_data_rows: List[dict] = []
+    cumulative_chart_rows: List[dict] = []
+
+    if valid_sims:
+        # Collect all unique timestamps and build indexed ledgers for O(1) lookup
+        all_timestamps: set = set()
+        # Pre-index ledgers by timestamp for O(1) lookup instead of O(n) search
+        indexed_ledgers: List[dict] = []  # List of {ts: ledger_point} dicts
+
+        for valid_idx, sim in valid_sims:
+            ledger_index = {}
+            for pt in sim.ledger:
+                all_timestamps.add(pt.ts)
+                ledger_index[pt.ts] = pt
+            indexed_ledgers.append(ledger_index)
+
+        sorted_timestamps = sorted(all_timestamps)
+        logger.info(f"Chart data: {len(sorted_timestamps)} timestamps, {len(valid_sims)} valid trades")
+
+        # Timeframe threshold for interpolation (4 hours = 14400 seconds)
+        max_time_diff = max(req.timeframe_minutes * 60 * 2, 14400) if req.timeframe_minutes else 14400
+
+        # Build chart rows efficiently
+        for ts in sorted_timestamps:
+            row = {"ts": ts, "date": datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M')}
+            has_data = False
+
+            for idx, (valid_idx, sim) in enumerate(valid_sims):
+                trade_id = f"{sim.token}_{valid_idx}"
+                ledger_index = indexed_ledgers[idx]
+
+                # Try exact match first (O(1))
+                if ts in ledger_index:
+                    pt = ledger_index[ts]
+                    row[trade_id] = _normalize_value(pt.value + pt.realized, 2)
+                    has_data = True
+                else:
+                    # Find closest timestamp using binary search
+                    ledger_timestamps = sorted(ledger_index.keys())
+                    if ledger_timestamps:
+                        # Binary search for closest
+                        pos = bisect.bisect_left(ledger_timestamps, ts)
+
+                        # Check neighbors
+                        candidates = []
+                        if pos > 0:
+                            candidates.append(ledger_timestamps[pos - 1])
+                        if pos < len(ledger_timestamps):
+                            candidates.append(ledger_timestamps[pos])
+
+                        if candidates:
+                            closest_ts = min(candidates, key=lambda x: abs(x - ts))
+                            if abs(closest_ts - ts) <= max_time_diff:
+                                pt = ledger_index[closest_ts]
+                                row[trade_id] = _normalize_value(pt.value + pt.realized, 2)
+                                has_data = True
+
+            if has_data:
+                chart_data_rows.append(row)
+
+        # Compute cumulative chart data
+        for row in chart_data_rows:
+            trade_keys = [k for k in row.keys() if k not in ('ts', 'date') and '_' in k]
+            total_position_value = 0.0
+            active_positions = 0
+
+            for key in trade_keys:
+                val = row.get(key)
+                if val is not None and not math.isnan(val):
+                    total_position_value += val
+                    active_positions += 1
+
+            capital_deployed = req.amount_usd * active_positions
+            cash_not_deployed = max(0, starting_capital - capital_deployed)
+            total_equity = total_position_value + cash_not_deployed
+
+            cum_row = {**row, "cumulative": _normalize_value(total_equity, 2)}
+            cumulative_chart_rows.append(cum_row)
+
+        logger.info(f"Chart data computed: {len(chart_data_rows)} rows")
+
+    # =========================================================================
+    # COMPUTE PER-CALLER STATS (moved from frontend for performance)
+    # =========================================================================
+    logger.info("Computing per-caller stats on backend...")
+
+    # Build token -> caller mapping from request trades
+    token_to_caller: Dict[str, str] = {}
+    for trade in req.trades:
+        token_to_caller[trade.token] = getattr(trade, 'caller', 'Unknown') or 'Unknown'
+
+    caller_stats_map: Dict[str, dict] = {}
+
+    # Process valid breakdowns
+    for breakdown in breakdowns:
+        caller = token_to_caller.get(breakdown.token, 'Unknown')
+        token_profit = breakdown.total_pnl or 0
+        trade_capital = breakdown.trade_capital or req.amount_usd
+        trade_roi = breakdown.trade_roi or (token_profit / trade_capital * 100 if trade_capital > 0 else 0)
+
+        if caller not in caller_stats_map:
+            caller_stats_map[caller] = {
+                'total_trades': 0, 'valid_trades': 0, 'winning_trades': 0, 'losing_trades': 0,
+                'total_pnl': 0.0, 'sum_roi': 0.0, 'gross_profit': 0.0, 'gross_loss': 0.0,
+                'sum_wins': 0.0, 'sum_losses': 0.0, 'largest_win': 0.0, 'largest_loss': 0.0
+            }
+
+        stats = caller_stats_map[caller]
+        stats['total_trades'] += 1
+
+        if breakdown.is_valid:
+            stats['valid_trades'] += 1
+            stats['total_pnl'] += token_profit
+            stats['sum_roi'] += trade_roi
+
+            if token_profit > 0:
+                stats['winning_trades'] += 1
+                stats['gross_profit'] += token_profit
+                stats['sum_wins'] += token_profit
+                stats['largest_win'] = max(stats['largest_win'], token_profit)
+            elif token_profit < 0:
+                stats['losing_trades'] += 1
+                stats['gross_loss'] += abs(token_profit)
+                stats['sum_losses'] += token_profit
+                stats['largest_loss'] = min(stats['largest_loss'], token_profit)
+
+    # Convert to CallerStats list
+    caller_stats_list: List[CallerStats] = []
+    for caller, stats in caller_stats_map.items():
+        valid = stats['valid_trades']
+        winning = stats['winning_trades']
+        losing = stats['losing_trades']
+
+        caller_stats_list.append(CallerStats(
+            caller=caller,
+            total_trades=stats['total_trades'],
+            valid_trades=valid,
+            winning_trades=winning,
+            losing_trades=losing,
+            total_pnl=_normalize_value(stats['total_pnl'], 2),
+            avg_trade_roi=_normalize_value(stats['sum_roi'] / valid, 2) if valid > 0 else 0,
+            win_rate=_normalize_value(winning / valid, 4) if valid > 0 else 0,
+            profit_factor=_normalize_value(stats['gross_profit'] / stats['gross_loss'], 2) if stats['gross_loss'] > 0 else (9999.99 if stats['gross_profit'] > 0 else 0),
+            avg_win=_normalize_value(stats['sum_wins'] / winning, 2) if winning > 0 else 0,
+            avg_loss=_normalize_value(stats['sum_losses'] / losing, 2) if losing > 0 else 0,
+            largest_win=_normalize_value(stats['largest_win'], 2),
+            largest_loss=_normalize_value(stats['largest_loss'], 2)
+        ))
+
+    # Sort by total PnL descending
+    caller_stats_list.sort(key=lambda x: x.total_pnl, reverse=True)
+    logger.info(f"Caller stats computed: {len(caller_stats_list)} callers")
+
+    return BacktestResponse(
+        summary=summary,
+        breakdowns=breakdowns,
+        simulations=simulations,
+        chart_data=chart_data_rows,
+        cumulative_chart_data=cumulative_chart_rows,
+        caller_stats=caller_stats_list
+    )
 
 
 @app.post("/api/simulate/breakdown/dynamodb/trades", response_model=List[TokenBreakdown])

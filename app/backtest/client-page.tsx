@@ -47,21 +47,6 @@ import {
  * CONSTANTS (frontend defaults aligned with working cURL example)
  * -------------------------------------------------------------------*/
 const DEFAULT_DAYS_BACK = 30; // Increased to 30 days to show more price action
-const DEFAULT_TIMEFRAME = 240; // sends `timeframe_minutes: 240` (4 hours)
-
-// Timeframe options for manual selection
-const TIMEFRAME_OPTIONS = [
-  { value: "auto", label: "Auto (Recommended)" },
-  { value: "1", label: "1 Minute" },
-  { value: "3", label: "3 Minutes" },
-  { value: "5", label: "5 Minutes" },
-  { value: "15", label: "15 Minutes" },
-  { value: "30", label: "30 Minutes" },
-  { value: "60", label: "1 Hour" },
-  { value: "240", label: "4 Hours" },
-  { value: "480", label: "8 Hours" },
-  { value: "1440", label: "1 Day" },
-];
 
 /* ---------------------------------------------------------------------
  * TYPES
@@ -272,8 +257,7 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
     value: 1  // Changed default to 1% per trade
   });
   const [maxBacktests, setMaxBacktests] = useState(100); // New parameter for max backtests
-  const [timeframe, setTimeframe] = useState<string>("240"); // Default to 4 hours
-  const [useAutoTimeframe, setUseAutoTimeframe] = useState<boolean>(true);
+  const [timeframe] = useState<string>("240"); // Fixed to 4 hours
   const [selectedCaller, setSelectedCaller] = useState("all");
   const [visibleTokens, setVisibleTokens] = useState<Set<string>>(new Set());
   const [legendSearch, setLegendSearch] = useState<string>("");
@@ -487,8 +471,8 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
       })),
       amount_usd: positionSizePerTrade, // Position size per trade
       initial_capital: initialCapital,   // Total account capital for ROI calculations
-      timeframe_minutes: timeframe === "auto" ? DEFAULT_TIMEFRAME : parseInt(timeframe),
-      use_auto_timeframe: timeframe === "auto",
+      timeframe_minutes: parseInt(timeframe),
+      use_auto_timeframe: false,
       tp: ladderToString(takeProfits),
       sl: ladderToString(stopLosses)
     } as const;
@@ -654,7 +638,7 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
           • Position size: ${positionSizing.type === "percentage" ? ((initialCapital * positionSizing.value) / 100).toFixed(2) : positionSizing.value.toFixed(2)} per trade
         </span>
         <span className="text-muted-foreground">
-          • Timeframe: {timeframe === "auto" ? "Auto" : TIMEFRAME_OPTIONS.find(opt => opt.value === timeframe)?.label || timeframe}
+          • Timeframe: 4h
         </span>
         {summary && (
           <>
@@ -770,33 +754,7 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                     disabled={isRunning}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Limit number of trades to backtest (0 = no limit)
-                  </p>
-                </div>
-
-                {/* Timeframe */}
-                <div className="space-y-2">
-                  <Label htmlFor="timeframe">Timeframe</Label>
-                  <Select
-                    value={timeframe}
-                    onValueChange={setTimeframe}
-                    disabled={isRunning}
-                  >
-                    <SelectTrigger id="timeframe" disabled={isRunning}>
-                      <SelectValue placeholder="Select timeframe" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {TIMEFRAME_OPTIONS.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">
-                    {timeframe === "auto" 
-                      ? "Auto-selects optimal timeframe based on trade duration" 
-                      : "Manual timeframe selection"}
+                    Limit number of trades to backtest
                   </p>
                 </div>
 

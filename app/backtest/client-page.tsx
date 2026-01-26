@@ -30,7 +30,7 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Plus, Minus, RefreshCw, Play, Loader2 } from "lucide-react";
+import { Plus, Minus, RefreshCw, Play, Loader2, Target, ShieldAlert, Trash2 } from "lucide-react";
 import { fetchAllTrades } from "@/lib/api-client";
 import {
   LineChart,
@@ -47,21 +47,6 @@ import {
  * CONSTANTS (frontend defaults aligned with working cURL example)
  * -------------------------------------------------------------------*/
 const DEFAULT_DAYS_BACK = 30; // Increased to 30 days to show more price action
-const DEFAULT_TIMEFRAME = 240; // sends `timeframe_minutes: 240` (4 hours)
-
-// Timeframe options for manual selection
-const TIMEFRAME_OPTIONS = [
-  { value: "auto", label: "Auto (Recommended)" },
-  { value: "1", label: "1 Minute" },
-  { value: "3", label: "3 Minutes" },
-  { value: "5", label: "5 Minutes" },
-  { value: "15", label: "15 Minutes" },
-  { value: "30", label: "30 Minutes" },
-  { value: "60", label: "1 Hour" },
-  { value: "240", label: "4 Hours" },
-  { value: "480", label: "8 Hours" },
-  { value: "1440", label: "1 Day" },
-];
 
 /* ---------------------------------------------------------------------
  * TYPES
@@ -272,8 +257,7 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
     value: 1  // Changed default to 1% per trade
   });
   const [maxBacktests, setMaxBacktests] = useState(100); // New parameter for max backtests
-  const [timeframe, setTimeframe] = useState<string>("240"); // Default to 4 hours
-  const [useAutoTimeframe, setUseAutoTimeframe] = useState<boolean>(true);
+  const [timeframe] = useState<string>("240"); // Fixed to 4 hours
   const [selectedCaller, setSelectedCaller] = useState("all");
   const [visibleTokens, setVisibleTokens] = useState<Set<string>>(new Set());
   const [legendSearch, setLegendSearch] = useState<string>("");
@@ -487,8 +471,8 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
       })),
       amount_usd: positionSizePerTrade, // Position size per trade
       initial_capital: initialCapital,   // Total account capital for ROI calculations
-      timeframe_minutes: timeframe === "auto" ? DEFAULT_TIMEFRAME : parseInt(timeframe),
-      use_auto_timeframe: timeframe === "auto",
+      timeframe_minutes: parseInt(timeframe),
+      use_auto_timeframe: false,
       tp: ladderToString(takeProfits),
       sl: ladderToString(stopLosses)
     } as const;
@@ -654,7 +638,7 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
           • Position size: ${positionSizing.type === "percentage" ? ((initialCapital * positionSizing.value) / 100).toFixed(2) : positionSizing.value.toFixed(2)} per trade
         </span>
         <span className="text-muted-foreground">
-          • Timeframe: {timeframe === "auto" ? "Auto" : TIMEFRAME_OPTIONS.find(opt => opt.value === timeframe)?.label || timeframe}
+          • Timeframe: 4h
         </span>
         {summary && (
           <>
@@ -770,33 +754,7 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                     disabled={isRunning}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Limit number of trades to backtest (0 = no limit)
-                  </p>
-                </div>
-
-                {/* Timeframe */}
-                <div className="space-y-2">
-                  <Label htmlFor="timeframe">Timeframe</Label>
-                  <Select
-                    value={timeframe}
-                    onValueChange={setTimeframe}
-                    disabled={isRunning}
-                  >
-                    <SelectTrigger id="timeframe" disabled={isRunning}>
-                      <SelectValue placeholder="Select timeframe" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {TIMEFRAME_OPTIONS.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">
-                    {timeframe === "auto" 
-                      ? "Auto-selects optimal timeframe based on trade duration" 
-                      : "Manual timeframe selection"}
+                    Limit number of trades to backtest
                   </p>
                 </div>
 
@@ -841,68 +799,92 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
               </div>
 
               {/* LADDERS */}
-              <Accordion type="multiple" className="w-full">
+              <Accordion type="multiple" defaultValue={["tp", "sl"]} className="w-full space-y-4">
                 {/* TP accordion */}
-                <AccordionItem value="tp">
-                  <div className="flex items-center justify-between border-b px-4 py-2">
-                    <AccordionTrigger className="flex-1 text-left">
-                      Take‑profit ladder
-                    </AccordionTrigger>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setTakeProfits([])}
-                      className="text-xs text-muted-foreground hover:text-destructive"
-                      disabled={isRunning}
-                    >
-                      Clear all
-                    </Button>
-                  </div>
-                  <AccordionContent className="space-y-4">
-                    {takeProfits.map((lvl, idx) => (
-                      <div
-                        key={idx}
-                        className="flex flex-wrap items-center gap-2"
-                      >
-                        <Input
-                          type="number"
-                          step={1}
-                          value={lvl.percentage}
-                          onChange={(e) =>
-                            handleTPChange(idx, "percentage", Number(e.target.value))
-                          }
-                          className="w-24"
-                          disabled={isRunning}
-                        />
-                        <span>% gain → sell</span>
-                        <Input
-                          type="number"
-                          step={1}
-                          value={lvl.sellPercentage}
-                          onChange={(e) =>
-                            handleTPChange(idx, "sellPercentage", Number(e.target.value))
-                          }
-                          className="w-24"
-                          disabled={isRunning}
-                        />
-                        <span>% tokens</span>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() =>
-                            setTakeProfits((prev) =>
-                              prev.filter((_, i) => i !== idx)
-                            )
-                          }
-                          disabled={isRunning}
-                        >
-                          <Minus className="w-4 h-4" />
-                        </Button>
+                <AccordionItem value="tp" className="border rounded-lg overflow-hidden">
+                  <div className="flex items-center justify-between bg-emerald-500/10 px-4 py-3">
+                    <AccordionTrigger className="flex-1 text-left hover:no-underline">
+                      <div className="flex items-center gap-2">
+                        <Target className="w-4 h-4 text-emerald-500" />
+                        <span className="font-medium">Take Profit Ladder</span>
+                        <span className="text-xs text-muted-foreground ml-2">
+                          ({takeProfits.length} level{takeProfits.length !== 1 ? 's' : ''})
+                        </span>
                       </div>
-                    ))}
+                    </AccordionTrigger>
+                    {takeProfits.length > 0 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => { e.stopPropagation(); setTakeProfits([]); }}
+                        className="text-xs text-muted-foreground hover:text-destructive h-7 px-2"
+                        disabled={isRunning}
+                      >
+                        <Trash2 className="w-3 h-3 mr-1" />
+                        Clear
+                      </Button>
+                    )}
+                  </div>
+                  <AccordionContent className="p-4 pt-3">
+                    {takeProfits.length > 0 && (
+                      <div className="grid grid-cols-[1fr_1fr_auto] gap-x-4 gap-y-1 mb-3">
+                        <Label className="text-xs text-muted-foreground">Price Gain %</Label>
+                        <Label className="text-xs text-muted-foreground">Sell % of Position</Label>
+                        <div className="w-8" />
+                      </div>
+                    )}
+                    <div className="space-y-2">
+                      {takeProfits.map((lvl, idx) => (
+                        <div
+                          key={idx}
+                          className="grid grid-cols-[1fr_1fr_auto] gap-x-4 items-center"
+                        >
+                          <div className="relative">
+                            <Input
+                              type="number"
+                              step={1}
+                              value={lvl.percentage}
+                              onChange={(e) =>
+                                handleTPChange(idx, "percentage", Number(e.target.value))
+                              }
+                              className="pr-7"
+                              disabled={isRunning}
+                            />
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+                          </div>
+                          <div className="relative">
+                            <Input
+                              type="number"
+                              step={1}
+                              value={lvl.sellPercentage}
+                              onChange={(e) =>
+                                handleTPChange(idx, "sellPercentage", Number(e.target.value))
+                              }
+                              className="pr-7"
+                              disabled={isRunning}
+                            />
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                            onClick={() =>
+                              setTakeProfits((prev) =>
+                                prev.filter((_, i) => i !== idx)
+                              )
+                            }
+                            disabled={isRunning}
+                          >
+                            <Minus className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
                     <Button
                       variant="outline"
                       size="sm"
+                      className="mt-3 w-full border-dashed"
                       onClick={() =>
                         setTakeProfits((prev) => [
                           ...prev,
@@ -911,72 +893,96 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                       }
                       disabled={isRunning}
                     >
-                      <Plus className="w-4 h-4 mr-1" /> Add level
+                      <Plus className="w-4 h-4 mr-1" /> Add Level
                     </Button>
                   </AccordionContent>
                 </AccordionItem>
 
                 {/* SL accordion */}
-                <AccordionItem value="sl">
-                  <div className="flex items-center justify-between border-b px-4 py-2">
-                    <AccordionTrigger className="flex-1 text-left">
-                      Stop‑loss ladder
-                    </AccordionTrigger>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setStopLosses([])}
-                      className="text-xs text-muted-foreground hover:text-destructive"
-                      disabled={isRunning}
-                    >
-                      Clear all
-                    </Button>
-                  </div>
-                  <AccordionContent className="space-y-4">
-                    {stopLosses.map((lvl, idx) => (
-                      <div
-                        key={idx}
-                        className="flex flex-wrap items-center gap-2"
-                      >
-                        <Input
-                          type="number"
-                          step={1}
-                          value={lvl.percentage}
-                          onChange={(e) =>
-                            handleSLChange(idx, "percentage", Number(e.target.value))
-                          }
-                          className="w-24"
-                          disabled={isRunning}
-                        />
-                        <span>% drop → sell</span>
-                        <Input
-                          type="number"
-                          step={1}
-                          value={lvl.sellPercentage}
-                          onChange={(e) =>
-                            handleSLChange(idx, "sellPercentage", Number(e.target.value))
-                          }
-                          className="w-24"
-                          disabled={isRunning}
-                        />
-                        <span>% tokens</span>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() =>
-                            setStopLosses((prev) =>
-                              prev.filter((_, i) => i !== idx)
-                            )
-                          }
-                          disabled={isRunning}
-                        >
-                          <Minus className="w-4 h-4" />
-                        </Button>
+                <AccordionItem value="sl" className="border rounded-lg overflow-hidden">
+                  <div className="flex items-center justify-between bg-red-500/10 px-4 py-3">
+                    <AccordionTrigger className="flex-1 text-left hover:no-underline">
+                      <div className="flex items-center gap-2">
+                        <ShieldAlert className="w-4 h-4 text-red-500" />
+                        <span className="font-medium">Stop Loss Ladder</span>
+                        <span className="text-xs text-muted-foreground ml-2">
+                          ({stopLosses.length} level{stopLosses.length !== 1 ? 's' : ''})
+                        </span>
                       </div>
-                    ))}
+                    </AccordionTrigger>
+                    {stopLosses.length > 0 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => { e.stopPropagation(); setStopLosses([]); }}
+                        className="text-xs text-muted-foreground hover:text-destructive h-7 px-2"
+                        disabled={isRunning}
+                      >
+                        <Trash2 className="w-3 h-3 mr-1" />
+                        Clear
+                      </Button>
+                    )}
+                  </div>
+                  <AccordionContent className="p-4 pt-3">
+                    {stopLosses.length > 0 && (
+                      <div className="grid grid-cols-[1fr_1fr_auto] gap-x-4 gap-y-1 mb-3">
+                        <Label className="text-xs text-muted-foreground">Price Drop %</Label>
+                        <Label className="text-xs text-muted-foreground">Sell % of Position</Label>
+                        <div className="w-8" />
+                      </div>
+                    )}
+                    <div className="space-y-2">
+                      {stopLosses.map((lvl, idx) => (
+                        <div
+                          key={idx}
+                          className="grid grid-cols-[1fr_1fr_auto] gap-x-4 items-center"
+                        >
+                          <div className="relative">
+                            <Input
+                              type="number"
+                              step={1}
+                              value={lvl.percentage}
+                              onChange={(e) =>
+                                handleSLChange(idx, "percentage", Number(e.target.value))
+                              }
+                              className="pr-7"
+                              disabled={isRunning}
+                            />
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+                          </div>
+                          <div className="relative">
+                            <Input
+                              type="number"
+                              step={1}
+                              value={lvl.sellPercentage}
+                              onChange={(e) =>
+                                handleSLChange(idx, "sellPercentage", Number(e.target.value))
+                              }
+                              className="pr-7"
+                              disabled={isRunning}
+                            />
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                            onClick={() =>
+                              setStopLosses((prev) =>
+                                prev.filter((_, i) => i !== idx)
+                              )
+                            }
+                            disabled={isRunning}
+                          >
+                            <Minus className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
                     <Button
                       variant="outline"
                       size="sm"
+                      className="mt-3 w-full border-dashed"
                       onClick={() =>
                         setStopLosses((prev) => [
                           ...prev,
@@ -985,7 +991,7 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                       }
                       disabled={isRunning}
                     >
-                      <Plus className="w-4 h-4 mr-1" /> Add level
+                      <Plus className="w-4 h-4 mr-1" /> Add Level
                     </Button>
                   </AccordionContent>
                 </AccordionItem>

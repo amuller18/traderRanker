@@ -13,6 +13,13 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  // Disable Fast Refresh (Hot Module Replacement) in development
+  webpackDevMiddleware: (config) => {
+    config.watchOptions = {
+      ignored: ['**/*'],  // Ignore all file changes
+    };
+    return config;
+  },
 }
 
 mergeConfig(nextConfig, userConfig)

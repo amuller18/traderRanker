@@ -3096,13 +3096,13 @@ async def run_backtest_dynamodb(req: TradeBasedSimulationRequest) -> BacktestRes
     tp_r, tp_s = _parse_ladder(req.tp)
     sl_r, sl_s = _parse_ladder(req.sl)
 
-    # STEP 1: Batch fetch all price data in a SINGLE DynamoDB scan
-    # This is much faster than N separate queries (one per token)
+    # STEP 1: Batch fetch all price data using parallel queries (Query per partition)
+    # Each Query targets a specific token's partition key - much faster than a table Scan
     unique_tokens = list(set(t.token for t in req.trades))
-    logger.info(f"Fetching price data for {len(unique_tokens)} unique tokens using SINGLE SCAN...")
+    logger.info(f"Fetching price data for {len(unique_tokens)} unique tokens using PARALLEL QUERIES...")
 
     fetch_start = time.time()
-    price_data_map = await asyncio.to_thread(fetch_all_price_data_single_scan, unique_tokens)
+    price_data_map = await fetch_all_price_data_parallel(unique_tokens)
     fetch_time = time.time() - fetch_start
     logger.info(f"[BACKTEST] Price data fetch completed in {fetch_time:.2f}s")
 

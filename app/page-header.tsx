@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { ThemeToggle } from "@/components/theme-toggle"
-import { TrendingUp, Menu, LogOut, Wallet, Settings } from "lucide-react"
+import { TrendingUp, Menu, LogOut, Wallet, Settings, Star } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Sheet,
@@ -125,6 +125,12 @@ export function PageHeader() {
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
+                  <Link href="/watchlist">
+                    <Star className="mr-2 h-4 w-4" />
+                    <span>Watchlist</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
                   <Link href="/account">
                     <Settings className="mr-2 h-4 w-4" />
                     <span>My Account</span>
@@ -201,14 +207,24 @@ export function PageHeader() {
                   )
                 })}
                 {isAuthenticated && (
-                  <Link
-                    href="/account"
-                    onClick={() => setOpen(false)}
-                    className="px-4 py-3 rounded-lg text-sm font-medium transition-all text-foreground/70 hover:text-foreground hover:bg-secondary flex items-center gap-2"
-                  >
-                    <Settings className="h-4 w-4" />
-                    My Account
-                  </Link>
+                  <>
+                    <Link
+                      href="/watchlist"
+                      onClick={() => setOpen(false)}
+                      className="px-4 py-3 rounded-lg text-sm font-medium transition-all text-foreground/70 hover:text-foreground hover:bg-secondary flex items-center gap-2"
+                    >
+                      <Star className="h-4 w-4" />
+                      Watchlist
+                    </Link>
+                    <Link
+                      href="/account"
+                      onClick={() => setOpen(false)}
+                      className="px-4 py-3 rounded-lg text-sm font-medium transition-all text-foreground/70 hover:text-foreground hover:bg-secondary flex items-center gap-2"
+                    >
+                      <Settings className="h-4 w-4" />
+                      My Account
+                    </Link>
+                  </>
                 )}
                 <div className="pt-4 border-t space-y-2">
                   {/* Auth Actions (Mobile) */}

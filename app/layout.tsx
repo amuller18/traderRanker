@@ -5,6 +5,7 @@ import { ThemeProvider } from "@/components/theme-provider"
 import { AuthProvider } from "@/lib/auth-context"
 import { WalletProvider } from "@/lib/wallet-context"
 import { DisplayPreferenceProvider } from "@/lib/display-preference-context"
+import { FavoritesProvider } from "@/lib/favorites-context"
 import { Toaster } from "@/components/ui/sonner"
 
 export const metadata: Metadata = {
@@ -25,8 +26,10 @@ export default function RootLayout({
           <AuthProvider>
             <DisplayPreferenceProvider>
               <WalletProvider>
-                {children}
-                <Toaster />
+                <FavoritesProvider>
+                  {children}
+                  <Toaster />
+                </FavoritesProvider>
               </WalletProvider>
             </DisplayPreferenceProvider>
           </AuthProvider>

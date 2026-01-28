@@ -1,9 +1,10 @@
 import Link from "next/link"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
-import { ArrowRight, BarChart3, Trophy, Copy, TrendingUp, Shield, Zap, Users, Star, Sparkles, Target, Activity } from "lucide-react"
+import { ArrowRight, BarChart3, Trophy, Copy, TrendingUp, Shield, Zap, Users, Star, Sparkles, Target, Activity, CheckCircle2 } from "lucide-react"
 import { PageHeader } from "./page-header"
 import { Card, CardContent } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 
 export default function LandingPage() {
   return (
@@ -18,48 +19,47 @@ export default function LandingPage() {
           <div className="absolute bottom-0 left-0 translate-y-12 -translate-x-12 w-[500px] h-[500px] bg-chart-2/10 rounded-full blur-3xl animate-pulse" style={{ animationDuration: "5s" }} />
 
           <div className="container px-4 md:px-6 relative">
-
             <div className="grid gap-8 lg:grid-cols-2 lg:gap-12 items-center">
               <div className="flex flex-col justify-center space-y-6 animate-fade-in">
                 <div className="inline-flex items-center rounded-full border glass px-4 py-1.5 text-sm w-fit shadow-elevated">
                   <Sparkles className="h-4 w-4 mr-2 text-primary animate-pulse" />
-                  <span className="font-semibold">Powered by On-Chain Data</span>
+                  <span className="font-semibold">100% On-Chain Verified Data</span>
                 </div>
                 <div className="space-y-4">
                   <h1 className="text-4xl font-extrabold tracking-tight sm:text-5xl xl:text-6xl/none text-gradient">
-                    Discover & Follow Top Solana Traders
+                    Stop Losing Money.<br />Start Following Winners.
                   </h1>
                   <p className="max-w-[600px] text-muted-foreground text-lg md:text-xl leading-relaxed">
-                    Analyze real-time on-chain data to identify elite traders. Track performance, assess risk management,
-                    and benchmark your trading strategy against the best.
+                    Why guess when you can copy? Find the top 1% of Solana traders, see their exact moves,
+                    and mirror their success—all verified on-chain.
                   </p>
                 </div>
                 <div className="flex flex-col gap-3 sm:flex-row">
                   <Link href="/rankings">
                     <Button size="lg" className="px-8 text-base font-semibold shadow-elevated-lg hover:shadow-elevated-xl transition-all hover-lift">
-                      View Top Rankings <ArrowRight className="ml-2 h-5 w-5" />
+                      Find Winning Traders <ArrowRight className="ml-2 h-5 w-5" />
                     </Button>
                   </Link>
-                  <Link href="/copy-trader">
+                  <Link href="/auth/register">
                     <Button size="lg" variant="outline" className="px-8 text-base font-semibold border-2 hover-lift">
-                      Start Copy Trading
+                      Create Free Account
                     </Button>
                   </Link>
                 </div>
 
                 {/* Social Proof Stats */}
-                <div className="flex flex-wrap gap-6 pt-4">
+                <div className="flex flex-wrap gap-8 pt-6 border-t border-border/50">
                   <div className="flex flex-col">
-                    <div className="text-3xl font-bold">10K+</div>
-                    <div className="text-sm text-muted-foreground">Traders Tracked</div>
+                    <div className="text-3xl font-bold text-primary">10,000+</div>
+                    <div className="text-sm text-muted-foreground">Traders Analyzed</div>
                   </div>
                   <div className="flex flex-col">
-                    <div className="text-3xl font-bold">$50M+</div>
-                    <div className="text-sm text-muted-foreground">Volume Analyzed</div>
+                    <div className="text-3xl font-bold text-primary">$50M+</div>
+                    <div className="text-sm text-muted-foreground">Daily Volume Tracked</div>
                   </div>
                   <div className="flex flex-col">
-                    <div className="text-3xl font-bold">99.9%</div>
-                    <div className="text-sm text-muted-foreground">Uptime</div>
+                    <div className="text-3xl font-bold text-primary">24/7</div>
+                    <div className="text-sm text-muted-foreground">Real-Time Updates</div>
                   </div>
                 </div>
               </div>
@@ -69,16 +69,105 @@ export default function LandingPage() {
                   <div className="relative rounded-2xl overflow-hidden shadow-elevated-xl border glass-card">
                     <Image
                       src="/trading-dashboard.jpg"
-                      alt="TraderRanker Dashboard"
+                      alt="TraderRanker Dashboard showing top performing traders"
                       width={600}
                       height={600}
                       className="rounded-2xl object-cover"
                       priority
                     />
-                    
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Problem/Solution Section */}
+        <section className="w-full py-16 md:py-24 bg-muted/30">
+          <div className="container px-4 md:px-6">
+            <div className="text-center max-w-3xl mx-auto mb-16">
+              <Badge variant="outline" className="mb-4 px-4 py-1">The Problem</Badge>
+              <h2 className="text-3xl font-bold tracking-tight md:text-4xl mb-4">
+                95% of Traders Lose Money. The Top 1% Don&apos;t Share Their Secrets.
+              </h2>
+              <p className="text-muted-foreground text-lg">
+                Until now. TraderRanker pulls every trade directly from the blockchain—no fake screenshots,
+                no cherry-picked results. Just raw, verifiable performance data.
+              </p>
+            </div>
+
+            <div className="grid md:grid-cols-3 gap-8">
+              <Card className="border-destructive/20 bg-destructive/5">
+                <CardContent className="pt-6">
+                  <div className="text-destructive font-semibold mb-2">Without TraderRanker</div>
+                  <ul className="space-y-3 text-muted-foreground">
+                    <li className="flex items-start gap-2">
+                      <span className="text-destructive mt-1">✕</span>
+                      Following random Twitter &quot;gurus&quot;
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-destructive mt-1">✕</span>
+                      Trusting unverified PnL screenshots
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-destructive mt-1">✕</span>
+                      Missing trades while you sleep
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-destructive mt-1">✕</span>
+                      FOMO buying at the top
+                    </li>
+                  </ul>
+                </CardContent>
+              </Card>
+
+              <Card className="border-primary/20 bg-primary/5 md:scale-105 shadow-elevated-lg">
+                <CardContent className="pt-6">
+                  <div className="text-primary font-semibold mb-2">With TraderRanker</div>
+                  <ul className="space-y-3">
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0 mt-0.5" />
+                      <span>Follow verified top performers</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0 mt-0.5" />
+                      <span>100% on-chain proof</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0 mt-0.5" />
+                      <span>Real-time trade alerts</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0 mt-0.5" />
+                      <span>Enter with smart money</span>
+                    </li>
+                  </ul>
+                </CardContent>
+              </Card>
+
+              <Card className="border-success/20 bg-success/5">
+                <CardContent className="pt-6">
+                  <div className="text-success font-semibold mb-2">Your Results</div>
+                  <ul className="space-y-3">
+                    <li className="flex items-start gap-2">
+                      <Star className="h-5 w-5 text-yellow-500 shrink-0 mt-0.5" />
+                      <span>Trade with confidence</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <Star className="h-5 w-5 text-yellow-500 shrink-0 mt-0.5" />
+                      <span>Learn from the best</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <Star className="h-5 w-5 text-yellow-500 shrink-0 mt-0.5" />
+                      <span>Build winning strategies</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <Star className="h-5 w-5 text-yellow-500 shrink-0 mt-0.5" />
+                      <span>Join the top 5%</span>
+                    </li>
+                  </ul>
+                </CardContent>
+              </Card>
             </div>
           </div>
         </section>
@@ -87,11 +176,12 @@ export default function LandingPage() {
         <section className="w-full py-12 md:py-24 lg:py-32 bg-background">
           <div className="container px-4 md:px-6">
             <div className="text-center mb-12">
+              <Badge variant="outline" className="mb-4 px-4 py-1">Features</Badge>
               <h2 className="text-3xl font-bold tracking-tight md:text-4xl mb-4">
-                Why Choose TraderRanker?
+                Everything You Need to Trade Smarter
               </h2>
               <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-                Advanced analytics and transparent metrics to help you make informed trading decisions
+                Professional-grade tools that give you the same edge as institutional traders
               </p>
             </div>
 
@@ -100,11 +190,11 @@ export default function LandingPage() {
                 <CardContent className="pt-6">
                   <div className="flex flex-col gap-4">
                     <div className="p-3 bg-primary/10 rounded-xl w-fit group-hover:scale-110 transition-transform">
-                      <BarChart3 className="h-8 w-8 text-primary" />
+                      <Trophy className="h-8 w-8 text-primary" />
                     </div>
-                    <h3 className="text-xl font-bold">Real-Time Analytics</h3>
+                    <h3 className="text-xl font-bold">Elite Trader Rankings</h3>
                     <p className="text-muted-foreground leading-relaxed">
-                      Track performance metrics updated in real-time from on-chain data. Monitor profits, win rates, and risk-adjusted returns.
+                      See who&apos;s actually making money. Ranked by real returns, not followers. Filter by strategy, timeframe, and risk level.
                     </p>
                   </div>
                 </CardContent>
@@ -114,11 +204,11 @@ export default function LandingPage() {
                 <CardContent className="pt-6">
                   <div className="flex flex-col gap-4">
                     <div className="p-3 bg-chart-1/10 rounded-xl w-fit group-hover:scale-110 transition-transform">
-                      <Shield className="h-8 w-8 text-chart-1" />
+                      <BarChart3 className="h-8 w-8 text-chart-1" />
                     </div>
-                    <h3 className="text-xl font-bold">Risk Management</h3>
+                    <h3 className="text-xl font-bold">Deep Trade Analytics</h3>
                     <p className="text-muted-foreground leading-relaxed">
-                      Comprehensive risk metrics including max drawdown, Sharpe ratio, and portfolio volatility analysis.
+                      Every entry, exit, and position size. See exactly how top traders manage their portfolios and time the market.
                     </p>
                   </div>
                 </CardContent>
@@ -128,11 +218,11 @@ export default function LandingPage() {
                 <CardContent className="pt-6">
                   <div className="flex flex-col gap-4">
                     <div className="p-3 bg-success/10 rounded-xl w-fit group-hover:scale-110 transition-transform">
-                      <Trophy className="h-8 w-8 text-success" />
+                      <Shield className="h-8 w-8 text-success" />
                     </div>
-                    <h3 className="text-xl font-bold">Leaderboards</h3>
+                    <h3 className="text-xl font-bold">Risk Intelligence</h3>
                     <p className="text-muted-foreground leading-relaxed">
-                      Compete with top traders and see how your strategy ranks. Filter by timeframe, asset, and trading style.
+                      Max drawdown, win rate, Sharpe ratio—all the metrics that separate gamblers from professionals.
                     </p>
                   </div>
                 </CardContent>
@@ -144,9 +234,9 @@ export default function LandingPage() {
                     <div className="p-3 bg-chart-4/10 rounded-xl w-fit group-hover:scale-110 transition-transform">
                       <Zap className="h-8 w-8 text-chart-4" />
                     </div>
-                    <h3 className="text-xl font-bold">Instant Insights</h3>
+                    <h3 className="text-xl font-bold">Real-Time Alerts</h3>
                     <p className="text-muted-foreground leading-relaxed">
-                      Get actionable insights on trader strategies, position sizing, and market timing patterns.
+                      Get notified the moment your tracked traders make a move. Never miss an opportunity again.
                     </p>
                   </div>
                 </CardContent>
@@ -156,11 +246,11 @@ export default function LandingPage() {
                 <CardContent className="pt-6">
                   <div className="flex flex-col gap-4">
                     <div className="p-3 bg-warning/10 rounded-xl w-fit group-hover:scale-110 transition-transform">
-                      <Users className="h-8 w-8 text-warning" />
+                      <Activity className="h-8 w-8 text-warning" />
                     </div>
-                    <h3 className="text-xl font-bold">Community Driven</h3>
+                    <h3 className="text-xl font-bold">Strategy Backtesting</h3>
                     <p className="text-muted-foreground leading-relaxed">
-                      Join a community of serious traders. Share strategies, learn from the best, and grow together.
+                      Test any strategy against historical data before risking real capital. Know your edge before you trade.
                     </p>
                   </div>
                 </CardContent>
@@ -170,11 +260,11 @@ export default function LandingPage() {
                 <CardContent className="pt-6">
                   <div className="flex flex-col gap-4">
                     <div className="p-3 bg-chart-5/10 rounded-xl w-fit group-hover:scale-110 transition-transform">
-                      <Activity className="h-8 w-8 text-chart-5" />
+                      <Copy className="h-8 w-8 text-chart-5" />
                     </div>
-                    <h3 className="text-xl font-bold">Backtesting Tools</h3>
+                    <h3 className="text-xl font-bold">One-Click Copy Trading</h3>
                     <p className="text-muted-foreground leading-relaxed">
-                      Test strategies against historical data. Validate your approach before risking real capital.
+                      Automatically mirror trades from verified performers. Set your risk, pick your traders, and let it run.
                     </p>
                   </div>
                 </CardContent>
@@ -183,8 +273,8 @@ export default function LandingPage() {
 
             <div className="text-center mt-12">
               <Link href="/rankings">
-                <Button size="lg" variant="outline" className="text-base font-semibold border-2 hover-lift shadow-elevated">
-                  Explore All Features <ArrowRight className="ml-2 h-5 w-5" />
+                <Button size="lg" className="text-base font-semibold hover-lift shadow-elevated">
+                  Start Analyzing Traders <ArrowRight className="ml-2 h-5 w-5" />
                 </Button>
               </Link>
             </div>
@@ -205,7 +295,6 @@ export default function LandingPage() {
                       height={450}
                       className="rounded-2xl object-cover"
                     />
-                    
                   </div>
                 </div>
               </div>
@@ -213,15 +302,15 @@ export default function LandingPage() {
               <div className="order-1 lg:order-2 flex flex-col justify-center space-y-6">
                 <div className="inline-flex items-center rounded-full border glass px-4 py-1.5 text-sm w-fit shadow-elevated">
                   <Sparkles className="h-4 w-4 mr-2 text-chart-1 animate-pulse" />
-                  <span className="font-semibold">Coming Soon</span>
+                  <span className="font-semibold">Now Available</span>
                 </div>
                 <div className="space-y-4">
                   <h2 className="text-3xl font-extrabold tracking-tight md:text-4xl xl:text-5xl">
-                    Automatically Copy Top Traders
+                    Why Trade Alone When You Can Copy the Best?
                   </h2>
                   <p className="text-muted-foreground text-lg leading-relaxed">
-                    Mirror the trades of elite performers in real-time. Set your risk parameters, select your traders,
-                    and let our advanced system handle the execution.
+                    Select verified traders with proven track records. Set your risk limits. Watch your portfolio
+                    grow while you sleep. It&apos;s that simple.
                   </p>
                 </div>
 
@@ -231,9 +320,9 @@ export default function LandingPage() {
                       <Copy className="h-5 w-5 text-primary" />
                     </div>
                     <div>
-                      <h3 className="font-bold text-lg mb-1">Automated Execution</h3>
+                      <h3 className="font-bold text-lg mb-1">Automatic Execution</h3>
                       <p className="text-muted-foreground leading-relaxed">
-                        Trades execute automatically in your wallet based on your selected traders. No manual intervention needed.
+                        Trades execute in your wallet within seconds. No manual copying, no missed entries.
                       </p>
                     </div>
                   </div>
@@ -243,9 +332,9 @@ export default function LandingPage() {
                       <Target className="h-5 w-5 text-success" />
                     </div>
                     <div>
-                      <h3 className="font-bold text-lg mb-1">Smart Risk Controls</h3>
+                      <h3 className="font-bold text-lg mb-1">You Control the Risk</h3>
                       <p className="text-muted-foreground leading-relaxed">
-                        Configure position limits, stop-losses, and take-profit levels to protect your capital.
+                        Set position limits, stop-losses, and allocation caps. Your rules, their alpha.
                       </p>
                     </div>
                   </div>
@@ -255,9 +344,9 @@ export default function LandingPage() {
                       <Star className="h-5 w-5 text-chart-1" />
                     </div>
                     <div>
-                      <h3 className="font-bold text-lg mb-1">Verified Traders Only</h3>
+                      <h3 className="font-bold text-lg mb-1">Verified Performance Only</h3>
                       <p className="text-muted-foreground leading-relaxed">
-                        Choose from curated traders with proven track records and transparent performance data.
+                        Every trader is ranked by on-chain results. No fake gurus, just real profits.
                       </p>
                     </div>
                   </div>
@@ -266,15 +355,43 @@ export default function LandingPage() {
                 <div className="flex flex-col sm:flex-row gap-3 pt-4">
                   <Link href="/copy-trader">
                     <Button size="lg" className="px-8 text-base font-semibold shadow-elevated-lg hover:shadow-elevated-xl transition-all hover-lift">
-                      Get Early Access <ArrowRight className="ml-2 h-5 w-5" />
+                      Start Copy Trading <ArrowRight className="ml-2 h-5 w-5" />
                     </Button>
                   </Link>
                   <Link href="/rankings">
                     <Button size="lg" variant="outline" className="px-8 text-base font-semibold border-2 hover-lift">
-                      View Top Traders
+                      Browse Top Traders
                     </Button>
                   </Link>
                 </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Pricing Teaser */}
+        <section className="w-full py-16 md:py-24 bg-background">
+          <div className="container px-4 md:px-6">
+            <div className="text-center max-w-3xl mx-auto">
+              <Badge variant="outline" className="mb-4 px-4 py-1">Pricing</Badge>
+              <h2 className="text-3xl font-bold tracking-tight md:text-4xl mb-4">
+                Start Free. Upgrade When You&apos;re Ready.
+              </h2>
+              <p className="text-muted-foreground text-lg mb-8">
+                Track 10 traders and access basic analytics completely free.
+                Need more? Pro plans start at just $39/month.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                <Link href="/auth/register">
+                  <Button size="lg" className="px-8 text-base font-semibold shadow-elevated hover-lift">
+                    Create Free Account
+                  </Button>
+                </Link>
+                <Link href="/pricing">
+                  <Button size="lg" variant="outline" className="px-8 text-base font-semibold border-2 hover-lift">
+                    View All Plans
+                  </Button>
+                </Link>
               </div>
             </div>
           </div>
@@ -286,20 +403,21 @@ export default function LandingPage() {
           <div className="container px-4 md:px-6 relative">
             <div className="flex flex-col items-center text-center space-y-6 max-w-3xl mx-auto">
               <h2 className="text-3xl font-extrabold tracking-tight md:text-4xl xl:text-5xl text-primary-foreground animate-fade-in">
-                Ready to Elevate Your Trading?
+                The Best Traders Are Already Here.<br />Where Are You?
               </h2>
               <p className="text-primary-foreground/90 text-lg md:text-xl max-w-2xl leading-relaxed">
-                Join thousands of traders using TraderRanker to discover opportunities, analyze performance, and learn from the best.
+                Every day you wait is another day of missed opportunities. Join thousands of traders
+                who are already copying the top 1%.
               </p>
               <div className="flex flex-col sm:flex-row gap-4 pt-4">
                 <Link href="/rankings">
                   <Button size="lg" variant="secondary" className="px-10 text-base font-semibold shadow-elevated-xl hover-lift">
-                    Start Exploring Now <ArrowRight className="ml-2 h-5 w-5" />
+                    Find Your First Trader <ArrowRight className="ml-2 h-5 w-5" />
                   </Button>
                 </Link>
-                <Link href="/copy-trader">
+                <Link href="/auth/register">
                   <Button size="lg" variant="outline" className="px-10 text-base font-semibold border-2 border-primary-foreground text-primary-foreground hover:bg-primary-foreground hover:text-primary hover-lift">
-                    Join Waitlist
+                    Sign Up Free
                   </Button>
                 </Link>
               </div>
@@ -319,6 +437,9 @@ export default function LandingPage() {
           &copy; {new Date().getFullYear()} TraderRanker. All rights reserved.
         </p>
         <nav className="sm:ml-auto flex gap-6">
+          <Link href="/pricing" className="text-sm hover:text-primary transition-colors font-medium">
+            Pricing
+          </Link>
           <Link href="#" className="text-sm hover:text-primary transition-colors font-medium">
             Terms of Service
           </Link>
@@ -333,4 +454,3 @@ export default function LandingPage() {
     </div>
   )
 }
-

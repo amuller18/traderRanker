@@ -1,7 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import { PageHeader } from "@/app/page-header"
 import { PageLayout } from "@/app/components/page-layout"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -204,9 +203,7 @@ export default function PricingPage() {
   const [isYearly, setIsYearly] = useState(false)
 
   return (
-    <>
-      <PageHeader />
-      <PageLayout
+    <PageLayout
         title="Simple, Transparent Pricing"
         description="Choose the perfect plan to supercharge your trading analysis"
       >
@@ -460,6 +457,5 @@ export default function PricingPage() {
           </div>
         </div>
       </PageLayout>
-    </>
   )
 }

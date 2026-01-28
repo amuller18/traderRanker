@@ -32,7 +32,7 @@ import math
 import asyncio
 import os
 import time
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 import logging
@@ -1751,16 +1751,114 @@ def fetch_price_history_from_dynamodb(ca: str) -> pd.DataFrame:
         )
 
 
-async def fetch_all_price_data_parallel(tokens: List[str]) -> Dict[str, pd.DataFrame]:
+def fetch_all_price_data_single_scan(tokens: List[str]) -> Dict[str, pd.DataFrame]:
     """
-    Fetch price data for all tokens in parallel.
+    Fetch price data for all tokens in a SINGLE DynamoDB scan operation.
+
+    This is optimized for backtesting where we need data for multiple tokens.
+    Instead of N separate queries, we do 1 scan with a filter expression.
 
     Returns a dict mapping token address to DataFrame.
     """
     if not tokens:
         return {}
 
-    logger.info(f"Batch fetching price data for {len(tokens)} tokens in parallel...")
+    if price_data_table is None:
+        logger.error("Price data table not available")
+        return {}
+
+    start_time = time.time()
+    logger.info(f"[SINGLE SCAN] Fetching price data for {len(tokens)} tokens in ONE query...")
+
+    # Build filter expression: ca IN (token1, token2, ...)
+    # DynamoDB doesn't support IN directly in FilterExpression for large lists,
+    # so we build an OR chain: ca = :ca0 OR ca = :ca1 OR ...
+    token_set = list(set(tokens))  # Deduplicate
+
+    # Build expression attribute values
+    expression_values = {}
+    filter_parts = []
+    for i, token in enumerate(token_set):
+        placeholder = f":ca{i}"
+        expression_values[placeholder] = token
+        filter_parts.append(f"ca = {placeholder}")
+
+    filter_expression = " OR ".join(filter_parts)
+
+    # Execute single scan with filter
+    all_items = []
+    try:
+        response = price_data_table.scan(
+            FilterExpression=filter_expression,
+            ExpressionAttributeValues=expression_values
+        )
+        all_items.extend(response.get('Items', []))
+
+        # Handle pagination
+        page_count = 1
+        while 'LastEvaluatedKey' in response:
+            response = price_data_table.scan(
+                FilterExpression=filter_expression,
+                ExpressionAttributeValues=expression_values,
+                ExclusiveStartKey=response['LastEvaluatedKey']
+            )
+            all_items.extend(response.get('Items', []))
+            page_count += 1
+
+        scan_time = time.time() - start_time
+        logger.info(f"[SINGLE SCAN] Completed in {scan_time:.2f}s - fetched {len(all_items)} price points across {page_count} pages")
+
+    except ClientError as e:
+        logger.error(f"[SINGLE SCAN] DynamoDB error: {e}")
+        return {}
+    except Exception as e:
+        logger.error(f"[SINGLE SCAN] Error: {e}")
+        return {}
+
+    # Group items by CA
+    grouped = defaultdict(list)
+    for item in all_items:
+        ca = item.get('ca')
+        if ca:
+            grouped[ca].append(item)
+
+    # Convert to DataFrames
+    result = {}
+    for ca, items in grouped.items():
+        if items:
+            df = pd.DataFrame(items)
+            df["price"] = df["price"].astype(float)
+            df["timestamp"] = df["timestamp"].astype(int)
+            df = df.sort_values('timestamp')
+            result[ca] = df
+
+    # Fill in empty DataFrames for tokens with no data
+    for token in token_set:
+        if token not in result:
+            result[token] = pd.DataFrame()
+            logger.warning(f"[SINGLE SCAN] No price data found for CA: {token}")
+
+    total_time = time.time() - start_time
+    fetched_count = sum(1 for df in result.values() if not df.empty)
+    logger.info(f"[SINGLE SCAN] Total time: {total_time:.2f}s - {fetched_count}/{len(token_set)} tokens have price data")
+
+    return result
+
+
+async def fetch_all_price_data_parallel(tokens: List[str]) -> Dict[str, pd.DataFrame]:
+    """
+    Fetch price data for all tokens in parallel (legacy method).
+
+    This makes N separate DynamoDB queries (one per token).
+    Kept for comparison - use fetch_all_price_data_single_scan for better performance.
+
+    Returns a dict mapping token address to DataFrame.
+    """
+    if not tokens:
+        return {}
+
+    start_time = time.time()
+    logger.info(f"[PARALLEL] Batch fetching price data for {len(tokens)} tokens in parallel...")
 
     async def fetch_one(token: str) -> tuple:
         try:
@@ -1774,8 +1872,9 @@ async def fetch_all_price_data_parallel(tokens: List[str]) -> Dict[str, pd.DataF
 
     price_data = {token: df for token, df in results}
 
+    total_time = time.time() - start_time
     fetched_count = sum(1 for df in price_data.values() if not df.empty)
-    logger.info(f"Batch fetch complete: {fetched_count}/{len(tokens)} tokens have price data")
+    logger.info(f"[PARALLEL] Batch fetch complete in {total_time:.2f}s: {fetched_count}/{len(tokens)} tokens have price data")
 
     return price_data
 
@@ -2997,11 +3096,15 @@ async def run_backtest_dynamodb(req: TradeBasedSimulationRequest) -> BacktestRes
     tp_r, tp_s = _parse_ladder(req.tp)
     sl_r, sl_s = _parse_ladder(req.sl)
 
-    # STEP 1: Batch fetch all price data in parallel (uses 50 concurrent connections)
+    # STEP 1: Batch fetch all price data in a SINGLE DynamoDB scan
+    # This is much faster than N separate queries (one per token)
     unique_tokens = list(set(t.token for t in req.trades))
-    logger.info(f"Batch fetching price data for {len(unique_tokens)} unique tokens...")
+    logger.info(f"Fetching price data for {len(unique_tokens)} unique tokens using SINGLE SCAN...")
 
-    price_data_map = await fetch_all_price_data_parallel(unique_tokens)
+    fetch_start = time.time()
+    price_data_map = await asyncio.to_thread(fetch_all_price_data_single_scan, unique_tokens)
+    fetch_time = time.time() - fetch_start
+    logger.info(f"[BACKTEST] Price data fetch completed in {fetch_time:.2f}s")
 
     # STEP 2: Process all trades with pre-fetched data (CPU-bound, uses thread pool)
     logger.info(f"Processing {len(req.trades)} trades with pre-fetched data...")

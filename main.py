@@ -195,7 +195,7 @@ try:
     dynamodb_client = boto3.client('dynamodb', **dynamodb_kwargs)
 
     try:
-        dynamodb_dynamodb_client.describe_table(TableName=TRADERS_TABLE)
+        dynamodb_client.describe_table(TableName=TRADERS_TABLE)
         traders_table = dynamodb.Table(TRADERS_TABLE)
         
         logger.info(f" DynamoDB table '{TRADERS_TABLE}' verified and ready")

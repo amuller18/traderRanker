@@ -2954,11 +2954,15 @@ def _process_single_backtest_trade(
                 {"is_valid": False}
             )
 
-        # Prepare price data for simulation (just need 'close' column with timestamp index)
-        # Skip expensive OHLC conversion - use raw price points directly
+        # Prepare price data for simulation - skip expensive OHLC aggregation
+        # Simulation needs: t (datetime), close, high, low columns
+        # For raw price data, high=low=close (single price point per timestamp)
         df_sim = df_price_filtered[['timestamp', 'price']].copy()
-        df_sim = df_sim.rename(columns={'price': 'close'})
-        df_sim = df_sim.set_index('timestamp').sort_index()
+        df_sim['t'] = pd.to_datetime(df_sim['timestamp'], unit='s')
+        df_sim['close'] = df_sim['price']
+        df_sim['high'] = df_sim['price']  # Same as close for raw data
+        df_sim['low'] = df_sim['price']   # Same as close for raw data
+        df_sim = df_sim.sort_values('timestamp')
 
         sim = run_simulation_with_ledger(df_sim, amount_usd, final_price, tp_r, tp_s, sl_r, sl_s)
 

@@ -1965,7 +1965,20 @@ def run_simulation_with_ledger(
     sl_sizes_arr = np.array(sl_sizes, dtype=np.float64)
 
     # Extract numpy arrays for fast processing
-    timestamps = df_ohlc["t"].apply(lambda x: int(x.timestamp())).values.astype(np.int64)
+    # Handle timestamps - if already numeric (int), use directly; if datetime, convert
+    if 't' in df_ohlc.columns:
+        if pd.api.types.is_numeric_dtype(df_ohlc['t']):
+            timestamps = df_ohlc["t"].values.astype(np.int64)
+        else:
+            # Datetime - convert to unix timestamp (SLOW - avoid if possible)
+            timestamps = df_ohlc["t"].apply(lambda x: int(x.timestamp())).values.astype(np.int64)
+    elif 'timestamp' in df_ohlc.columns:
+        # Use timestamp column directly
+        timestamps = df_ohlc["timestamp"].values.astype(np.int64)
+    else:
+        # Use index as timestamp
+        timestamps = df_ohlc.index.values.astype(np.int64)
+
     close_arr = df_ohlc["close"].values.astype(np.float64)
     high_arr = df_ohlc["high"].values.astype(np.float64)
     low_arr = df_ohlc["low"].values.astype(np.float64)
@@ -1996,22 +2009,21 @@ def run_simulation_with_ledger(
         sl_sizes_arr,
     )
 
-    # Build ledger from numpy arrays
-    ledger: List[PositionPoint] = []
-    for i in range(len(ledger_ts)):
-        ledger.append(
-            PositionPoint(
-                ts=int(ledger_ts[i]),
-                value=float(ledger_equity[i]),
-                coins_held=float(ledger_coins[i]),
-                unrealized=float(ledger_unrealized[i]),
-                realized=float(ledger_realized[i]),
-            )
+    # Build ledger from numpy arrays (list comprehension is faster than loop + append)
+    ledger: List[PositionPoint] = [
+        PositionPoint(
+            ts=int(ledger_ts[i]),
+            value=float(ledger_equity[i]),
+            coins_held=float(ledger_coins[i]),
+            unrealized=float(ledger_unrealized[i]),
+            realized=float(ledger_realized[i]),
         )
+        for i in range(len(ledger_ts))
+    ]
 
-    # Convert fired arrays to sets for return values
-    tp_fired = {i for i in range(len(tp_fired_arr)) if tp_fired_arr[i]}
-    sl_fired = {i for i in range(len(sl_fired_arr)) if sl_fired_arr[i]}
+    # Convert fired arrays to sets using numpy (faster than Python iteration)
+    tp_fired = set(np.nonzero(tp_fired_arr)[0].tolist())
+    sl_fired = set(np.nonzero(sl_fired_arr)[0].tolist())
 
     # ---------------------------------------------------------------------- #
     # CRITICAL: Proper PnL Calculations (per specification)
@@ -2935,11 +2947,11 @@ def _process_single_backtest_trade(
                 {"is_valid": False}
             )
 
-        # Calculate price metrics
-        prices = df_price_filtered['price'].tolist()
-        entry_price = float(prices[0])
-        final_price = float(prices[-1])
-        ath_price = float(max(prices))
+        # Calculate price metrics using numpy (faster than Python list)
+        prices_arr = df_price_filtered['price'].values
+        entry_price = float(prices_arr[0])
+        final_price = float(prices_arr[-1])
+        ath_price = float(prices_arr.max())
         ath_percentage = ((ath_price - entry_price) / entry_price) * 100 if entry_price > 0 else 0
 
         if entry_price <= 0 or final_price <= 0:
@@ -2954,15 +2966,16 @@ def _process_single_backtest_trade(
                 {"is_valid": False}
             )
 
-        # Prepare price data for simulation - skip expensive OHLC aggregation
-        # Simulation needs: t (datetime), close, high, low columns
+        # Prepare price data for simulation - use numpy for speed
+        # Simulation needs: timestamp, close, high, low columns
         # For raw price data, high=low=close (single price point per timestamp)
-        df_sim = df_price_filtered[['timestamp', 'price']].copy()
-        df_sim['t'] = pd.to_datetime(df_sim['timestamp'], unit='s')
-        df_sim['close'] = df_sim['price']
-        df_sim['high'] = df_sim['price']  # Same as close for raw data
-        df_sim['low'] = df_sim['price']   # Same as close for raw data
-        df_sim = df_sim.sort_values('timestamp')
+        # OPTIMIZATION: Pass numeric timestamp directly, skip datetime conversion
+        df_sim = pd.DataFrame({
+            'timestamp': df_price_filtered['timestamp'].values,
+            'close': df_price_filtered['price'].values,
+            'high': df_price_filtered['price'].values,
+            'low': df_price_filtered['price'].values,
+        })
 
         sim = run_simulation_with_ledger(df_sim, amount_usd, final_price, tp_r, tp_s, sl_r, sl_s)
 

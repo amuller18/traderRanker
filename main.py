@@ -33,6 +33,7 @@ import asyncio
 import os
 import time
 from collections import OrderedDict, defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 import logging
@@ -158,6 +159,7 @@ load_dotenv()
 traders_table = None
 trades_table = None
 price_data_table = None
+dynamodb_client = None  # Low-level client for PartiQL batch operations
 
 try:
     # Get AWS configuration from environment (falls back to default boto3 credential chain)
@@ -189,10 +191,11 @@ try:
     PRICE_DATA_TABLE = os.getenv('DYNAMODB_PRICE_DATA_TABLE', 'officialPriceData')
 
     # Verify tables exist before using them
-    client = boto3.client('dynamodb', **dynamodb_kwargs)
+    # Store client at module level for PartiQL batch operations
+    dynamodb_client = boto3.client('dynamodb', **dynamodb_kwargs)
 
     try:
-        client.describe_table(TableName=TRADERS_TABLE)
+        dynamodb_dynamodb_client.describe_table(TableName=TRADERS_TABLE)
         traders_table = dynamodb.Table(TRADERS_TABLE)
         
         logger.info(f" DynamoDB table '{TRADERS_TABLE}' verified and ready")
@@ -203,7 +206,7 @@ try:
             logger.warning(f"✗ Cannot access table '{TRADERS_TABLE}': {e}. Trader endpoints will return empty data.")
 
     try:
-        client.describe_table(TableName=TRADES_TABLE)
+        dynamodb_client.describe_table(TableName=TRADES_TABLE)
         trades_table = dynamodb.Table(TRADES_TABLE)
         logger.info(f" DynamoDB table '{TRADES_TABLE}' verified and ready")
     except ClientError as e:
@@ -213,7 +216,7 @@ try:
             logger.warning(f"✗ Cannot access table '{TRADES_TABLE}': {e}. Trade endpoints will return empty data.")
 
     try:
-        client.describe_table(TableName=PRICE_DATA_TABLE)
+        dynamodb_client.describe_table(TableName=PRICE_DATA_TABLE)
         price_data_table = dynamodb.Table(PRICE_DATA_TABLE)
         logger.info(f" DynamoDB table '{PRICE_DATA_TABLE}' verified and ready")
     except ClientError as e:
@@ -1751,80 +1754,78 @@ def fetch_price_history_from_dynamodb(ca: str) -> pd.DataFrame:
         )
 
 
-def fetch_all_price_data_single_scan(tokens: List[str]) -> Dict[str, pd.DataFrame]:
+def fetch_price_data_batch_partiql(tokens: List[str]) -> Dict[str, pd.DataFrame]:
     """
-    Fetch price data for all tokens in a SINGLE DynamoDB scan operation.
+    Fetch price data for multiple tokens using PartiQL batch queries.
 
-    This is optimized for backtesting where we need data for multiple tokens.
-    Instead of N separate queries, we do 1 scan with a filter expression.
+    Uses execute_statement for each CA but processes them in optimized batches.
+    Each query targets a specific partition (efficient), batched for fewer round trips.
 
     Returns a dict mapping token address to DataFrame.
     """
     if not tokens:
         return {}
 
-    if price_data_table is None:
-        logger.error("Price data table not available")
+    if dynamodb_client is None:
+        logger.error("DynamoDB client not available")
         return {}
 
     start_time = time.time()
-    logger.info(f"[SINGLE SCAN] Fetching price data for {len(tokens)} tokens in ONE query...")
-
-    # Build filter expression: ca IN (token1, token2, ...)
-    # DynamoDB doesn't support IN directly in FilterExpression for large lists,
-    # so we build an OR chain: ca = :ca0 OR ca = :ca1 OR ...
     token_set = list(set(tokens))  # Deduplicate
+    logger.info(f"[BATCH PARTIQL] Fetching price data for {len(token_set)} tokens...")
 
-    # Build expression attribute values
-    expression_values = {}
-    filter_parts = []
-    for i, token in enumerate(token_set):
-        placeholder = f":ca{i}"
-        expression_values[placeholder] = token
-        filter_parts.append(f"ca = {placeholder}")
+    all_items = defaultdict(list)
 
-    filter_expression = " OR ".join(filter_parts)
+    def fetch_one_token(token: str) -> tuple:
+        """Fetch all price data for a single token using PartiQL."""
+        items = []
+        next_token = None
 
-    # Execute single scan with filter
-    all_items = []
-    try:
-        response = price_data_table.scan(
-            FilterExpression=filter_expression,
-            ExpressionAttributeValues=expression_values
-        )
-        all_items.extend(response.get('Items', []))
+        try:
+            while True:
+                params = {
+                    'Statement': f'SELECT * FROM "{PRICE_DATA_TABLE}" WHERE ca = ?',
+                    'Parameters': [{'S': token}]
+                }
+                if next_token:
+                    params['NextToken'] = next_token
 
-        # Handle pagination
-        page_count = 1
-        while 'LastEvaluatedKey' in response:
-            response = price_data_table.scan(
-                FilterExpression=filter_expression,
-                ExpressionAttributeValues=expression_values,
-                ExclusiveStartKey=response['LastEvaluatedKey']
-            )
-            all_items.extend(response.get('Items', []))
-            page_count += 1
+                response = dynamodb_client.execute_statement(**params)
 
-        scan_time = time.time() - start_time
-        logger.info(f"[SINGLE SCAN] Completed in {scan_time:.2f}s - fetched {len(all_items)} price points across {page_count} pages")
+                # Convert DynamoDB format to simple dict
+                for item in response.get('Items', []):
+                    simple_item = {}
+                    for key, value in item.items():
+                        # Extract value from DynamoDB type wrapper
+                        if 'S' in value:
+                            simple_item[key] = value['S']
+                        elif 'N' in value:
+                            simple_item[key] = value['N']
+                        elif 'BOOL' in value:
+                            simple_item[key] = value['BOOL']
+                    items.append(simple_item)
 
-    except ClientError as e:
-        logger.error(f"[SINGLE SCAN] DynamoDB error: {e}")
-        return {}
-    except Exception as e:
-        logger.error(f"[SINGLE SCAN] Error: {e}")
-        return {}
+                next_token = response.get('NextToken')
+                if not next_token:
+                    break
 
-    # Group items by CA
-    grouped = defaultdict(list)
-    for item in all_items:
-        ca = item.get('ca')
-        if ca:
-            grouped[ca].append(item)
+        except Exception as e:
+            logger.warning(f"[BATCH PARTIQL] Error fetching {token}: {e}")
+
+        return (token, items)
+
+    # Use ThreadPoolExecutor for parallel execution (25 concurrent queries)
+    with ThreadPoolExecutor(max_workers=25) as executor:
+        futures = {executor.submit(fetch_one_token, token): token for token in token_set}
+
+        for future in as_completed(futures):
+            token, items = future.result()
+            if items:
+                all_items[token] = items
 
     # Convert to DataFrames
     result = {}
-    for ca, items in grouped.items():
+    for ca, items in all_items.items():
         if items:
             df = pd.DataFrame(items)
             df["price"] = df["price"].astype(float)
@@ -1836,11 +1837,12 @@ def fetch_all_price_data_single_scan(tokens: List[str]) -> Dict[str, pd.DataFram
     for token in token_set:
         if token not in result:
             result[token] = pd.DataFrame()
-            logger.warning(f"[SINGLE SCAN] No price data found for CA: {token}")
+            logger.warning(f"[BATCH PARTIQL] No price data found for CA: {token}")
 
     total_time = time.time() - start_time
     fetched_count = sum(1 for df in result.values() if not df.empty)
-    logger.info(f"[SINGLE SCAN] Total time: {total_time:.2f}s - {fetched_count}/{len(token_set)} tokens have price data")
+    total_items = sum(len(df) for df in result.values())
+    logger.info(f"[BATCH PARTIQL] Completed in {total_time:.2f}s - {total_items} price points for {fetched_count}/{len(token_set)} tokens")
 
     return result
 
@@ -3096,13 +3098,13 @@ async def run_backtest_dynamodb(req: TradeBasedSimulationRequest) -> BacktestRes
     tp_r, tp_s = _parse_ladder(req.tp)
     sl_r, sl_s = _parse_ladder(req.sl)
 
-    # STEP 1: Batch fetch all price data using parallel queries (Query per partition)
-    # Each Query targets a specific token's partition key - much faster than a table Scan
+    # STEP 1: Batch fetch all price data using PartiQL queries (25 concurrent)
+    # Each query targets a specific partition key - efficient Query, not Scan
     unique_tokens = list(set(t.token for t in req.trades))
-    logger.info(f"Fetching price data for {len(unique_tokens)} unique tokens using PARALLEL QUERIES...")
+    logger.info(f"Fetching price data for {len(unique_tokens)} unique tokens using BATCH PARTIQL...")
 
     fetch_start = time.time()
-    price_data_map = await fetch_all_price_data_parallel(unique_tokens)
+    price_data_map = await asyncio.to_thread(fetch_price_data_batch_partiql, unique_tokens)
     fetch_time = time.time() - fetch_start
     logger.info(f"[BACKTEST] Price data fetch completed in {fetch_time:.2f}s")
 

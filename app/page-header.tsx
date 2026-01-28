@@ -29,6 +29,7 @@ const navItems = [
   { href: "/token-analysis", label: "Token Analysis" },
   { href: "/copy-trader", label: "Copy Trading" },
   { href: "/backtest", label: "Backtesting" },
+  { href: "/pricing", label: "Pricing" },
 ]
 
 export function PageHeader() {

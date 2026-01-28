@@ -2954,20 +2954,13 @@ def _process_single_backtest_trade(
                 {"is_valid": False}
             )
 
-        # Convert to OHLC and run simulation
-        df_ohlc = convert_price_data_to_ohlc(df_price_filtered)
-        if df_ohlc.empty:
-            return (
-                TokenBreakdown(
-                    token=ca, time_called=trade.date_called,
-                    is_valid=False, validation_errors=["OHLC conversion failed"],
-                    error="Failed to convert to OHLC"
-                ),
-                SimulationResult(token=ca, error="OHLC conversion failed"),
-                {"is_valid": False}
-            )
+        # Prepare price data for simulation (just need 'close' column with timestamp index)
+        # Skip expensive OHLC conversion - use raw price points directly
+        df_sim = df_price_filtered[['timestamp', 'price']].copy()
+        df_sim = df_sim.rename(columns={'price': 'close'})
+        df_sim = df_sim.set_index('timestamp').sort_index()
 
-        sim = run_simulation_with_ledger(df_ohlc, amount_usd, final_price, tp_r, tp_s, sl_r, sl_s)
+        sim = run_simulation_with_ledger(df_sim, amount_usd, final_price, tp_r, tp_s, sl_r, sl_s)
 
         # Extract simulation results
         trade_capital = sim.get("trade_capital", amount_usd)

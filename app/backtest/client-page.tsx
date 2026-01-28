@@ -415,6 +415,15 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
     });
   };
 
+  // Shorter format for x-axis ticks
+  const formatXAxisDate = (timestamp: number) => {
+    const date = new Date(timestamp * 1000);
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+    });
+  };
+
   /* ─────────────────────── actions ───────────────────── */
   const runBacktest = async () => {
     if (apiStatus !== "connected" || filteredTrades.length === 0) return;
@@ -1017,24 +1026,25 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                       stroke="#374151"
                     />
                     <XAxis
-                      dataKey="date"
-                      height={80}
-                      angle={-45}
-                      dy={15}
+                      dataKey="ts"
+                      height={60}
+                      angle={-30}
+                      dy={10}
                       interval="preserveStartEnd"
-                      tick={{ fontSize: 11, fill: '#9CA3AF' }}
+                      tickFormatter={formatXAxisDate}
+                      tick={{ fontSize: 10, fill: '#9CA3AF' }}
                       axisLine={{ stroke: '#374151' }}
                       tickLine={{ stroke: '#374151' }}
                     />
-                    <YAxis 
+                    <YAxis
                       tickFormatter={(v) => `$${formatLargeNumber(v)}`}
                       tick={{ fontSize: 11, fill: '#9CA3AF' }}
                       axisLine={{ stroke: '#374151' }}
                       tickLine={{ stroke: '#374151' }}
                     />
-                    <Tooltip 
+                    <Tooltip
                       formatter={(v: number) => [`$${formatLargeNumber(v)}`, 'Value']}
-                      labelFormatter={(label) => formatChartDate(label)}
+                      labelFormatter={(ts) => formatChartDate(Number(ts))}
                       contentStyle={{
                         backgroundColor: '#1F2937',
                         border: '1px solid #374151',
@@ -1201,24 +1211,25 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
                       stroke="#374151"
                     />
                     <XAxis
-                      dataKey="date"
-                      height={80}
-                      angle={-45}
-                      dy={15}
+                      dataKey="ts"
+                      height={60}
+                      angle={-30}
+                      dy={10}
                       interval="preserveStartEnd"
-                      tick={{ fontSize: 11, fill: '#9CA3AF' }}
+                      tickFormatter={formatXAxisDate}
+                      tick={{ fontSize: 10, fill: '#9CA3AF' }}
                       axisLine={{ stroke: '#374151' }}
                       tickLine={{ stroke: '#374151' }}
                     />
-                    <YAxis 
+                    <YAxis
                       tickFormatter={(v) => `$${formatLargeNumber(v)}`}
                       tick={{ fontSize: 11, fill: '#9CA3AF' }}
                       axisLine={{ stroke: '#374151' }}
                       tickLine={{ stroke: '#374151' }}
                     />
-                    <Tooltip 
+                    <Tooltip
                       formatter={(v: number) => [`$${formatLargeNumber(v)}`, 'Portfolio Value']}
-                      labelFormatter={(label) => formatChartDate(label)}
+                      labelFormatter={(ts) => formatChartDate(Number(ts))}
                       contentStyle={{
                         backgroundColor: '#1F2937',
                         border: '1px solid #374151',

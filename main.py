@@ -32,7 +32,8 @@ import math
 import asyncio
 import os
 import time
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 import logging
@@ -158,6 +159,7 @@ load_dotenv()
 traders_table = None
 trades_table = None
 price_data_table = None
+dynamodb_client = None  # Low-level client for PartiQL batch operations
 
 try:
     # Get AWS configuration from environment (falls back to default boto3 credential chain)
@@ -189,10 +191,11 @@ try:
     PRICE_DATA_TABLE = os.getenv('DYNAMODB_PRICE_DATA_TABLE', 'officialPriceData')
 
     # Verify tables exist before using them
-    client = boto3.client('dynamodb', **dynamodb_kwargs)
+    # Store client at module level for PartiQL batch operations
+    dynamodb_client = boto3.client('dynamodb', **dynamodb_kwargs)
 
     try:
-        client.describe_table(TableName=TRADERS_TABLE)
+        dynamodb_client.describe_table(TableName=TRADERS_TABLE)
         traders_table = dynamodb.Table(TRADERS_TABLE)
         
         logger.info(f" DynamoDB table '{TRADERS_TABLE}' verified and ready")
@@ -203,7 +206,7 @@ try:
             logger.warning(f"✗ Cannot access table '{TRADERS_TABLE}': {e}. Trader endpoints will return empty data.")
 
     try:
-        client.describe_table(TableName=TRADES_TABLE)
+        dynamodb_client.describe_table(TableName=TRADES_TABLE)
         trades_table = dynamodb.Table(TRADES_TABLE)
         logger.info(f" DynamoDB table '{TRADES_TABLE}' verified and ready")
     except ClientError as e:
@@ -213,7 +216,7 @@ try:
             logger.warning(f"✗ Cannot access table '{TRADES_TABLE}': {e}. Trade endpoints will return empty data.")
 
     try:
-        client.describe_table(TableName=PRICE_DATA_TABLE)
+        dynamodb_client.describe_table(TableName=PRICE_DATA_TABLE)
         price_data_table = dynamodb.Table(PRICE_DATA_TABLE)
         logger.info(f" DynamoDB table '{PRICE_DATA_TABLE}' verified and ready")
     except ClientError as e:
@@ -1751,16 +1754,113 @@ def fetch_price_history_from_dynamodb(ca: str) -> pd.DataFrame:
         )
 
 
-async def fetch_all_price_data_parallel(tokens: List[str]) -> Dict[str, pd.DataFrame]:
+def fetch_price_data_batch_partiql(tokens: List[str]) -> Dict[str, pd.DataFrame]:
     """
-    Fetch price data for all tokens in parallel.
+    Fetch price data for multiple tokens using PartiQL batch queries.
+
+    Uses execute_statement for each CA but processes them in optimized batches.
+    Each query targets a specific partition (efficient), batched for fewer round trips.
 
     Returns a dict mapping token address to DataFrame.
     """
     if not tokens:
         return {}
 
-    logger.info(f"Batch fetching price data for {len(tokens)} tokens in parallel...")
+    if dynamodb_client is None:
+        logger.error("DynamoDB client not available")
+        return {}
+
+    start_time = time.time()
+    token_set = list(set(tokens))  # Deduplicate
+    logger.info(f"[BATCH PARTIQL] Fetching price data for {len(token_set)} tokens...")
+
+    all_items = defaultdict(list)
+
+    def fetch_one_token(token: str) -> tuple:
+        """Fetch all price data for a single token using PartiQL."""
+        items = []
+        next_token = None
+
+        try:
+            while True:
+                params = {
+                    'Statement': f'SELECT * FROM "{PRICE_DATA_TABLE}" WHERE ca = ?',
+                    'Parameters': [{'S': token}]
+                }
+                if next_token:
+                    params['NextToken'] = next_token
+
+                response = dynamodb_client.execute_statement(**params)
+
+                # Convert DynamoDB format to simple dict
+                for item in response.get('Items', []):
+                    simple_item = {}
+                    for key, value in item.items():
+                        # Extract value from DynamoDB type wrapper
+                        if 'S' in value:
+                            simple_item[key] = value['S']
+                        elif 'N' in value:
+                            simple_item[key] = value['N']
+                        elif 'BOOL' in value:
+                            simple_item[key] = value['BOOL']
+                    items.append(simple_item)
+
+                next_token = response.get('NextToken')
+                if not next_token:
+                    break
+
+        except Exception as e:
+            logger.warning(f"[BATCH PARTIQL] Error fetching {token}: {e}")
+
+        return (token, items)
+
+    # Use ThreadPoolExecutor for parallel execution (25 concurrent queries)
+    with ThreadPoolExecutor(max_workers=25) as executor:
+        futures = {executor.submit(fetch_one_token, token): token for token in token_set}
+
+        for future in as_completed(futures):
+            token, items = future.result()
+            if items:
+                all_items[token] = items
+
+    # Convert to DataFrames
+    result = {}
+    for ca, items in all_items.items():
+        if items:
+            df = pd.DataFrame(items)
+            df["price"] = df["price"].astype(float)
+            df["timestamp"] = df["timestamp"].astype(int)
+            df = df.sort_values('timestamp')
+            result[ca] = df
+
+    # Fill in empty DataFrames for tokens with no data
+    for token in token_set:
+        if token not in result:
+            result[token] = pd.DataFrame()
+            logger.warning(f"[BATCH PARTIQL] No price data found for CA: {token}")
+
+    total_time = time.time() - start_time
+    fetched_count = sum(1 for df in result.values() if not df.empty)
+    total_items = sum(len(df) for df in result.values())
+    logger.info(f"[BATCH PARTIQL] Completed in {total_time:.2f}s - {total_items} price points for {fetched_count}/{len(token_set)} tokens")
+
+    return result
+
+
+async def fetch_all_price_data_parallel(tokens: List[str]) -> Dict[str, pd.DataFrame]:
+    """
+    Fetch price data for all tokens in parallel (legacy method).
+
+    This makes N separate DynamoDB queries (one per token).
+    Kept for comparison - use fetch_all_price_data_single_scan for better performance.
+
+    Returns a dict mapping token address to DataFrame.
+    """
+    if not tokens:
+        return {}
+
+    start_time = time.time()
+    logger.info(f"[PARALLEL] Batch fetching price data for {len(tokens)} tokens in parallel...")
 
     async def fetch_one(token: str) -> tuple:
         try:
@@ -1774,8 +1874,9 @@ async def fetch_all_price_data_parallel(tokens: List[str]) -> Dict[str, pd.DataF
 
     price_data = {token: df for token, df in results}
 
+    total_time = time.time() - start_time
     fetched_count = sum(1 for df in price_data.values() if not df.empty)
-    logger.info(f"Batch fetch complete: {fetched_count}/{len(tokens)} tokens have price data")
+    logger.info(f"[PARALLEL] Batch fetch complete in {total_time:.2f}s: {fetched_count}/{len(tokens)} tokens have price data")
 
     return price_data
 
@@ -1864,7 +1965,20 @@ def run_simulation_with_ledger(
     sl_sizes_arr = np.array(sl_sizes, dtype=np.float64)
 
     # Extract numpy arrays for fast processing
-    timestamps = df_ohlc["t"].apply(lambda x: int(x.timestamp())).values.astype(np.int64)
+    # Handle timestamps - if already numeric (int), use directly; if datetime, convert
+    if 't' in df_ohlc.columns:
+        if pd.api.types.is_numeric_dtype(df_ohlc['t']):
+            timestamps = df_ohlc["t"].values.astype(np.int64)
+        else:
+            # Datetime - convert to unix timestamp (SLOW - avoid if possible)
+            timestamps = df_ohlc["t"].apply(lambda x: int(x.timestamp())).values.astype(np.int64)
+    elif 'timestamp' in df_ohlc.columns:
+        # Use timestamp column directly
+        timestamps = df_ohlc["timestamp"].values.astype(np.int64)
+    else:
+        # Use index as timestamp
+        timestamps = df_ohlc.index.values.astype(np.int64)
+
     close_arr = df_ohlc["close"].values.astype(np.float64)
     high_arr = df_ohlc["high"].values.astype(np.float64)
     low_arr = df_ohlc["low"].values.astype(np.float64)
@@ -1895,22 +2009,21 @@ def run_simulation_with_ledger(
         sl_sizes_arr,
     )
 
-    # Build ledger from numpy arrays
-    ledger: List[PositionPoint] = []
-    for i in range(len(ledger_ts)):
-        ledger.append(
-            PositionPoint(
-                ts=int(ledger_ts[i]),
-                value=float(ledger_equity[i]),
-                coins_held=float(ledger_coins[i]),
-                unrealized=float(ledger_unrealized[i]),
-                realized=float(ledger_realized[i]),
-            )
+    # Build ledger from numpy arrays (list comprehension is faster than loop + append)
+    ledger: List[PositionPoint] = [
+        PositionPoint(
+            ts=int(ledger_ts[i]),
+            value=float(ledger_equity[i]),
+            coins_held=float(ledger_coins[i]),
+            unrealized=float(ledger_unrealized[i]),
+            realized=float(ledger_realized[i]),
         )
+        for i in range(len(ledger_ts))
+    ]
 
-    # Convert fired arrays to sets for return values
-    tp_fired = {i for i in range(len(tp_fired_arr)) if tp_fired_arr[i]}
-    sl_fired = {i for i in range(len(sl_fired_arr)) if sl_fired_arr[i]}
+    # Convert fired arrays to sets using numpy (faster than Python iteration)
+    tp_fired = set(np.nonzero(tp_fired_arr)[0].tolist())
+    sl_fired = set(np.nonzero(sl_fired_arr)[0].tolist())
 
     # ---------------------------------------------------------------------- #
     # CRITICAL: Proper PnL Calculations (per specification)
@@ -2834,11 +2947,11 @@ def _process_single_backtest_trade(
                 {"is_valid": False}
             )
 
-        # Calculate price metrics
-        prices = df_price_filtered['price'].tolist()
-        entry_price = float(prices[0])
-        final_price = float(prices[-1])
-        ath_price = float(max(prices))
+        # Calculate price metrics using numpy (faster than Python list)
+        prices_arr = df_price_filtered['price'].values
+        entry_price = float(prices_arr[0])
+        final_price = float(prices_arr[-1])
+        ath_price = float(prices_arr.max())
         ath_percentage = ((ath_price - entry_price) / entry_price) * 100 if entry_price > 0 else 0
 
         if entry_price <= 0 or final_price <= 0:
@@ -2853,20 +2966,18 @@ def _process_single_backtest_trade(
                 {"is_valid": False}
             )
 
-        # Convert to OHLC and run simulation
-        df_ohlc = convert_price_data_to_ohlc(df_price_filtered)
-        if df_ohlc.empty:
-            return (
-                TokenBreakdown(
-                    token=ca, time_called=trade.date_called,
-                    is_valid=False, validation_errors=["OHLC conversion failed"],
-                    error="Failed to convert to OHLC"
-                ),
-                SimulationResult(token=ca, error="OHLC conversion failed"),
-                {"is_valid": False}
-            )
+        # Prepare price data for simulation - use numpy for speed
+        # Simulation needs: timestamp, close, high, low columns
+        # For raw price data, high=low=close (single price point per timestamp)
+        # OPTIMIZATION: Pass numeric timestamp directly, skip datetime conversion
+        df_sim = pd.DataFrame({
+            'timestamp': df_price_filtered['timestamp'].values,
+            'close': df_price_filtered['price'].values,
+            'high': df_price_filtered['price'].values,
+            'low': df_price_filtered['price'].values,
+        })
 
-        sim = run_simulation_with_ledger(df_ohlc, amount_usd, final_price, tp_r, tp_s, sl_r, sl_s)
+        sim = run_simulation_with_ledger(df_sim, amount_usd, final_price, tp_r, tp_s, sl_r, sl_s)
 
         # Extract simulation results
         trade_capital = sim.get("trade_capital", amount_usd)
@@ -2997,11 +3108,15 @@ async def run_backtest_dynamodb(req: TradeBasedSimulationRequest) -> BacktestRes
     tp_r, tp_s = _parse_ladder(req.tp)
     sl_r, sl_s = _parse_ladder(req.sl)
 
-    # STEP 1: Batch fetch all price data in parallel (uses 50 concurrent connections)
+    # STEP 1: Batch fetch all price data using PartiQL queries (25 concurrent)
+    # Each query targets a specific partition key - efficient Query, not Scan
     unique_tokens = list(set(t.token for t in req.trades))
-    logger.info(f"Batch fetching price data for {len(unique_tokens)} unique tokens...")
+    logger.info(f"Fetching price data for {len(unique_tokens)} unique tokens using BATCH PARTIQL...")
 
-    price_data_map = await fetch_all_price_data_parallel(unique_tokens)
+    fetch_start = time.time()
+    price_data_map = await asyncio.to_thread(fetch_price_data_batch_partiql, unique_tokens)
+    fetch_time = time.time() - fetch_start
+    logger.info(f"[BACKTEST] Price data fetch completed in {fetch_time:.2f}s")
 
     # STEP 2: Process all trades with pre-fetched data (CPU-bound, uses thread pool)
     logger.info(f"Processing {len(req.trades)} trades with pre-fetched data...")

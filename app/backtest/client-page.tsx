@@ -297,9 +297,7 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
     setTradesLoading(true);
     setTradesError(null);
     try {
-      console.log("Fetching trades from DynamoDB for backtesting...");
       const fetchedTrades = await fetchAllTrades();
-      console.log(`Loaded ${fetchedTrades.length} trades from API`);
 
       // Convert to the simple Trade format expected by backtest
       // Filter out trades with missing/invalid data
@@ -309,10 +307,6 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
           const hasValidCa = typeof t.ca === 'string' && t.ca.length >= 32 && t.ca.length <= 44;
           const hasCaller = typeof t.caller === 'string' && t.caller.trim().length > 0;
           const hasDate = typeof t.date_called === 'string' && t.date_called.length > 0;
-
-          if (!hasValidCa) console.log(`Skipping trade with invalid ca: ${t.ca}`);
-          if (!hasCaller) console.log(`Skipping trade with missing caller`);
-          if (!hasDate) console.log(`Skipping trade with missing date_called`);
 
           return hasValidCa && hasCaller && hasDate;
         })
@@ -324,7 +318,6 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
           current_mc: t.current_mc,
         }));
 
-      console.log(`${backtestTrades.length} valid trades for backtesting`);
       setTrades(backtestTrades);
     } catch (error) {
       console.error("Error loading trades for backtesting:", error);
@@ -435,10 +428,6 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
 
     // Sanitize: Filter out trades with invalid Solana addresses
     const validTrades = filteredTrades.filter((t) => isValidSolanaAddress(t.ca));
-    const invalidCount = filteredTrades.length - validTrades.length;
-    if (invalidCount > 0) {
-      console.warn(`Filtered out ${invalidCount} trades with invalid Solana addresses`);
-    }
 
     if (validTrades.length === 0) {
       console.error("No valid trades to simulate after filtering");
@@ -458,13 +447,6 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
       validTrades.length
     );
     const tradesToProcess = validTrades.slice(0, tradesToSend);
-
-    console.log(`Target valid trades: ${targetValidTrades}, Overfetch buffer: ${overfetchBuffer}`);
-    console.log(`Sending ${tradesToProcess.length} trades to API (may return fewer valid ones)`);
-
-    const uniqueTokens = Array.from(new Set(tradesToProcess.map((t) => t.ca)));
-    console.log(`Unique tokens to simulate: ${uniqueTokens.length}`);
-    console.log(`Tokens: ${uniqueTokens.slice(0, 5).join(', ')}${uniqueTokens.length > 5 ? '...' : ''}`);
 
     // Calculate position size per trade (1% of capital per trade)
     const positionSizePerTrade = positionSizing.type === "percentage"
@@ -487,9 +469,6 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
     } as const;
 
     try {
-      // Debug: Log the payload being sent
-      console.log("Sending backtest request:", JSON.stringify(tradesPayload, null, 2));
-
       // Call the unified backtest endpoint that returns everything
       const response = await fetch(`${pythonApiUrl}/api/backtest/dynamodb`, {
         method: "POST",
@@ -521,7 +500,6 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
       setTokenBreakdown([...validBreakdowns, ...invalidBreakdowns]);
 
       // Use pre-computed chart data from backend (no expensive client-side processing!)
-      console.log(`Received ${apiChartData?.length || 0} chart data points from backend`);
       setChartData(apiChartData || []);
       setCumChartData(apiCumChartData || []);
 
@@ -547,16 +525,6 @@ export default function ModernBacktestPage({ initialTrades }: BacktestModernPage
         largestLoss: cs.largest_loss,
       }));
       setCallerStats(calculatedCallerStats);
-
-      console.log(`\n=== PER-CALLER BREAKDOWN (from backend) ===`);
-      calculatedCallerStats.forEach(cs => {
-        console.log(`${cs.caller}: ${cs.validTrades} trades, ${(cs.winRate * 100).toFixed(0)}% win rate, $${cs.totalPnL.toFixed(2)} PnL`);
-      });
-
-      console.log(`\n=== BACKTEST COMPLETE ===`);
-      console.log(`Duration: ${(durationMs / 1000).toFixed(2)}s`);
-      console.log(`Account ROI: ${apiSummary.account_roi}%`);
-      console.log(`Total PnL: $${apiSummary.total_profit}`);
 
       // Use the backend-calculated summary directly
       setSummary({

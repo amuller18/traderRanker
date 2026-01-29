@@ -440,13 +440,13 @@ export default function LandingPage() {
           <Link href="/pricing" className="text-sm hover:text-primary transition-colors font-medium">
             Pricing
           </Link>
-          <Link href="#" className="text-sm hover:text-primary transition-colors font-medium">
+          <Link href="/terms" className="text-sm hover:text-primary transition-colors font-medium">
             Terms of Service
           </Link>
-          <Link href="#" className="text-sm hover:text-primary transition-colors font-medium">
+          <Link href="/privacy" className="text-sm hover:text-primary transition-colors font-medium">
             Privacy Policy
           </Link>
-          <Link href="#" className="text-sm hover:text-primary transition-colors font-medium">
+          <Link href="/contact" className="text-sm hover:text-primary transition-colors font-medium">
             Contact
           </Link>
         </nav>

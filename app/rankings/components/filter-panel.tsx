@@ -21,11 +21,9 @@ export function FilterPanel({ onFilterChange, initialFilters }: FilterPanelProps
   const handleFilterChange = (key: keyof FilterOptions, value: any) => {
     const newFilters = { ...filters, [key]: value }
     setFilters(newFilters)
-    console.log("FILTER-PANEL - Filter changed:", key, value)
   }
 
   const applyFilters = () => {
-    console.log("FILTER-PANEL - Applying filters:", filters)
     onFilterChange(filters)
     setIsOpen(false)
   }
@@ -37,7 +35,6 @@ export function FilterPanel({ onFilterChange, initialFilters }: FilterPanelProps
       roiRange: [-100, 100],
       searchTerm: "",
     }
-    console.log("FILTER-PANEL - Resetting filters to:", defaultFilters)
     setFilters(defaultFilters)
     onFilterChange(defaultFilters)
   }

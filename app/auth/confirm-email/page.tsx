@@ -36,7 +36,6 @@ function ConfirmEmailContent() {
     hasRedirectedRef.current = true;
     setIsConfirmed(true);
 
-    console.log("✅ Email confirmed! Redirecting...");
     toast.success("Email confirmed! Redirecting...");
 
     // Wait a moment for the profile to be created
@@ -56,8 +55,6 @@ function ConfirmEmailContent() {
     // This fires when the user confirms email in the same or different tab
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log("🔔 Auth state changed:", event, session?.user?.id);
-
         // SIGNED_IN event fires when email is confirmed and session is created
         if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') && session?.user) {
           await handleConfirmationSuccess();
@@ -77,12 +74,10 @@ function ConfirmEmailContent() {
         const { data: { session } } = await supabase.auth.getSession();
 
         if (session?.user) {
-          console.log("✅ Email confirmed via polling! Session found:", session.user.id);
           await handleConfirmationSuccess();
           return true;
         }
 
-        console.log(`🔍 Check ${checkCountRef.current}: No session yet`);
         return false;
       } catch (error) {
         console.error("Error checking session:", error);

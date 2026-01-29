@@ -133,8 +133,6 @@ export function DeployStrategyForm() {
       isDraft: false,
     };
 
-    console.log('Deploy Strategy Config:', config);
-
     // Simulate API call
     await new Promise(resolve => setTimeout(resolve, 1500));
 
@@ -182,8 +180,6 @@ export function DeployStrategyForm() {
       operationalSettings,
       isDraft: true,
     };
-
-    console.log('Save Draft Config:', config);
 
     // Simulate API call
     await new Promise(resolve => setTimeout(resolve, 1000));

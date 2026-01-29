@@ -53,13 +53,11 @@ export default function RegisterPage() {
       const result = await register(email, username, password);
 
       if (result.requiresEmailConfirmation) {
-        console.debug('Registration successful - email confirmation required');
         toast.info("Account created! Please check your email to confirm.");
 
         // Redirect to email confirmation page
         router.push(`/auth/confirm-email?email=${encodeURIComponent(email)}`);
       } else {
-        console.debug('Registration successful - auth state updated');
         toast.success("Account created successfully!");
 
         // Wait for auth state and profile to propagate before navigating

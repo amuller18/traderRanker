@@ -166,7 +166,6 @@ export default async function TokenAnalysisPage(props: TokenAnalysisPageProps) {
 
       if (response.status === 429) {
         // Rate limited, wait and retry
-        console.log(`Rate limited by DexScreener, retrying in ${(retryCount + 1) * 1000}ms...`)
         await new Promise(resolve => setTimeout(resolve, (retryCount + 1) * 1000))
         retryCount++
         continue
@@ -266,12 +265,6 @@ export default async function TokenAnalysisPage(props: TokenAnalysisPageProps) {
   const volume24h = formatNumber(tokenInfo.volume?.h24?.toString())
   const liquidity = formatNumber(tokenInfo.liquidity?.usd?.toString())
   const pairCreatedAt = formatDate(tokenInfo.pairCreatedAt)
-
-  // Debug log to check market cap values
-  console.log('Market Cap Data:', {
-    raw: tokenInfo.marketCap,
-    formatted: marketCap
-  })
 
   // Extract social links
   interface SocialLink {

@@ -63,7 +63,8 @@ export default function RegisterPage() {
         // Wait for auth state and profile to propagate before navigating
         await new Promise(resolve => setTimeout(resolve, 300));
 
-        router.push("/account");
+        // Redirect to onboarding to complete profile setup
+        router.push("/auth/onboarding");
         router.refresh();
       }
     } catch (error) {
@@ -163,7 +164,7 @@ export default function RegisterPage() {
             {/* Phantom Wallet Sign-Up */}
             <PhantomSignInButton
               onSuccess={() => {
-                router.push('/account');
+                router.push('/auth/onboarding');
                 router.refresh();
               }}
               className="w-full"

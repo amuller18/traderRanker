@@ -41,7 +41,8 @@ function ConfirmEmailContent() {
     // Wait a moment for the profile to be created
     await new Promise(resolve => setTimeout(resolve, 500));
 
-    router.push("/account");
+    // Redirect to onboarding to complete profile setup
+    router.push("/auth/onboarding");
   };
 
   useEffect(() => {
@@ -133,7 +134,7 @@ function ConfirmEmailContent() {
             </CardHeader>
             <CardContent className="flex justify-center">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              <span className="ml-2 text-muted-foreground">Redirecting to your account...</span>
+              <span className="ml-2 text-muted-foreground">Redirecting to complete your profile...</span>
             </CardContent>
           </Card>
         </div>

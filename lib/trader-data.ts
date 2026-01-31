@@ -132,8 +132,8 @@ export interface TradeFilterOptions {
 // Mock data for fallback
 import { mockTraderStats, mockTrades } from "./mock-data"
 
-// Mock data for when database connection fails
-const MOCK_TRADES: Trade[] = [
+// Mock data for when database connection fails (using partial type for backward compatibility)
+const MOCK_TRADES = [
   {
     ca: "7nZG8jEaU3HFsRQ2JkUAVPQqzGMpw37V5CYtV9JdDSLf",
     caller: "Mock Trader 1",

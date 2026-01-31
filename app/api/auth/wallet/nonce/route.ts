@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
+import { rateLimit, RateLimitPresets } from '@/lib/rate-limit';
 
 // Lazy-create admin client to avoid build-time errors
 let supabaseAdmin: SupabaseClient | null = null;
@@ -19,25 +20,6 @@ function getSupabaseAdmin(): SupabaseClient {
     });
   }
   return supabaseAdmin;
-}
-
-// Simple in-memory rate limiting
-const rateLimitStore: Map<string, number[]> = new Map();
-
-function checkRateLimit(publicKey: string, maxRequests = 5, windowMs = 60000): boolean {
-  const now = Date.now();
-  const requests = rateLimitStore.get(publicKey) || [];
-
-  // Filter out old requests
-  const recentRequests = requests.filter(ts => now - ts < windowMs);
-
-  if (recentRequests.length >= maxRequests) {
-    return false;
-  }
-
-  recentRequests.push(now);
-  rateLimitStore.set(publicKey, recentRequests);
-  return true;
 }
 
 function validatePublicKey(publicKey: string): { valid: boolean; error?: string } {
@@ -65,6 +47,10 @@ function generateNonce(): string {
 }
 
 export async function POST(request: NextRequest) {
+  // Apply strict rate limiting to nonce generation
+  const rateLimitResponse = rateLimit(request, 'wallet-nonce', RateLimitPresets.strict);
+  if (rateLimitResponse) return rateLimitResponse;
+
   try {
     const body = await request.json();
     const { public_key } = body;
@@ -75,14 +61,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { detail: validation.error },
         { status: 400 }
-      );
-    }
-
-    // Rate limiting
-    if (!checkRateLimit(public_key)) {
-      return NextResponse.json(
-        { detail: 'Too many nonce requests. Please try again in a minute.' },
-        { status: 429 }
       );
     }
 

@@ -107,7 +107,9 @@ export function useSupabaseWeb3Auth() {
 
       // Use Supabase's native signInWithWeb3 method
       // This handles the nonce generation, signing, and verification automatically!
-      const { data, error } = await supabase.auth.signInWithWeb3({
+      // Note: signInWithWeb3 may not be available in all Supabase versions
+      // Use the custom auth flow in /api/auth/wallet/* for production
+      const { data, error } = await (supabase.auth as any).signInWithWeb3({
         chain: 'solana',
         statement: 'Sign in to TraderRanker with your Phantom wallet',
         wallet: provider,  // Pass the Phantom provider
@@ -169,7 +171,9 @@ export function useSupabaseWeb3Auth() {
       }
 
       // Use Supabase's linkIdentity method to link Web3 wallet
-      const { data, error } = await supabase.auth.linkIdentity({
+      // Note: Web3 identity linking may not be available in all Supabase versions
+      // Use the custom auth flow in /api/auth/wallet/link for production
+      const { data, error } = await (supabase.auth.linkIdentity as any)({
         provider: 'web3',
         options: {
           chain: 'solana',
@@ -204,9 +208,11 @@ export function useSupabaseWeb3Auth() {
    */
   const unlinkPhantomWallet = useCallback(async (identityId: string) => {
     try {
-      const { error } = await supabase.auth.unlinkIdentity({
+      // Note: Web3 identity unlinking may not be available in all Supabase versions
+      // Use the custom auth flow in /api/auth/wallet/unlink for production
+      const { error } = await (supabase.auth.unlinkIdentity as any)({
         provider: 'web3',
-        identityId,
+        identity_id: identityId,
       });
 
       if (error) {

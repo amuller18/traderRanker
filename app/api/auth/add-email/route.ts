@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { rateLimit, RateLimitPresets } from '@/lib/rate-limit';
 
 // Lazy-create admin client to avoid build-time errors
 let supabaseAdmin: SupabaseClient | null = null;
@@ -23,6 +24,10 @@ function getSupabaseAdmin(): SupabaseClient {
 }
 
 export async function POST(request: NextRequest) {
+  // Apply rate limiting to email addition
+  const rateLimitResponse = rateLimit(request, 'add-email', RateLimitPresets.strict);
+  if (rateLimitResponse) return rateLimitResponse;
+
   try {
     // Get the authenticated user from the session
     const cookieStore = await cookies();

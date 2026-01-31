@@ -8,6 +8,7 @@ export interface Favorite {
   type: FavoriteType
   item_id: string // wallet address for traders, token address for tokens
   name?: string // optional display name
+  symbol?: string // token symbol (for tokens)
   notes?: string // user notes
   created_at: string
 }

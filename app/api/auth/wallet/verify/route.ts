@@ -3,6 +3,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import nacl from 'tweetnacl';
 import bs58 from 'bs58';
 import crypto from 'crypto';
+import { rateLimit, RateLimitPresets } from '@/lib/rate-limit';
 
 // Lazy-create admin client to avoid build-time errors
 let supabaseAdmin: SupabaseClient | null = null;
@@ -65,6 +66,10 @@ function verifySignature(
 }
 
 export async function POST(request: NextRequest) {
+  // Apply rate limiting to wallet verification
+  const rateLimitResponse = rateLimit(request, 'wallet-verify', RateLimitPresets.auth);
+  if (rateLimitResponse) return rateLimitResponse;
+
   try {
     const body = await request.json();
     const { public_key, signature, nonce } = body;

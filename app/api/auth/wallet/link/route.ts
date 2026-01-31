@@ -4,6 +4,7 @@ import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import nacl from 'tweetnacl';
 import bs58 from 'bs58';
+import { rateLimit, RateLimitPresets } from '@/lib/rate-limit';
 
 // Lazy-create admin client to avoid build-time errors
 let supabaseAdmin: SupabaseClient | null = null;
@@ -57,6 +58,10 @@ function verifySignature(
 }
 
 export async function POST(request: NextRequest) {
+  // Apply rate limiting to wallet linking
+  const rateLimitResponse = rateLimit(request, 'wallet-link', RateLimitPresets.auth);
+  if (rateLimitResponse) return rateLimitResponse;
+
   try {
     // Get the authenticated user from the session
     const cookieStore = await cookies();

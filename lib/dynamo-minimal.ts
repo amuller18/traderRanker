@@ -270,7 +270,7 @@ export class DynamoDBClient {
     if (response.Items) {
       // Use a local reference to the method to maintain 'this' context
       const convertItem = this.convertFromDynamoDBItem.bind(this)
-      response.Items = response.Items.map((item) => convertItem(item))
+      response.Items = response.Items.map((item: Record<string, any>) => convertItem(item))
     }
 
     return response
@@ -311,7 +311,7 @@ export class DynamoDBClient {
     if (response.Items) {
       // Use a local reference to the method to maintain 'this' context
       const convertItem = this.convertFromDynamoDBItem.bind(this)
-      response.Items = response.Items.map((item) => convertItem(item))
+      response.Items = response.Items.map((item: Record<string, any>) => convertItem(item))
     }
 
     return response

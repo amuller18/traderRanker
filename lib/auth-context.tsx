@@ -466,12 +466,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error('❌ Login failed:', error.message);
       safeLogSupabaseError('login', error);
 
-      // Check if the error is for a wallet-only account (user_metadata check)
-      // This catches cases where the email doesn't match our pattern but is still a wallet account
-      if (data?.user?.user_metadata?.wallet_created && !data?.user?.user_metadata?.has_real_email) {
-        throw new Error('This is a wallet account. Please sign in with Phantom wallet instead.');
-      }
-
+      // Check if the error is for a wallet-only account
+      // Note: When there's an auth error, user data may not be available
+      // This check is handled below after successful login
       throw error;
     }
 

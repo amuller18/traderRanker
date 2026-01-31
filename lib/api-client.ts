@@ -72,7 +72,7 @@ async function apiFetch<T>(
     }
 
     const text = await response.text()
-    return text ? JSON.parse(text) : null
+    return text ? JSON.parse(text) : (undefined as unknown as T)
   } catch (error) {
     // Enhanced error handling for network and other errors
     if (error instanceof TypeError && error.message === 'Failed to fetch') {

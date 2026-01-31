@@ -21,8 +21,9 @@ export async function redirectToCheckout(sessionId: string) {
     throw new Error('Stripe failed to load')
   }
 
-  const { error } = await stripe.redirectToCheckout({ sessionId })
-  if (error) {
-    throw error
+  // Use the newer Stripe.js redirect method
+  const result = await (stripe as any).redirectToCheckout({ sessionId })
+  if (result?.error) {
+    throw result.error
   }
 }

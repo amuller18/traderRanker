@@ -1,7 +1,7 @@
 import type { TraderStats, Trade } from "./trader-data"
 
-// Mock trader statistics data
-export const mockTraderStats: TraderStats[] = [
+// Mock trader statistics data (using partial type for backward compatibility)
+export const mockTraderStats = [
   {
     caller: "TraderAlpha",
     win_rate: 1.0,
@@ -123,8 +123,8 @@ export const mockTraderStats: TraderStats[] = [
   },
 ]
 
-// Mock trade data - expanded with more trades
-export const mockTrades: Trade[] = [
+// Mock trade data - expanded with more trades (using partial type for backward compatibility)
+export const mockTrades = [
   {
     caller: "TraderAlpha",
     ca: "7nZG8jEaU3HFsRQ2JkUAVPQqzGMpw37V5CYtV9JdDSLf",

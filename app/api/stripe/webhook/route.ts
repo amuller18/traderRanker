@@ -1,13 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { stripe, getPlanFromPriceId } from '@/lib/stripe'
-import { createClient } from '@supabase/supabase-js'
+import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import Stripe from 'stripe'
 
-// Use service role for webhook to bypass RLS
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+// Lazy-initialize Supabase admin client to avoid build-time errors
+let _supabaseAdmin: SupabaseClient | null = null
+
+function getSupabaseAdmin(): SupabaseClient {
+  if (!_supabaseAdmin) {
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      throw new Error('Missing Supabase environment variables')
+    }
+    _supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY
+    )
+  }
+  return _supabaseAdmin
+}
 
 export async function POST(request: NextRequest) {
   const body = await request.text()
@@ -99,7 +109,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   }
 
   // Update user profile with Stripe customer ID
-  const { error } = await supabaseAdmin
+  const { error } = await getSupabaseAdmin()
     .from('profiles')
     .update({
       stripe_customer_id: customerId,
@@ -123,13 +133,17 @@ async function handleSubscriptionChange(subscription: Stripe.Subscription) {
   const plan = getPlanFromPriceId(priceId) || 'free'
   const status = subscription.status
 
-  const { error } = await supabaseAdmin
+  // Access current_period_end safely (may be on subscription or in expanded object)
+  const periodEnd = (subscription as unknown as { current_period_end?: number }).current_period_end
+  const periodEndDate = periodEnd ? new Date(periodEnd * 1000).toISOString() : null
+
+  const { error } = await getSupabaseAdmin()
     .from('profiles')
     .update({
       subscription_plan: plan,
       subscription_status: status,
       stripe_subscription_id: subscription.id,
-      subscription_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+      subscription_period_end: periodEndDate,
       cancel_at_period_end: subscription.cancel_at_period_end,
     })
     .eq('id', userId)
@@ -146,7 +160,7 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
     return
   }
 
-  const { error } = await supabaseAdmin
+  const { error } = await getSupabaseAdmin()
     .from('profiles')
     .update({
       subscription_plan: 'free',
@@ -174,14 +188,14 @@ async function handlePaymentFailed(invoice: Stripe.Invoice) {
   const customerId = invoice.customer as string
 
   // Find user by customer ID and update status
-  const { data: profile } = await supabaseAdmin
+  const { data: profile } = await getSupabaseAdmin()
     .from('profiles')
     .select('id')
     .eq('stripe_customer_id', customerId)
     .single()
 
   if (profile) {
-    await supabaseAdmin
+    await getSupabaseAdmin()
       .from('profiles')
       .update({ subscription_status: 'past_due' })
       .eq('id', profile.id)

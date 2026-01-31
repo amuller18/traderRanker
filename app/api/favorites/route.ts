@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { FavoriteType } from '@/lib/favorites'
+import { rateLimit, RateLimitPresets, addRateLimitHeaders } from '@/lib/rate-limit'
+
+const ROUTE_KEY = 'favorites'
 
 // GET - Fetch all favorites for the current user
 export async function GET(request: NextRequest) {
+  // Apply rate limiting
+  const rateLimitResponse = rateLimit(request, ROUTE_KEY, RateLimitPresets.standard)
+  if (rateLimitResponse) return rateLimitResponse
+
   try {
     const supabase = await createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -51,6 +58,10 @@ export async function GET(request: NextRequest) {
 
 // POST - Add a new favorite
 export async function POST(request: NextRequest) {
+  // Apply rate limiting
+  const rateLimitResponse = rateLimit(request, ROUTE_KEY, RateLimitPresets.standard)
+  if (rateLimitResponse) return rateLimitResponse
+
   try {
     const supabase = await createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -135,6 +146,10 @@ export async function POST(request: NextRequest) {
 
 // DELETE - Remove a favorite
 export async function DELETE(request: NextRequest) {
+  // Apply rate limiting
+  const rateLimitResponse = rateLimit(request, ROUTE_KEY, RateLimitPresets.standard)
+  if (rateLimitResponse) return rateLimitResponse
+
   try {
     const supabase = await createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()

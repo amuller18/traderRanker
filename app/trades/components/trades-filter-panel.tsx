@@ -143,7 +143,7 @@ export function TradesFilterPanel({ filters, setFilters, onProcessTransaction }:
               const newFilters = {
                 ...localFilters,
                 timeframe: value,
-                dateRange: [startDate, now],
+                dateRange: [startDate, now] as [Date, Date],
               }
 
               setLocalFilters(newFilters)

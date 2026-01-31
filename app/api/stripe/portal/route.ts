@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createPortalSession } from '@/lib/stripe'
 import { createClient } from '@/lib/supabase/server'
+import { rateLimit, RateLimitPresets } from '@/lib/rate-limit'
 
 export async function POST(request: NextRequest) {
+  // Apply rate limiting to billing portal
+  const rateLimitResponse = rateLimit(request, 'stripe-portal', RateLimitPresets.auth)
+  if (rateLimitResponse) return rateLimitResponse
+
   try {
     const supabase = await createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()

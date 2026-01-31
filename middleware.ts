@@ -1,6 +1,54 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+// Session cookie configuration
+const SESSION_COOKIE_NAME = 'tr_session_id'
+const SESSION_COOKIE_MAX_AGE = 60 * 60 * 24 * 365 // 1 year
+
+// Security headers
+const SECURITY_HEADERS: Record<string, string> = {
+  'X-Frame-Options': 'DENY',
+  'X-Content-Type-Options': 'nosniff',
+  'X-XSS-Protection': '1; mode=block',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+  'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+}
+
+// Generate session ID
+function generateSessionId(): string {
+  const bytes = new Uint8Array(16)
+  crypto.getRandomValues(bytes)
+  const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('')
+  return `sess_${hex}`
+}
+
+// Add security headers to response
+function addSecurityHeaders(response: NextResponse): void {
+  Object.entries(SECURITY_HEADERS).forEach(([key, value]) => {
+    response.headers.set(key, value)
+  })
+
+  // Add request ID for tracing
+  const requestId = `req_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 10)}`
+  response.headers.set('X-Request-Id', requestId)
+}
+
+// Set session cookie if not present
+function ensureSessionCookie(request: NextRequest, response: NextResponse): void {
+  const existingSession = request.cookies.get(SESSION_COOKIE_NAME)?.value
+
+  if (!existingSession) {
+    const sessionId = generateSessionId()
+    response.cookies.set(SESSION_COOKIE_NAME, sessionId, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: SESSION_COOKIE_MAX_AGE,
+      path: '/',
+    })
+  }
+}
+
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
@@ -38,11 +86,17 @@ export async function middleware(request: NextRequest) {
   // Redirect authenticated users away from auth pages
   // EXCEPT for the confirm-email page (needed during email confirmation flow)
   if (isAuthPage && user && !isConfirmEmailPage) {
-    return NextResponse.redirect(new URL('/rankings', request.url))
+    const redirectResponse = NextResponse.redirect(new URL('/rankings', request.url))
+    addSecurityHeaders(redirectResponse)
+    ensureSessionCookie(request, redirectResponse)
+    return redirectResponse
   }
 
-  // Allow unauthenticated access to public pages
-  // Add any protected routes here if needed in the future
+  // Add security headers to all responses
+  addSecurityHeaders(supabaseResponse)
+
+  // Ensure session cookie exists for tracking
+  ensureSessionCookie(request, supabaseResponse)
 
   return supabaseResponse
 }

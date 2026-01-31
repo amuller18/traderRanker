@@ -53,19 +53,18 @@ export default function RegisterPage() {
       const result = await register(email, username, password);
 
       if (result.requiresEmailConfirmation) {
-        console.debug('Registration successful - email confirmation required');
         toast.info("Account created! Please check your email to confirm.");
 
         // Redirect to email confirmation page
         router.push(`/auth/confirm-email?email=${encodeURIComponent(email)}`);
       } else {
-        console.debug('Registration successful - auth state updated');
         toast.success("Account created successfully!");
 
         // Wait for auth state and profile to propagate before navigating
         await new Promise(resolve => setTimeout(resolve, 300));
 
-        router.push("/account");
+        // Redirect to onboarding to complete profile setup
+        router.push("/auth/onboarding");
         router.refresh();
       }
     } catch (error) {
@@ -165,7 +164,7 @@ export default function RegisterPage() {
             {/* Phantom Wallet Sign-Up */}
             <PhantomSignInButton
               onSuccess={() => {
-                router.push('/account');
+                router.push('/auth/onboarding');
                 router.refresh();
               }}
               className="w-full"

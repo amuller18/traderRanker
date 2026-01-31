@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { ThemeToggle } from "@/components/theme-toggle"
-import { TrendingUp, Menu, LogOut, Wallet, Settings } from "lucide-react"
+import { TrendingUp, Menu, LogOut, Wallet, Settings, Star } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Sheet,
@@ -29,6 +29,7 @@ const navItems = [
   { href: "/token-analysis", label: "Token Analysis" },
   { href: "/copy-trader", label: "Copy Trading" },
   { href: "/backtest", label: "Backtesting" },
+  { href: "/pricing", label: "Pricing" },
 ]
 
 export function PageHeader() {
@@ -72,14 +73,14 @@ export function PageHeader() {
         </div>
 
         {/* Desktop Navigation */}
-        <nav className="hidden md:flex items-center space-x-1 flex-1">
+        <nav className="hidden lg:flex items-center space-x-1 flex-1">
           {navItems.map((item) => {
             const isActive = pathname === item.href || pathname?.startsWith(item.href + "/")
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
                   isActive
                     ? "bg-primary text-primary-foreground shadow-sm"
                     : "text-foreground/70 hover:text-foreground hover:bg-secondary"
@@ -124,6 +125,12 @@ export function PageHeader() {
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
+                  <Link href="/watchlist">
+                    <Star className="mr-2 h-4 w-4" />
+                    <span>Watchlist</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
                   <Link href="/account">
                     <Settings className="mr-2 h-4 w-4" />
                     <span>My Account</span>
@@ -143,7 +150,7 @@ export function PageHeader() {
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
-            <Button asChild variant="default" size="sm" className="hidden md:flex">
+            <Button asChild variant="default" size="sm" className="hidden lg:flex">
               <Link href="/auth/login">Sign up/Login</Link>
             </Button>
           )}
@@ -152,7 +159,7 @@ export function PageHeader() {
           {/* Mobile menu */}
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" className="md:hidden">
+              <Button variant="ghost" size="icon" className="lg:hidden">
                 <Menu className="h-5 w-5" />
                 <span className="sr-only">Toggle menu</span>
               </Button>
@@ -200,14 +207,24 @@ export function PageHeader() {
                   )
                 })}
                 {isAuthenticated && (
-                  <Link
-                    href="/account"
-                    onClick={() => setOpen(false)}
-                    className="px-4 py-3 rounded-lg text-sm font-medium transition-all text-foreground/70 hover:text-foreground hover:bg-secondary flex items-center gap-2"
-                  >
-                    <Settings className="h-4 w-4" />
-                    My Account
-                  </Link>
+                  <>
+                    <Link
+                      href="/watchlist"
+                      onClick={() => setOpen(false)}
+                      className="px-4 py-3 rounded-lg text-sm font-medium transition-all text-foreground/70 hover:text-foreground hover:bg-secondary flex items-center gap-2"
+                    >
+                      <Star className="h-4 w-4" />
+                      Watchlist
+                    </Link>
+                    <Link
+                      href="/account"
+                      onClick={() => setOpen(false)}
+                      className="px-4 py-3 rounded-lg text-sm font-medium transition-all text-foreground/70 hover:text-foreground hover:bg-secondary flex items-center gap-2"
+                    >
+                      <Settings className="h-4 w-4" />
+                      My Account
+                    </Link>
+                  </>
                 )}
                 <div className="pt-4 border-t space-y-2">
                   {/* Auth Actions (Mobile) */}

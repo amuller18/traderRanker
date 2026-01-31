@@ -79,8 +79,6 @@ export function TraderTrades({ trades, currentPage, totalPages, totalTrades, tra
   const fetchAllTokenPrices = async (tokenAddresses: string[]) => {
     if (tokenAddresses.length === 0) return
 
-    console.log(`📊 Streaming prices for ${tokenAddresses.length} tokens...`)
-
     // Mark all tokens as loading
     const loadingUpdate: Record<string, boolean> = {}
     tokenAddresses.forEach(token => {
@@ -151,7 +149,6 @@ export function TraderTrades({ trades, currentPage, totalPages, totalTrades, tra
 
     // Wait for all to complete
     await Promise.allSettled(fetchPromises)
-    console.log(`✅ Finished streaming all ${tokenAddresses.length} tokens`)
   }
 
   // Calculate performance stats

@@ -36,13 +36,13 @@ function ConfirmEmailContent() {
     hasRedirectedRef.current = true;
     setIsConfirmed(true);
 
-    console.log("✅ Email confirmed! Redirecting...");
     toast.success("Email confirmed! Redirecting...");
 
     // Wait a moment for the profile to be created
     await new Promise(resolve => setTimeout(resolve, 500));
 
-    router.push("/account");
+    // Redirect to onboarding to complete profile setup
+    router.push("/auth/onboarding");
   };
 
   useEffect(() => {
@@ -56,8 +56,6 @@ function ConfirmEmailContent() {
     // This fires when the user confirms email in the same or different tab
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log("🔔 Auth state changed:", event, session?.user?.id);
-
         // SIGNED_IN event fires when email is confirmed and session is created
         if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') && session?.user) {
           await handleConfirmationSuccess();
@@ -77,12 +75,10 @@ function ConfirmEmailContent() {
         const { data: { session } } = await supabase.auth.getSession();
 
         if (session?.user) {
-          console.log("✅ Email confirmed via polling! Session found:", session.user.id);
           await handleConfirmationSuccess();
           return true;
         }
 
-        console.log(`🔍 Check ${checkCountRef.current}: No session yet`);
         return false;
       } catch (error) {
         console.error("Error checking session:", error);
@@ -138,7 +134,7 @@ function ConfirmEmailContent() {
             </CardHeader>
             <CardContent className="flex justify-center">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              <span className="ml-2 text-muted-foreground">Redirecting to your account...</span>
+              <span className="ml-2 text-muted-foreground">Redirecting to complete your profile...</span>
             </CardContent>
           </Card>
         </div>

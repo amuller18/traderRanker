@@ -77,30 +77,22 @@ export default async function RankingsPage(props: RankingsPageProps) {
     )
 
     if (caseInsensitiveMatch) {
-      console.log(`Found case-insensitive match: "${caseInsensitiveMatch.caller}"`)
       trader = caseInsensitiveMatch
     } else {
       notFound()
     }
   }
 
-  console.log(`📊 Loading trader profile: ${traderId}`)
-  console.log(`📈 Total calls: ${trader.total_calls}, Page: ${page}`)
-
   // Calculate pagination
   const totalTrades = trader.total_calls
   const totalPages = Math.ceil(totalTrades / pageSize)
   const offset = (page - 1) * pageSize
-
-  console.log(`📄 Fetching trades: limit=${pageSize}, offset=${offset}`)
 
   // Fetch only the trades for the current page
   const paginatedTrades = await fetchTraderTrades(traderId, {
     limit: pageSize,
     offset: offset
   })
-
-  console.log(`✅ Fetched ${paginatedTrades.length} trades for page ${page}`)
 
   // Only throw notFound if trader stats don't exist AND no trades found
   // If trader has stats (total_calls > 0) but API returns no trades, show empty state instead

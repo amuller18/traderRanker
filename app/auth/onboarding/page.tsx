@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
@@ -50,13 +50,27 @@ export default function OnboardingPage() {
   const [bio, setBio] = useState("");
   const [experience, setExperience] = useState("");
   const [interest, setInterest] = useState("");
+  const [authChecked, setAuthChecked] = useState(false);
+  const redirectAttempted = useRef(false);
 
-  // Redirect if not logged in
+  // Wait for auth to stabilize before making redirect decisions
   useEffect(() => {
-    if (!authLoading && !user) {
+    if (!authLoading) {
+      // Give auth state a moment to stabilize after initial load
+      const timer = setTimeout(() => {
+        setAuthChecked(true);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [authLoading]);
+
+  // Redirect if not logged in (after auth has been checked)
+  useEffect(() => {
+    if (authChecked && !user && !redirectAttempted.current) {
+      redirectAttempted.current = true;
       router.push("/auth/login");
     }
-  }, [user, authLoading, router]);
+  }, [user, authChecked, router]);
 
   // Pre-fill full name if available
   useEffect(() => {
@@ -114,7 +128,8 @@ export default function OnboardingPage() {
       .slice(0, 2);
   };
 
-  if (authLoading) {
+  // Show loading while auth is being checked
+  if (authLoading || !authChecked) {
     return (
       <div className="flex flex-col min-h-screen">
         <PageHeader />
@@ -125,8 +140,16 @@ export default function OnboardingPage() {
     );
   }
 
+  // User not logged in - will redirect via useEffect
   if (!user) {
-    return null;
+    return (
+      <div className="flex flex-col min-h-screen">
+        <PageHeader />
+        <div className="flex-1 flex items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin" />
+        </div>
+      </div>
+    );
   }
 
   return (

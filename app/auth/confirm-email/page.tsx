@@ -30,7 +30,7 @@ function ConfirmEmailContent() {
   // This prevents infinite loops from recreating the client on every render
   const supabase = useMemo(() => createClient(), []);
 
-  // Handle successful confirmation - redirect to account
+  // Handle successful confirmation - redirect to onboarding
   const handleConfirmationSuccess = async () => {
     if (hasRedirectedRef.current) return;
     hasRedirectedRef.current = true;

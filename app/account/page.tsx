@@ -161,9 +161,9 @@ export default function AccountPage() {
           <CardContent className="pt-6">
             <div className="text-center space-y-4">
               <p className="text-muted-foreground">Please log in to view your account settings.</p>
-              <Button asChild>
-                <Link href="/auth/login">Go to Login</Link>
-              </Button>
+              <Link href="/auth/login">
+                <Button>Go to Login</Button>
+              </Link>
             </div>
           </CardContent>
         </Card>

@@ -96,6 +96,9 @@ export default function OnboardingPage() {
       await updateProfile({
         full_name: fullName.trim(),
         avatar_url: avatarUrl.trim() || undefined,
+        trading_experience: experience || undefined,
+        trading_interest: interest || undefined,
+        bio: bio.trim() || undefined,
       });
 
       toast.success("Profile setup complete!");

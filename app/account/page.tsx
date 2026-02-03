@@ -6,7 +6,15 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Wallet, Mail, User, TrendingUp, ArrowRight, Edit2, Check, X, BarChart3, ArrowLeftRight, Loader2, Plus, Link as LinkIcon, Unlink } from 'lucide-react';
+import { Wallet, Mail, User, TrendingUp, ArrowRight, Edit2, Check, X, BarChart3, ArrowLeftRight, Loader2, Plus, Link as LinkIcon, Unlink, Sparkles, Target } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { mockAccountData } from '@/app/copy-trader/dashboard/data/mock';
@@ -21,9 +29,14 @@ export default function AccountPage() {
   const { displayMode, toggleDisplayMode } = useDisplayPreference();
   const { linkWalletIfLoggedIn, isPhantomInstalled, isLoading: isWalletLoading, error: walletError } = usePhantomAuth();
   const [isEditing, setIsEditing] = useState(false);
+  const [isEditingTrading, setIsEditingTrading] = useState(false);
   const [fullName, setFullName] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
+  const [tradingExperience, setTradingExperience] = useState('');
+  const [tradingInterest, setTradingInterest] = useState('');
+  const [bio, setBio] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [isSavingTrading, setIsSavingTrading] = useState(false);
   const [accountData, setAccountData] = useState<AccountDataPoint[]>([]);
   const [isLinkingWallet, setIsLinkingWallet] = useState(false);
   const [isUnlinkingWallet, setIsUnlinkingWallet] = useState(false);
@@ -40,6 +53,9 @@ export default function AccountPage() {
     if (user) {
       setFullName(user.full_name || '');
       setAvatarUrl(user.avatar_url || '');
+      setTradingExperience(user.trading_experience || '');
+      setTradingInterest(user.trading_interest || '');
+      setBio(user.bio || '');
     }
   }, [user]);
 
@@ -71,6 +87,34 @@ export default function AccountPage() {
       setAvatarUrl(user.avatar_url || '');
     }
     setIsEditing(false);
+  };
+
+  const handleSaveTrading = async () => {
+    if (!user) return;
+
+    setIsSavingTrading(true);
+    try {
+      await updateProfile({
+        trading_experience: tradingExperience || undefined,
+        trading_interest: tradingInterest || undefined,
+        bio: bio || undefined,
+      });
+      setIsEditingTrading(false);
+      toast.success('Trading profile updated!');
+    } catch (error) {
+      toast.error('Failed to update trading profile');
+    } finally {
+      setIsSavingTrading(false);
+    }
+  };
+
+  const handleCancelTrading = () => {
+    if (user) {
+      setTradingExperience(user.trading_experience || '');
+      setTradingInterest(user.trading_interest || '');
+      setBio(user.bio || '');
+    }
+    setIsEditingTrading(false);
   };
 
   const handleLinkWallet = async () => {
@@ -430,6 +474,141 @@ export default function AccountPage() {
                   <Check className="h-4 w-4 mr-2" />
                   {isSaving ? 'Saving...' : 'Save Changes'}
                 </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Trading Profile Card */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Target className="h-5 w-5" />
+                Trading Profile
+              </CardTitle>
+              <CardDescription>Your trading experience and interests</CardDescription>
+            </div>
+            {!isEditingTrading && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsEditingTrading(true)}
+              >
+                <Edit2 className="h-4 w-4 mr-2" />
+                Edit
+              </Button>
+            )}
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {isEditingTrading ? (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="tradingExperience">Trading Experience</Label>
+                  <Select value={tradingExperience} onValueChange={setTradingExperience}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select your experience level" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="beginner">Beginner - New to crypto trading</SelectItem>
+                      <SelectItem value="intermediate">Intermediate - 1-2 years experience</SelectItem>
+                      <SelectItem value="advanced">Advanced - 3+ years experience</SelectItem>
+                      <SelectItem value="professional">Professional - Full-time trader</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Trading Interest</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { value: 'memecoins', label: 'Memecoins', icon: Sparkles },
+                      { value: 'defi', label: 'DeFi Tokens', icon: TrendingUp },
+                      { value: 'bluechip', label: 'Blue Chips', icon: Target },
+                      { value: 'all', label: 'All of the Above', icon: User },
+                    ].map((item) => {
+                      const Icon = item.icon;
+                      const isSelected = tradingInterest === item.value;
+                      return (
+                        <button
+                          key={item.value}
+                          type="button"
+                          onClick={() => setTradingInterest(item.value)}
+                          className={`flex items-center gap-2 p-3 rounded-lg border text-left transition-colors ${
+                            isSelected
+                              ? 'border-primary bg-primary/5 text-primary'
+                              : 'border-border hover:border-primary/50 hover:bg-muted/50'
+                          }`}
+                        >
+                          <Icon className="h-4 w-4" />
+                          <span className="text-sm font-medium">{item.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="bio">Bio</Label>
+                  <Textarea
+                    id="bio"
+                    placeholder="Tell us about your trading style..."
+                    value={bio}
+                    onChange={(e) => setBio(e.target.value)}
+                    rows={3}
+                    className="resize-none"
+                  />
+                </div>
+
+                <div className="flex gap-2 justify-end pt-4 border-t">
+                  <Button
+                    variant="outline"
+                    onClick={handleCancelTrading}
+                    disabled={isSavingTrading}
+                  >
+                    <X className="h-4 w-4 mr-2" />
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleSaveTrading}
+                    disabled={isSavingTrading}
+                  >
+                    <Check className="h-4 w-4 mr-2" />
+                    {isSavingTrading ? 'Saving...' : 'Save Changes'}
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <div className="grid gap-4">
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                  <BarChart3 className="h-5 w-5 text-muted-foreground" />
+                  <div className="flex-1">
+                    <Label className="text-xs text-muted-foreground">Experience Level</Label>
+                    <p className="font-medium capitalize">
+                      {user.trading_experience || 'Not set'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                  <Sparkles className="h-5 w-5 text-muted-foreground" />
+                  <div className="flex-1">
+                    <Label className="text-xs text-muted-foreground">Trading Interest</Label>
+                    <p className="font-medium capitalize">
+                      {user.trading_interest === 'all' ? 'All Types' : user.trading_interest || 'Not set'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
+                  <User className="h-5 w-5 text-muted-foreground mt-0.5" />
+                  <div className="flex-1">
+                    <Label className="text-xs text-muted-foreground">Bio</Label>
+                    <p className="font-medium text-sm">
+                      {user.bio || 'No bio set'}
+                    </p>
+                  </div>
+                </div>
               </div>
             )}
           </CardContent>

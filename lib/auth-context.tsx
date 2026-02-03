@@ -10,6 +10,9 @@ interface UserProfile {
   full_name?: string;
   avatar_url?: string;
   wallet_pubkeys?: string;
+  trading_experience?: string;
+  trading_interest?: string;
+  bio?: string;
 }
 
 interface User {
@@ -20,6 +23,9 @@ interface User {
   wallet_pubkeys?: string;  // New field for Phantom wallet
   full_name?: string;
   avatar_url?: string;
+  trading_experience?: string;
+  trading_interest?: string;
+  bio?: string;
 }
 
 interface AuthContextType {
@@ -356,6 +362,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         wallet_pubkeys: walletPubkeys,  // From profile or user_wallets
         full_name: profile.full_name,
         avatar_url: profile.avatar_url,
+        trading_experience: profile.trading_experience,
+        trading_interest: profile.trading_interest,
+        bio: profile.bio,
       };
 
       const totalDuration = Date.now() - startTime;

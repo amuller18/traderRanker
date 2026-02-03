@@ -13,6 +13,8 @@ interface UserProfile {
   trading_experience?: string;
   trading_interest?: string;
   bio?: string;
+  subscription_tier?: string;
+  stripe_customer_id?: string;
 }
 
 interface User {
@@ -26,6 +28,8 @@ interface User {
   trading_experience?: string;
   trading_interest?: string;
   bio?: string;
+  subscription_tier?: string;
+  stripe_customer_id?: string;
 }
 
 interface AuthContextType {
@@ -365,6 +369,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         trading_experience: profile.trading_experience,
         trading_interest: profile.trading_interest,
         bio: profile.bio,
+        subscription_tier: profile.subscription_tier || 'free',
+        stripe_customer_id: profile.stripe_customer_id,
       };
 
       const totalDuration = Date.now() - startTime;

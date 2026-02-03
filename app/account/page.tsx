@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Wallet, Mail, User, TrendingUp, ArrowRight, Edit2, Check, X, BarChart3, ArrowLeftRight, Loader2, Plus, Link as LinkIcon, Unlink, Sparkles, Target, Star, Heart, Coins } from 'lucide-react';
+import { Wallet, Mail, User, TrendingUp, ArrowRight, Edit2, Check, X, BarChart3, ArrowLeftRight, Loader2, Plus, Link as LinkIcon, Unlink, Sparkles, Target, Star, Heart, Coins, Crown, CreditCard, ExternalLink } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { useFavorites } from '@/lib/favorites-context';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -49,6 +50,7 @@ export default function AccountPage() {
   const [newTokenCA, setNewTokenCA] = useState('');
   const [newTokenName, setNewTokenName] = useState('');
   const [isAddingToken, setIsAddingToken] = useState(false);
+  const [isLoadingPortal, setIsLoadingPortal] = useState(false);
 
   // Check if user is wallet-only (has fake @wallet.traderranker.com email)
   const isWalletOnlyAccount = user?.email?.endsWith('@wallet.traderranker.com') ?? false;
@@ -147,6 +149,28 @@ export default function AccountPage() {
       toast.error('Failed to add token');
     } finally {
       setIsAddingToken(false);
+    }
+  };
+
+  const handleOpenPortal = async () => {
+    setIsLoadingPortal(true);
+    try {
+      const response = await fetch('/api/stripe/portal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to open billing portal');
+      }
+
+      const { url } = await response.json();
+      window.location.href = url;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to open billing portal');
+      setIsLoadingPortal(false);
     }
   };
 
@@ -720,6 +744,122 @@ export default function AccountPage() {
                   <ArrowRight className="h-4 w-4 ml-2" />
                 </Button>
               </Link>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Subscription Card */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Crown className="h-5 w-5" />
+              Subscription
+            </CardTitle>
+            <CardDescription>Your current plan and billing</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
+              <div className="flex items-center gap-3">
+                <div className={`p-2 rounded-lg ${
+                  user.subscription_tier === 'enterprise' ? 'bg-purple-500/10' :
+                  user.subscription_tier === 'pro' ? 'bg-primary/10' :
+                  'bg-muted'
+                }`}>
+                  <Crown className={`h-5 w-5 ${
+                    user.subscription_tier === 'enterprise' ? 'text-purple-500' :
+                    user.subscription_tier === 'pro' ? 'text-primary' :
+                    'text-muted-foreground'
+                  }`} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className="font-semibold capitalize">{user.subscription_tier || 'Free'} Plan</p>
+                    <Badge variant={
+                      user.subscription_tier === 'enterprise' ? 'default' :
+                      user.subscription_tier === 'pro' ? 'secondary' :
+                      'outline'
+                    }>
+                      {user.subscription_tier === 'enterprise' ? 'Enterprise' :
+                       user.subscription_tier === 'pro' ? 'Pro' : 'Free'}
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    {user.subscription_tier === 'enterprise' ? 'Unlimited access to all features' :
+                     user.subscription_tier === 'pro' ? 'Advanced trading tools unlocked' :
+                     'Basic features included'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Plan Features */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Your Plan Includes:</Label>
+              <ul className="text-sm text-muted-foreground space-y-1">
+                {user.subscription_tier === 'free' || !user.subscription_tier ? (
+                  <>
+                    <li className="flex items-center gap-2"><Check className="h-3 w-3 text-green-500" /> Basic rankings access</li>
+                    <li className="flex items-center gap-2"><Check className="h-3 w-3 text-green-500" /> Track up to 10 traders</li>
+                    <li className="flex items-center gap-2"><Check className="h-3 w-3 text-green-500" /> 7 days historical data</li>
+                  </>
+                ) : user.subscription_tier === 'pro' ? (
+                  <>
+                    <li className="flex items-center gap-2"><Check className="h-3 w-3 text-green-500" /> Track up to 100 traders</li>
+                    <li className="flex items-center gap-2"><Check className="h-3 w-3 text-green-500" /> 90 days historical data</li>
+                    <li className="flex items-center gap-2"><Check className="h-3 w-3 text-green-500" /> Advanced backtesting</li>
+                    <li className="flex items-center gap-2"><Check className="h-3 w-3 text-green-500" /> Copy trading</li>
+                  </>
+                ) : (
+                  <>
+                    <li className="flex items-center gap-2"><Check className="h-3 w-3 text-green-500" /> Unlimited traders</li>
+                    <li className="flex items-center gap-2"><Check className="h-3 w-3 text-green-500" /> Unlimited historical data</li>
+                    <li className="flex items-center gap-2"><Check className="h-3 w-3 text-green-500" /> Custom strategies</li>
+                    <li className="flex items-center gap-2"><Check className="h-3 w-3 text-green-500" /> Dedicated support</li>
+                  </>
+                )}
+              </ul>
+            </div>
+
+            {/* Actions */}
+            <div className="pt-4 border-t space-y-2">
+              {user.stripe_customer_id ? (
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={handleOpenPortal}
+                  disabled={isLoadingPortal}
+                >
+                  {isLoadingPortal ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Opening...
+                    </>
+                  ) : (
+                    <>
+                      <CreditCard className="h-4 w-4 mr-2" />
+                      Manage Billing
+                    </>
+                  )}
+                </Button>
+              ) : null}
+
+              {(!user.subscription_tier || user.subscription_tier === 'free') && (
+                <Link href="/pricing" className="block">
+                  <Button className="w-full">
+                    <Crown className="h-4 w-4 mr-2" />
+                    Upgrade Plan
+                  </Button>
+                </Link>
+              )}
+
+              {user.subscription_tier && user.subscription_tier !== 'free' && (
+                <Link href="/pricing" className="block">
+                  <Button variant="ghost" className="w-full text-muted-foreground">
+                    View All Plans
+                    <ArrowRight className="h-4 w-4 ml-2" />
+                  </Button>
+                </Link>
+              )}
             </div>
           </CardContent>
         </Card>

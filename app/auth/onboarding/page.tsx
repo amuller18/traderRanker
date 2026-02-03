@@ -25,7 +25,7 @@ import {
 import { toast } from "sonner";
 import { Loader2, User, Sparkles, TrendingUp, Target } from "lucide-react";
 import { PageHeader } from "@/app/page-header";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { AvatarUpload } from "@/components/avatar-upload";
 
 const tradingExperience = [
   { value: "beginner", label: "Beginner", description: "New to crypto trading" },
@@ -121,16 +121,6 @@ export default function OnboardingPage() {
     router.push("/account");
   };
 
-  const getInitials = (name: string) => {
-    if (!name) return "U";
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase()
-      .slice(0, 2);
-  };
-
   // Show loading while auth is being checked
   if (authLoading || !authChecked) {
     return (
@@ -162,18 +152,17 @@ export default function OnboardingPage() {
         <Card className="w-full max-w-lg">
           <CardHeader className="space-y-1 text-center">
             <div className="mx-auto mb-2">
-              <Avatar className="h-20 w-20 border-2 border-primary/20">
-                <AvatarImage src={avatarUrl} />
-                <AvatarFallback className="text-lg bg-primary/10">
-                  {getInitials(fullName || user.username)}
-                </AvatarFallback>
-              </Avatar>
+              <AvatarUpload
+                currentUrl={avatarUrl}
+                onUpload={(url) => setAvatarUrl(url)}
+                size={80}
+              />
             </div>
             <CardTitle className="text-2xl font-bold">
               Welcome to TraderRanker!
             </CardTitle>
             <CardDescription>
-              Let's set up your profile so other traders can find you
+              Click the avatar above to upload a photo, then set up your profile
             </CardDescription>
           </CardHeader>
           <form onSubmit={handleSubmit}>
@@ -194,22 +183,6 @@ export default function OnboardingPage() {
                 />
                 <p className="text-xs text-muted-foreground">
                   This will be displayed on your public profile
-                </p>
-              </div>
-
-              {/* Avatar URL */}
-              <div className="space-y-2">
-                <Label htmlFor="avatarUrl">Profile Picture URL</Label>
-                <Input
-                  id="avatarUrl"
-                  type="url"
-                  placeholder="https://example.com/your-avatar.jpg"
-                  value={avatarUrl}
-                  onChange={(e) => setAvatarUrl(e.target.value)}
-                  disabled={isLoading}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Paste a link to your profile image (optional)
                 </p>
               </div>
 

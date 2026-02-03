@@ -9,6 +9,12 @@ import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { Check, X, Zap, Crown, Rocket, HelpCircle, Loader2 } from "lucide-react"
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/auth-context"
 import { toast } from "sonner"
@@ -471,50 +477,103 @@ export default function PricingPage() {
         </div>
 
         {/* FAQ Section */}
-        <div className="max-w-3xl mx-auto text-center space-y-8">
-          <h2 className="text-2xl font-bold">Frequently Asked Questions</h2>
-          <div className="grid md:grid-cols-2 gap-6 text-left">
-            <Card className="border shadow-sm">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base">Can I switch plans later?</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  Yes! You can upgrade or downgrade your plan at any time. Changes take effect immediately, and we&apos;ll prorate any charges.
+        <div className="max-w-3xl mx-auto space-y-8">
+          <h2 className="text-2xl font-bold text-center">Frequently Asked Questions</h2>
+          <Accordion type="single" collapsible className="w-full">
+            <AccordionItem value="what-is-traderranker">
+              <AccordionTrigger>What is TraderRanker?</AccordionTrigger>
+              <AccordionContent>
+                <p className="text-muted-foreground">
+                  TraderRanker is a Solana trading analytics platform that ranks and tracks the
+                  performance of on-chain traders. It provides real-time leaderboards, detailed
+                  trade analysis, copy trading capabilities, and advanced backtesting tools to
+                  help you discover top-performing traders and improve your own strategies.
                 </p>
-              </CardContent>
-            </Card>
-            <Card className="border shadow-sm">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base">Is there a free trial?</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  Pro plans include a 14-day free trial. No credit card required to start. Cancel anytime during the trial period.
+              </AccordionContent>
+            </AccordionItem>
+            <AccordionItem value="free-plan">
+              <AccordionTrigger>How does the free plan work?</AccordionTrigger>
+              <AccordionContent>
+                <p className="text-muted-foreground">
+                  The free plan gives you access to basic trader rankings, the ability to track
+                  up to 10 traders, and 7 days of historical data. No credit card is required
+                  to sign up. It&apos;s a great way to explore the platform and see how
+                  TraderRanker can benefit your trading before committing to a paid plan.
                 </p>
-              </CardContent>
-            </Card>
-            <Card className="border shadow-sm">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base">What payment methods do you accept?</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  We accept all major credit cards, PayPal, and cryptocurrency payments (SOL, USDC). Enterprise plans support invoicing.
+              </AccordionContent>
+            </AccordionItem>
+            <AccordionItem value="upgrade-downgrade">
+              <AccordionTrigger>Can I upgrade or downgrade at any time?</AccordionTrigger>
+              <AccordionContent>
+                <p className="text-muted-foreground">
+                  Yes! You can upgrade or downgrade your plan at any time from your account
+                  settings. When upgrading, you get immediate access to the new features and
+                  we&apos;ll prorate any charges. When downgrading, the change takes effect at
+                  the end of your current billing cycle so you don&apos;t lose access mid-period.
                 </p>
-              </CardContent>
-            </Card>
-            <Card className="border shadow-sm">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base">Do you offer refunds?</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  We offer a 30-day money-back guarantee for all paid plans. If you&apos;re not satisfied, contact us for a full refund.
+              </AccordionContent>
+            </AccordionItem>
+            <AccordionItem value="copy-trading">
+              <AccordionTrigger>How does copy trading work?</AccordionTrigger>
+              <AccordionContent>
+                <p className="text-muted-foreground">
+                  Copy trading allows you to automatically mirror the trades of top-performing
+                  Solana traders. Once enabled on a Pro or Enterprise plan, you select a trader
+                  from the leaderboard, set your allocation and risk parameters, and
+                  TraderRanker will execute the same trades in your connected wallet
+                  proportionally. You stay in full control and can pause or stop copying at any
+                  time.
                 </p>
-              </CardContent>
-            </Card>
-          </div>
+              </AccordionContent>
+            </AccordionItem>
+            <AccordionItem value="data-security">
+              <AccordionTrigger>Is my data secure?</AccordionTrigger>
+              <AccordionContent>
+                <p className="text-muted-foreground">
+                  Absolutely. We use industry-standard encryption for all data in transit and at
+                  rest. TraderRanker never stores your private keys or seed phrases. Wallet
+                  connections are read-only by default, and copy trading permissions are
+                  explicitly granted and revocable. We also conduct regular security audits to
+                  ensure the platform remains safe and reliable.
+                </p>
+              </AccordionContent>
+            </AccordionItem>
+            <AccordionItem value="payment-methods">
+              <AccordionTrigger>What payment methods do you accept?</AccordionTrigger>
+              <AccordionContent>
+                <p className="text-muted-foreground">
+                  We accept all major credit cards (Visa, Mastercard, American Express),
+                  PayPal, and cryptocurrency payments including SOL and USDC. Enterprise plans
+                  also support invoicing with net-30 payment terms. All payments are processed
+                  securely through Stripe.
+                </p>
+              </AccordionContent>
+            </AccordionItem>
+            <AccordionItem value="refunds">
+              <AccordionTrigger>Do you offer refunds?</AccordionTrigger>
+              <AccordionContent>
+                <p className="text-muted-foreground">
+                  We offer a 30-day money-back guarantee for all paid plans. If you&apos;re not
+                  satisfied with TraderRanker for any reason within the first 30 days, contact
+                  our support team for a full refund -- no questions asked. Pro plans also
+                  include a 14-day free trial so you can evaluate the platform risk-free before
+                  being charged.
+                </p>
+              </AccordionContent>
+            </AccordionItem>
+            <AccordionItem value="cancel-subscription">
+              <AccordionTrigger>How do I cancel my subscription?</AccordionTrigger>
+              <AccordionContent>
+                <p className="text-muted-foreground">
+                  You can cancel your subscription at any time from your account settings page.
+                  Navigate to Settings, then Subscription, and click &quot;Cancel Plan.&quot;
+                  Your access will continue until the end of your current billing period. No
+                  cancellation fees apply, and you can resubscribe whenever you&apos;re ready
+                  to come back.
+                </p>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
         </div>
 
         {/* CTA Section */}

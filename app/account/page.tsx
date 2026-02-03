@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { AvatarUpload } from '@/components/avatar-upload';
 import { Wallet, Mail, User, TrendingUp, ArrowRight, Edit2, Check, X, BarChart3, ArrowLeftRight, Loader2, Plus, Link as LinkIcon, Unlink, Sparkles, Target, Star, Heart, Coins, Crown, CreditCard, ExternalLink } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useFavorites } from '@/lib/favorites-context';
@@ -335,12 +336,20 @@ export default function AccountPage() {
           <CardContent className="space-y-6">
             {/* Avatar and Name */}
             <div className="flex items-center gap-4">
-              <Avatar className="h-20 w-20">
-                <AvatarImage src={isEditing ? avatarUrl : user.avatar_url} />
-                <AvatarFallback className="text-lg">
-                  {getInitials(user.full_name, user.email, user.username)}
-                </AvatarFallback>
-              </Avatar>
+              {isEditing ? (
+                <AvatarUpload
+                  currentUrl={avatarUrl}
+                  onUpload={(url) => setAvatarUrl(url)}
+                  size={80}
+                />
+              ) : (
+                <Avatar className="h-20 w-20">
+                  <AvatarImage src={user.avatar_url} />
+                  <AvatarFallback className="text-lg">
+                    {getInitials(user.full_name, user.email, user.username)}
+                  </AvatarFallback>
+                </Avatar>
+              )}
               <div className="flex-1">
                 {isEditing ? (
                   <div className="space-y-2">
@@ -353,15 +362,9 @@ export default function AccountPage() {
                         placeholder="Enter your full name"
                       />
                     </div>
-                    <div>
-                      <Label htmlFor="avatarUrl">Avatar URL</Label>
-                      <Input
-                        id="avatarUrl"
-                        value={avatarUrl}
-                        onChange={(e) => setAvatarUrl(e.target.value)}
-                        placeholder="https://example.com/avatar.jpg"
-                      />
-                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Click the avatar to upload a new photo
+                    </p>
                   </div>
                 ) : (
                   <div>

@@ -9,6 +9,7 @@ import { FavoritesProvider } from "@/lib/favorites-context"
 import { Toaster } from "@/components/ui/sonner"
 import { Analytics } from "@vercel/analytics/react"
 import { SpeedInsights } from "@vercel/speed-insights/next"
+import { CookieConsent } from "@/components/cookie-consent"
 
 export const metadata: Metadata = {
   title: "TraderRanker - Solana Trading Performance Analytics",
@@ -31,6 +32,7 @@ export default function RootLayout({
                 <FavoritesProvider>
                   {children}
                   <Toaster />
+                  <CookieConsent />
                   <Analytics />
                   <SpeedInsights />
                 </FavoritesProvider>

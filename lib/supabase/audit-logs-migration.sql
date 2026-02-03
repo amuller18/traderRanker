@@ -1,5 +1,35 @@
--- Create audit_logs table for tracking user actions and security events
--- Run this migration in your Supabase SQL editor
+-- ============================================================================
+-- AUDIT LOGS MIGRATION
+-- ============================================================================
+--
+-- This migration creates the audit_logs table for tracking user actions and
+-- security events in your application.
+--
+-- DEPLOYMENT INSTRUCTIONS:
+-- ------------------------
+-- 1. Go to your Supabase Dashboard: https://supabase.com/dashboard
+-- 2. Select your project
+-- 3. Navigate to SQL Editor in the left sidebar
+-- 4. Create a new query
+-- 5. Copy and paste this entire file
+-- 6. Click "Run" to execute the migration
+-- 7. Verify the table was created in Table Editor
+--
+-- ENVIRONMENT REQUIREMENTS:
+-- -------------------------
+-- Ensure these environment variables are set in your deployment:
+-- - NEXT_PUBLIC_SUPABASE_URL: Your Supabase project URL
+-- - SUPABASE_SERVICE_ROLE_KEY: Your service role key (keep secret!)
+--
+-- ACTIONS TRACKED:
+-- ----------------
+-- User actions: user.login, user.logout, user.signup, user.password_change
+-- Wallet actions: wallet.connect, wallet.disconnect, wallet.link, wallet.unlink
+-- Favorites: favorite.add, favorite.remove
+-- Subscriptions: subscription.checkout_start, subscription.created, etc.
+-- Security: api.rate_limited, security.suspicious_activity
+--
+-- ============================================================================
 
 CREATE TABLE IF NOT EXISTS public.audit_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

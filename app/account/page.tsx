@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Wallet, Mail, User, TrendingUp, ArrowRight, Edit2, Check, X, BarChart3, ArrowLeftRight, Loader2, Plus, Link as LinkIcon, Unlink, Sparkles, Target } from 'lucide-react';
+import { Wallet, Mail, User, TrendingUp, ArrowRight, Edit2, Check, X, BarChart3, ArrowLeftRight, Loader2, Plus, Link as LinkIcon, Unlink, Sparkles, Target, Star, Heart, Coins } from 'lucide-react';
+import { useFavorites } from '@/lib/favorites-context';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
@@ -28,6 +29,7 @@ export default function AccountPage() {
   const { user, updateProfile, linkWallet, unlinkWallet } = useAuth();
   const { displayMode, toggleDisplayMode } = useDisplayPreference();
   const { linkWalletIfLoggedIn, isPhantomInstalled, isLoading: isWalletLoading, error: walletError } = usePhantomAuth();
+  const { traders, tokens, addFavorite, isLoading: isFavoritesLoading } = useFavorites();
   const [isEditing, setIsEditing] = useState(false);
   const [isEditingTrading, setIsEditingTrading] = useState(false);
   const [fullName, setFullName] = useState('');
@@ -44,6 +46,9 @@ export default function AccountPage() {
   const [newEmail, setNewEmail] = useState('');
   const [emailPassword, setEmailPassword] = useState('');
   const [isSavingEmail, setIsSavingEmail] = useState(false);
+  const [newTokenCA, setNewTokenCA] = useState('');
+  const [newTokenName, setNewTokenName] = useState('');
+  const [isAddingToken, setIsAddingToken] = useState(false);
 
   // Check if user is wallet-only (has fake @wallet.traderranker.com email)
   const isWalletOnlyAccount = user?.email?.endsWith('@wallet.traderranker.com') ?? false;
@@ -115,6 +120,34 @@ export default function AccountPage() {
       setBio(user.bio || '');
     }
     setIsEditingTrading(false);
+  };
+
+  const handleAddToken = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!newTokenCA.trim()) {
+      toast.error('Please enter a token contract address');
+      return;
+    }
+
+    // Basic validation for Solana address (32-44 characters, base58)
+    const caRegex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+    if (!caRegex.test(newTokenCA.trim())) {
+      toast.error('Please enter a valid Solana contract address');
+      return;
+    }
+
+    setIsAddingToken(true);
+    try {
+      await addFavorite('token', newTokenCA.trim(), newTokenName.trim() || undefined);
+      toast.success('Token added to watchlist!');
+      setNewTokenCA('');
+      setNewTokenName('');
+    } catch (error) {
+      toast.error('Failed to add token');
+    } finally {
+      setIsAddingToken(false);
+    }
   };
 
   const handleLinkWallet = async () => {
@@ -611,6 +644,83 @@ export default function AccountPage() {
                 </div>
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        {/* Watchlist Card */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Star className="h-5 w-5" />
+              Watchlist
+            </CardTitle>
+            <CardDescription>Track your favorite traders and tokens</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Stats */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                <div className="p-2 bg-primary/10 rounded-lg">
+                  <User className="h-4 w-4 text-primary" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{traders.length}</p>
+                  <p className="text-xs text-muted-foreground">Traders</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                <div className="p-2 bg-chart-1/10 rounded-lg">
+                  <Coins className="h-4 w-4 text-chart-1" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{tokens.length}</p>
+                  <p className="text-xs text-muted-foreground">Tokens</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Add Token */}
+            <div className="pt-4 border-t">
+              <Label className="text-sm font-medium mb-2 block">Quick Add Token</Label>
+              <form onSubmit={handleAddToken} className="space-y-3">
+                <Input
+                  placeholder="Token Contract Address (CA)"
+                  value={newTokenCA}
+                  onChange={(e) => setNewTokenCA(e.target.value)}
+                  disabled={isAddingToken}
+                  className="font-mono text-sm"
+                />
+                <Input
+                  placeholder="Token Name (optional)"
+                  value={newTokenName}
+                  onChange={(e) => setNewTokenName(e.target.value)}
+                  disabled={isAddingToken}
+                />
+                <Button type="submit" className="w-full" disabled={isAddingToken || !newTokenCA.trim()}>
+                  {isAddingToken ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Adding...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add to Watchlist
+                    </>
+                  )}
+                </Button>
+              </form>
+            </div>
+
+            {/* Link to full watchlist */}
+            <div className="pt-4 border-t">
+              <Link href="/watchlist">
+                <Button variant="outline" className="w-full">
+                  View Full Watchlist
+                  <ArrowRight className="h-4 w-4 ml-2" />
+                </Button>
+              </Link>
+            </div>
           </CardContent>
         </Card>
 

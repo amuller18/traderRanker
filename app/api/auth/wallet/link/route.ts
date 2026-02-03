@@ -59,7 +59,7 @@ function verifySignature(
 
 export async function POST(request: NextRequest) {
   // Apply rate limiting to wallet linking
-  const rateLimitResponse = rateLimit(request, 'wallet-link', RateLimitPresets.auth);
+  const rateLimitResponse = await rateLimit(request, 'wallet-link', RateLimitPresets.auth);
   if (rateLimitResponse) return rateLimitResponse;
 
   try {

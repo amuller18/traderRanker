@@ -1,3 +1,5 @@
+import { withSentryConfig } from "@sentry/nextjs";
+
 let userConfig = undefined
 try {
   userConfig = await import('./v0-user-next.config')
@@ -73,4 +75,34 @@ function mergeConfig(nextConfig, userConfig) {
   }
 }
 
-export default nextConfig
+// Sentry configuration options
+const sentryOptions = {
+  // For all available options, see:
+  // https://github.com/getsentry/sentry-webpack-plugin#options
+
+  // Suppresses source map uploading logs during build
+  silent: true,
+
+  // Organization and project for Sentry (set via env vars)
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+
+  // Upload source maps to Sentry
+  widenClientFileUpload: true,
+
+  // Hide source maps from client bundles
+  hideSourceMaps: true,
+
+  // Automatically tree-shake Sentry logger statements
+  disableLogger: true,
+
+  // Enables automatic instrumentation of Vercel Cron Monitors
+  automaticVercelMonitors: true,
+};
+
+// Only wrap with Sentry if DSN is configured
+const finalConfig = process.env.NEXT_PUBLIC_SENTRY_DSN
+  ? withSentryConfig(nextConfig, sentryOptions)
+  : nextConfig;
+
+export default finalConfig

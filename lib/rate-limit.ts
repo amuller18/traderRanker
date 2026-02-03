@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { Ratelimit } from '@upstash/ratelimit'
+import { Redis } from '@upstash/redis'
 
 interface RateLimitConfig {
   maxRequests: number      // Maximum requests allowed
@@ -11,7 +13,50 @@ interface RateLimitEntry {
   resetTime: number
 }
 
-// In-memory store (works for single-instance, use Redis for production scale)
+// Check if Redis is configured
+const isRedisConfigured = Boolean(
+  process.env.UPSTASH_REDIS_REST_URL &&
+  process.env.UPSTASH_REDIS_REST_TOKEN
+)
+
+// Create Redis client for production (if configured)
+let redis: Redis | null = null
+let redisRateLimiters: Map<string, Ratelimit> = new Map()
+
+function getRedis(): Redis | null {
+  if (!isRedisConfigured) return null
+
+  if (!redis) {
+    redis = new Redis({
+      url: process.env.UPSTASH_REDIS_REST_URL!,
+      token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+    })
+  }
+  return redis
+}
+
+function getRedisRateLimiter(preset: string, config: RateLimitConfig): Ratelimit | null {
+  const redisClient = getRedis()
+  if (!redisClient) return null
+
+  const key = `${preset}-${config.maxRequests}-${config.windowMs}`
+
+  if (!redisRateLimiters.has(key)) {
+    // Convert windowMs to seconds for Upstash
+    const windowSeconds = Math.ceil(config.windowMs / 1000)
+
+    redisRateLimiters.set(key, new Ratelimit({
+      redis: redisClient,
+      limiter: Ratelimit.slidingWindow(config.maxRequests, `${windowSeconds} s`),
+      analytics: true,
+      prefix: `ratelimit:${preset}`,
+    }))
+  }
+
+  return redisRateLimiters.get(key)!
+}
+
+// In-memory store (fallback for development or when Redis is not configured)
 const rateLimitStore = new Map<string, RateLimitEntry>()
 
 // Clean up expired entries every 5 minutes
@@ -47,8 +92,8 @@ export function getClientIdentifier(req: NextRequest): string {
   return ip
 }
 
-// Check rate limit and return result
-export function checkRateLimit(
+// In-memory rate limit check
+function checkRateLimitInMemory(
   key: string,
   config: RateLimitConfig
 ): { allowed: boolean; remaining: number; resetTime: number; retryAfter?: number } {
@@ -91,58 +136,52 @@ export const RateLimitPresets = {
   burst: { maxRequests: 100, windowMs: 60 * 1000 },        // 100 per minute
 }
 
-// Higher-order function to wrap API route with rate limiting
-export function withRateLimit<T extends (...args: [NextRequest, ...unknown[]]) => Promise<NextResponse>>(
-  handler: T,
-  config: RateLimitConfig = RateLimitPresets.standard,
-  keyPrefix = ''
-): T {
-  return (async (req: NextRequest, ...args: unknown[]) => {
-    const clientId = config.keyGenerator?.(req) ?? getClientIdentifier(req)
-    const key = `${keyPrefix}:${req.method}:${clientId}`
-
-    const result = checkRateLimit(key, config)
-
-    if (!result.allowed) {
-      return NextResponse.json(
-        {
-          error: 'Too many requests',
-          message: 'Rate limit exceeded. Please try again later.',
-          retryAfter: result.retryAfter
-        },
-        {
-          status: 429,
-          headers: {
-            'Retry-After': String(result.retryAfter),
-            'X-RateLimit-Limit': String(config.maxRequests),
-            'X-RateLimit-Remaining': '0',
-            'X-RateLimit-Reset': String(Math.ceil(result.resetTime / 1000)),
-          }
-        }
-      )
-    }
-
-    const response = await handler(req, ...args as Parameters<T> extends [NextRequest, ...infer R] ? R : never)
-
-    // Add rate limit headers to successful responses
-    response.headers.set('X-RateLimit-Limit', String(config.maxRequests))
-    response.headers.set('X-RateLimit-Remaining', String(result.remaining))
-    response.headers.set('X-RateLimit-Reset', String(Math.ceil(result.resetTime / 1000)))
-
-    return response
-  }) as T
-}
-
 // Simple rate limit check for use within route handlers
-export function rateLimit(
+// Uses Redis in production, falls back to in-memory for development
+export async function rateLimit(
   req: NextRequest,
   routeKey: string,
   config: RateLimitConfig = RateLimitPresets.standard
-): NextResponse | null {
+): Promise<NextResponse | null> {
   const clientId = getClientIdentifier(req)
   const key = `${routeKey}:${req.method}:${clientId}`
 
-  const result = checkRateLimit(key, config)
+  // Try Redis-based rate limiting first (production)
+  const redisLimiter = getRedisRateLimiter(routeKey, config)
+
+  if (redisLimiter) {
+    try {
+      const { success, limit, remaining, reset } = await redisLimiter.limit(key)
+
+      if (!success) {
+        const retryAfter = Math.ceil((reset - Date.now()) / 1000)
+        return NextResponse.json(
+          {
+            error: 'Too many requests',
+            message: 'Rate limit exceeded. Please try again later.',
+            retryAfter
+          },
+          {
+            status: 429,
+            headers: {
+              'Retry-After': String(retryAfter),
+              'X-RateLimit-Limit': String(limit),
+              'X-RateLimit-Remaining': String(remaining),
+              'X-RateLimit-Reset': String(Math.ceil(reset / 1000)),
+            }
+          }
+        )
+      }
+
+      return null // No rate limit hit
+    } catch (error) {
+      // If Redis fails, fall back to in-memory
+      console.warn('[RateLimit] Redis failed, falling back to in-memory:', error)
+    }
+  }
+
+  // In-memory fallback (development or Redis failure)
+  const result = checkRateLimitInMemory(key, config)
 
   if (!result.allowed) {
     return NextResponse.json(
@@ -164,6 +203,39 @@ export function rateLimit(
   }
 
   return null // No rate limit hit
+}
+
+// Synchronous version for backwards compatibility (uses in-memory only)
+export function rateLimitSync(
+  req: NextRequest,
+  routeKey: string,
+  config: RateLimitConfig = RateLimitPresets.standard
+): NextResponse | null {
+  const clientId = getClientIdentifier(req)
+  const key = `${routeKey}:${req.method}:${clientId}`
+
+  const result = checkRateLimitInMemory(key, config)
+
+  if (!result.allowed) {
+    return NextResponse.json(
+      {
+        error: 'Too many requests',
+        message: 'Rate limit exceeded. Please try again later.',
+        retryAfter: result.retryAfter
+      },
+      {
+        status: 429,
+        headers: {
+          'Retry-After': String(result.retryAfter),
+          'X-RateLimit-Limit': String(config.maxRequests),
+          'X-RateLimit-Remaining': '0',
+          'X-RateLimit-Reset': String(Math.ceil(result.resetTime / 1000)),
+        }
+      }
+    )
+  }
+
+  return null
 }
 
 // Add rate limit headers to a response

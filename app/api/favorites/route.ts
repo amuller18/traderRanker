@@ -8,7 +8,7 @@ const ROUTE_KEY = 'favorites'
 // GET - Fetch all favorites for the current user
 export async function GET(request: NextRequest) {
   // Apply rate limiting
-  const rateLimitResponse = rateLimit(request, ROUTE_KEY, RateLimitPresets.standard)
+  const rateLimitResponse = await rateLimit(request, ROUTE_KEY, RateLimitPresets.standard)
   if (rateLimitResponse) return rateLimitResponse
 
   try {
@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
 // POST - Add a new favorite
 export async function POST(request: NextRequest) {
   // Apply rate limiting
-  const rateLimitResponse = rateLimit(request, ROUTE_KEY, RateLimitPresets.standard)
+  const rateLimitResponse = await rateLimit(request, ROUTE_KEY, RateLimitPresets.standard)
   if (rateLimitResponse) return rateLimitResponse
 
   try {
@@ -147,7 +147,7 @@ export async function POST(request: NextRequest) {
 // DELETE - Remove a favorite
 export async function DELETE(request: NextRequest) {
   // Apply rate limiting
-  const rateLimitResponse = rateLimit(request, ROUTE_KEY, RateLimitPresets.standard)
+  const rateLimitResponse = await rateLimit(request, ROUTE_KEY, RateLimitPresets.standard)
   if (rateLimitResponse) return rateLimitResponse
 
   try {

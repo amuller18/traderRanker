@@ -25,7 +25,7 @@ function getSupabaseAdmin(): SupabaseClient {
 
 export async function POST(request: NextRequest) {
   // Apply rate limiting to email addition
-  const rateLimitResponse = rateLimit(request, 'add-email', RateLimitPresets.strict);
+  const rateLimitResponse = await rateLimit(request, 'add-email', RateLimitPresets.strict);
   if (rateLimitResponse) return rateLimitResponse;
 
   try {

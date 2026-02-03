@@ -25,7 +25,7 @@ function getSupabaseAdmin(): SupabaseClient {
 
 export async function POST(request: NextRequest) {
   // Apply rate limiting to wallet unlinking
-  const rateLimitResponse = rateLimit(request, 'wallet-unlink', RateLimitPresets.auth);
+  const rateLimitResponse = await rateLimit(request, 'wallet-unlink', RateLimitPresets.auth);
   if (rateLimitResponse) return rateLimitResponse;
 
   try {

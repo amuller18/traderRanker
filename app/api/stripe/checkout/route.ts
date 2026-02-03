@@ -5,7 +5,7 @@ import { rateLimit, RateLimitPresets } from '@/lib/rate-limit'
 
 export async function POST(request: NextRequest) {
   // Apply strict rate limiting to payment endpoints
-  const rateLimitResponse = rateLimit(request, 'stripe-checkout', RateLimitPresets.auth)
+  const rateLimitResponse = await rateLimit(request, 'stripe-checkout', RateLimitPresets.auth)
   if (rateLimitResponse) return rateLimitResponse
 
   try {

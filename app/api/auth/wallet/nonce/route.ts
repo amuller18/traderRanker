@@ -48,7 +48,7 @@ function generateNonce(): string {
 
 export async function POST(request: NextRequest) {
   // Apply strict rate limiting to nonce generation
-  const rateLimitResponse = rateLimit(request, 'wallet-nonce', RateLimitPresets.strict);
+  const rateLimitResponse = await rateLimit(request, 'wallet-nonce', RateLimitPresets.strict);
   if (rateLimitResponse) return rateLimitResponse;
 
   try {

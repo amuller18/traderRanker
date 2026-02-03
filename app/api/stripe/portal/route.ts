@@ -5,7 +5,7 @@ import { rateLimit, RateLimitPresets } from '@/lib/rate-limit'
 
 export async function POST(request: NextRequest) {
   // Apply rate limiting to billing portal
-  const rateLimitResponse = rateLimit(request, 'stripe-portal', RateLimitPresets.auth)
+  const rateLimitResponse = await rateLimit(request, 'stripe-portal', RateLimitPresets.auth)
   if (rateLimitResponse) return rateLimitResponse
 
   try {

@@ -4,6 +4,8 @@ import { useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { AlertCircle, RefreshCw } from 'lucide-react'
+import { captureError } from '@/lib/sentry'
+import { analytics } from '@/lib/analytics'
 
 export default function Error({
   error,
@@ -13,7 +15,8 @@ export default function Error({
   reset: () => void
 }) {
   useEffect(() => {
-    console.error('Copy trading dashboard error:', error)
+    captureError(error, { boundary: 'copy-trader-dashboard', digest: error.digest })
+    analytics.errorDisplayed('copy-trader-dashboard', error.digest)
   }, [error])
 
   return (

@@ -3,6 +3,8 @@
 import { useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { AlertTriangle, RefreshCw, Home } from "lucide-react"
+import { captureError } from "@/lib/sentry"
+import { analytics } from "@/lib/analytics"
 
 export default function GlobalError({
   error,
@@ -12,8 +14,8 @@ export default function GlobalError({
   reset: () => void
 }) {
   useEffect(() => {
-    // Log the error to an error reporting service
-    console.error("Global error:", error)
+    captureError(error, { boundary: 'global', digest: error.digest })
+    analytics.errorDisplayed('global', error.digest)
   }, [error])
 
   return (

@@ -6,8 +6,8 @@ import type { NextRequest } from 'next/server'
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get('code')
-  // Default to /account for email confirmation flows
-  const next = searchParams.get('next') ?? '/account'
+  // Default to /auth/onboarding so new users complete their profile after email confirmation
+  const next = searchParams.get('next') ?? '/auth/onboarding'
 
   if (code) {
     const cookieStore = await cookies()

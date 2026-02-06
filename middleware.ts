@@ -34,10 +34,12 @@ export async function middleware(request: NextRequest) {
 
   const isAuthPage = request.nextUrl.pathname.startsWith('/auth')
   const isConfirmEmailPage = request.nextUrl.pathname === '/auth/confirm-email'
+  const isOnboardingPage = request.nextUrl.pathname === '/auth/onboarding'
 
   // Redirect authenticated users away from auth pages
-  // EXCEPT for the confirm-email page (needed during email confirmation flow)
-  if (isAuthPage && user && !isConfirmEmailPage) {
+  // EXCEPT for confirm-email (needed during email confirmation flow)
+  // and onboarding (needed to complete profile after email confirmation)
+  if (isAuthPage && user && !isConfirmEmailPage && !isOnboardingPage) {
     return NextResponse.redirect(new URL('/rankings', request.url))
   }
 

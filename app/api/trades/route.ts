@@ -5,7 +5,7 @@ export async function GET(request: NextRequest) {
     // Fetch all trades from Python backend - no price fetching here, let client handle it
     const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
     const tradesResponse = await fetch(`${backendUrl}/api/trades`, {
-      cache: 'no-store'
+      next: { revalidate: 30 },
     })
 
     if (!tradesResponse.ok) {

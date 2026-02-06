@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
     const encodedTrader = encodeURIComponent(trader)
     const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
     const tradesResponse = await fetch(`${backendUrl}/api/traders/${encodedTrader}/trades`, {
-      cache: 'no-store'
+      next: { revalidate: 30 },
     })
 
     if (!tradesResponse.ok) {

@@ -17,9 +17,6 @@ export async function GET() {
   // Check Stripe configuration
   health.stripe = process.env.STRIPE_SECRET_KEY ? 'configured' : 'missing'
 
-  // Check Sentry configuration
-  health.sentry = process.env.NEXT_PUBLIC_SENTRY_DSN ? 'configured' : 'missing'
-
   // Check backend API connectivity
   const backendUrl = process.env.NEXT_PUBLIC_PI_API_BASE || process.env.NEXT_PUBLIC_API_URL
   if (backendUrl) {

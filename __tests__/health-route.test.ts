@@ -6,7 +6,7 @@
  * 2. Returns 503 when supabase is not configured
  * 3. Returns 503 when backend is unreachable
  * 4. Reports 'not_configured' when no backend URL
- * 5. Reports stripe/sentry as 'missing' when not configured
+ * 5. Reports stripe as 'missing' when not configured
  * 6. Reports 'configured' when env vars are set
  * 7. Reports backend error status when backend returns non-200
  * 8. Has valid timestamp and uptime in response
@@ -32,7 +32,6 @@ describe('GET /api/health', () => {
     // Clear relevant env vars so each test starts clean
     delete process.env.NEXT_PUBLIC_SUPABASE_URL
     delete process.env.STRIPE_SECRET_KEY
-    delete process.env.NEXT_PUBLIC_SENTRY_DSN
     delete process.env.NEXT_PUBLIC_PI_API_BASE
     delete process.env.NEXT_PUBLIC_API_URL
   })
@@ -52,7 +51,6 @@ describe('GET /api/health', () => {
   it('returns 200 with status ok when all services configured and backend reachable', async () => {
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://test.supabase.co')
     vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_123')
-    vi.stubEnv('NEXT_PUBLIC_SENTRY_DSN', 'https://test@sentry.io/123')
     vi.stubEnv('NEXT_PUBLIC_PI_API_BASE', 'https://api.example.com')
     vi.stubGlobal(
       'fetch',
@@ -66,7 +64,6 @@ describe('GET /api/health', () => {
     expect(body.status).toBe('ok')
     expect(body.supabase).toBe('configured')
     expect(body.stripe).toBe('configured')
-    expect(body.sentry).toBe('configured')
     expect(body.backend).toBe('ok')
   })
 
@@ -111,27 +108,24 @@ describe('GET /api/health', () => {
     expect(body.backend).toBe('not_configured')
   })
 
-  it('reports stripe and sentry as missing when not configured', async () => {
+  it('reports stripe as missing when not configured', async () => {
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://test.supabase.co')
-    // STRIPE_SECRET_KEY and NEXT_PUBLIC_SENTRY_DSN intentionally not set
+    // STRIPE_SECRET_KEY intentionally not set
 
     const response = await callGET()
     const body = await response.json()
 
     expect(body.stripe).toBe('missing')
-    expect(body.sentry).toBe('missing')
   })
 
-  it('reports configured when stripe and sentry env vars are set', async () => {
+  it('reports stripe as configured when env var is set', async () => {
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://test.supabase.co')
     vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_abc')
-    vi.stubEnv('NEXT_PUBLIC_SENTRY_DSN', 'https://dsn@sentry.io/1')
 
     const response = await callGET()
     const body = await response.json()
 
     expect(body.stripe).toBe('configured')
-    expect(body.sentry).toBe('configured')
   })
 
   it('reports backend error status when backend returns non-200', async () => {

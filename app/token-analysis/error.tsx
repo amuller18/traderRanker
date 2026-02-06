@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { AlertCircle, RefreshCw } from 'lucide-react'
 import { PageHeader } from '@/app/page-header'
-import { captureError } from '@/lib/sentry'
 import { analytics } from '@/lib/analytics'
 
 export default function Error({
@@ -16,7 +15,7 @@ export default function Error({
   reset: () => void
 }) {
   useEffect(() => {
-    captureError(error, { boundary: 'token-analysis', digest: error.digest })
+    console.error('Token analysis page error:', error)
     analytics.errorDisplayed('token-analysis', error.digest)
   }, [error])
 

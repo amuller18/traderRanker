@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { AlertCircle, RefreshCw } from 'lucide-react'
 import { PageHeader } from '@/app/page-header'
-import { analytics } from '@/lib/analytics'
 
 export default function Error({
   error,
@@ -16,7 +15,6 @@ export default function Error({
 }) {
   useEffect(() => {
     console.error('Trades page error:', error)
-    analytics.errorDisplayed('trades', error.digest)
   }, [error])
 
   return (

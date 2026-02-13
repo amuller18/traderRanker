@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ tokens }),
-      next: { revalidate: 60 },
+      cache: 'no-store'
     })
 
     if (!response.ok) {

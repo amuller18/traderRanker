@@ -7,8 +7,6 @@ import { WalletProvider } from "@/lib/wallet-context"
 import { DisplayPreferenceProvider } from "@/lib/display-preference-context"
 import { FavoritesProvider } from "@/lib/favorites-context"
 import { Toaster } from "@/components/ui/sonner"
-import { Analytics } from "@vercel/analytics/react"
-import { SpeedInsights } from "@vercel/speed-insights/next"
 
 export const metadata: Metadata = {
   title: "TraderRanker - Solana Trading Performance Analytics",
@@ -36,8 +34,6 @@ export default function RootLayout({
             </DisplayPreferenceProvider>
           </AuthProvider>
         </ThemeProvider>
-        <Analytics />
-        <SpeedInsights />
       </body>
     </html>
   )

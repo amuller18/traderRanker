@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
     const queryString = searchParams.toString()
     const tradesResponse = await fetch(
       `${backendUrl}/api/trades/filtered${queryString ? `?${queryString}` : ''}`,
-      { next: { revalidate: 30 } }
+      { cache: 'no-store' }
     )
 
     if (!tradesResponse.ok) {
